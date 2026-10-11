@@ -1,0 +1,35 @@
+rules_version = '2';
+// Regras do Firestore — cole em: Firebase Console → Firestore → Regras
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Contador diário do número do pedido (#1, #2, ...)
+    match /contadores/{dia} {
+      allow read: if true;
+      allow create: if request.resource.data.n == 1;
+      allow update: if request.resource.data.n == resource.data.n + 1;
+    }
+
+    match /pedidos/{id} {
+      // Cliente acompanha o próprio pedido pelo link (id impossível de adivinhar).
+      allow get: if true;
+      // Só a cozinha (usuário logado) lista todos os pedidos.
+      allow list: if request.auth != null;
+
+      // Qualquer cliente cria pedido, mas sempre como "novo" e com Pix NÃO confirmado.
+      allow create: if request.resource.data.status == 'novo'
+                    && request.resource.data.impresso == false
+                    && request.resource.data.pagamento.confirmado == false
+                    && request.resource.data.itens is list
+                    && request.resource.data.itens.size() > 0
+                    && request.resource.data.itens.size() <= 50
+                    && request.resource.data.cliente.nome is string
+                    && request.resource.data.cliente.telefone is string
+                    && request.resource.data.total is number;
+
+      // Mudar status / confirmar Pix / marcar impresso: só a cozinha.
+      allow update: if request.auth != null;
+      allow delete: if false;
+    }
+  }
+}

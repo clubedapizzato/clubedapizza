@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<meta name="robots" content="noindex">
+<title>Cozinha • Clube da Pizza</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+main{max-width:1400px;padding-bottom:30px}
+.topo .in{max-width:1400px;flex-wrap:wrap}
+.ferramentas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ferramentas .btn{padding:7px 10px;font-size:13px}
+.toggle{display:flex;align-items:center;gap:6px;font-size:13px;background:#ffffff14;border-radius:9px;padding:6px 10px;cursor:pointer;user-select:none}
+.toggle input{width:auto;margin:0}
+.colunas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+@media(max-width:1100px){.colunas{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.colunas{grid-template-columns:1fr}}
+.coluna h2{display:flex;justify-content:space-between;align-items:center;font-size:15px;background:var(--dark);color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.coluna h2 span{background:#fff;color:var(--dark);border-radius:999px;padding:1px 9px;font-size:13px}
+.ped{background:#fff;border:1px solid var(--line);border-left:6px solid var(--muted);border-radius:12px;padding:12px;margin-bottom:10px;font-size:14px}
+.ped.novo{border-left-color:#dc2626;animation:pisca 1.2s ease-in-out 6}
+.ped.producao{border-left-color:#d97706}
+.ped.saiu{border-left-color:#2563eb}
+.ped.entregue{border-left-color:var(--ok);opacity:.75}
+.ped.cancelado{border-left-color:#525252;opacity:.6}
+@keyframes pisca{50%{background:#fee2e2}}
+.ped .cab{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.ped .num{font-size:20px;font-weight:900}
+.ped .tempo{font-size:12px;color:var(--muted)}
+.ped .tempo.atraso{color:#dc2626;font-weight:800}
+.ped ul{margin:8px 0;padding-left:18px}
+.ped li{margin:2px 0}
+.tag{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:2px 7px;margin:2px 4px 2px 0}
+.tag.pend{background:#fef3c7;color:#92400e}
+.tag.ok{background:#dcfce7;color:#166534}
+.tag.info{background:#e0e7ff;color:#3730a3}
+.tag.erro{background:#fee2e2;color:#991b1b}
+.acoes{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.acoes .btn{padding:8px 10px;font-size:13px;border-radius:9px}
+.acoes .avancar{flex:1 1 100%}
+a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
+#login{max-width:380px;margin:40px auto}
+</style>
+</head>
+<body>
+<header class="topo">
+  <div class="in">
+    <h1>👨‍🍳 Cozinha <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1>
+    <div class="ferramentas hide" id="ferramentas">
+      <input type="date" id="dataFiltro" style="width:auto;padding:6px;border-radius:8px">
+      <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
+      <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
+      <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
+      <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
+      <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> só aparecem pedidos feitos na loja aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code>.</div>
+
+  <div id="login" class="card hide">
+    <h2>Acesso da cozinha</h2>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
+    <button class="btn full" style="margin-top:14px" onclick="entrar()">Entrar</button>
+    <div id="erroLogin" class="muted" style="color:#b91c1c;margin-top:8px"></div>
+  </div>
+
+  <div id="painel" class="hide">
+    <div class="colunas" id="colunas"></div>
+  </div>
+</main>
+
+<pre id="ticketPrint" class="print-only"></pre>
+<div id="toast"></div>
+
+<script src="js/config.js"></script>
+<script src="js/cardapio.js"></script>
+<script src="js/db.js"></script>
+<script src="js/impressora.js"></script>
+<script>
+let pedidos = [];
+let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
+let fila = [], imprimindo = false, naFila = new Set();
+let pararLista = null;
+let audioCtx = null;
+const PROX = { novo: 'producao', producao: 'saiu', saiu: 'entregue' };
+const BOTAO = { novo: '▶️ Iniciar produção', producao: '🛵 Saiu para entrega', saiu: '✅ Marcar entregue' };
+
+const pref = (k, padrao) => { const v = localStorage.getItem('cdp_coz_' + k); return v == null ? padrao : v === '1'; };
+const setPref = (k, v) => localStorage.setItem('cdp_coz_' + k, v ? '1' : '0');
+const elAuto = document.getElementById('autoPrint'), elWa = document.getElementById('autoWhats');
+elAuto.checked = pref('autoPrint', false);
+elWa.checked = pref('autoWhats', true);
+elAuto.onchange = () => { setPref('autoPrint', elAuto.checked); if (elAuto.checked) verificarImpressao(); };
+elWa.onchange = () => setPref('autoWhats', elWa.checked);
+
+const elData = document.getElementById('dataFiltro');
+elData.value = hojeISO();
+elData.onchange = () => assinar();
+
+if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
+
+setInterval(() => {
+  document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
+  if (pedidos.length) render();   // atualiza "há X min"
+}, 30000);
+document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
+
+/* ---------------- LOGIN ---------------- */
+DB.observarUsuario(u => {
+  const logado = !!u;
+  document.getElementById('login').classList.toggle('hide', logado);
+  document.getElementById('painel').classList.toggle('hide', !logado);
+  document.getElementById('ferramentas').classList.toggle('hide', !logado);
+  document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
+  if (logado) assinar(); else if (pararLista) { pararLista(); pararLista = null; }
+});
+async function entrar() {
+  document.getElementById('erroLogin').textContent = '';
+  try { await DB.login(document.getElementById('email').value.trim(), document.getElementById('senha').value); }
+  catch (e) { document.getElementById('erroLogin').textContent = 'E-mail ou senha inválidos.'; }
+}
+document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+
+/* ---------------- PEDIDOS ---------------- */
+async function assinar() {
+  if (pararLista) pararLista();
+  conhecidos = null;
+  pararLista = await DB.observarPedidosDoDia(elData.value, lista => {
+    pedidos = lista.sort((a, b) => a.numero - b.numero);
+    const ids = new Set(pedidos.map(p => p.id));
+    if (conhecidos) {
+      const novos = pedidos.filter(p => !conhecidos.has(p.id));
+      if (novos.length) { tocar(); toast(`🔔 Novo pedido #${novos.map(p => p.numero).join(', #')}`); }
+    }
+    conhecidos = ids;
+    render();
+    verificarImpressao();
+  }, () => toast('Sem permissão para ler pedidos. Verifique o login/regras do Firebase.'));
+}
+
+function minutos(p) { return Math.floor((Date.now() - p.criadoEm) / 60000); }
+
+function render() {
+  const cols = [
+    { id: 'novo', nome: '🆕 Novos' },
+    { id: 'producao', nome: '🔥 Em produção' },
+    { id: 'saiu', nome: '🛵 Saiu / Pronto' },
+    { id: 'entregue', nome: '✅ Entregues' }
+  ];
+  document.getElementById('colunas').innerHTML = cols.map(c => {
+    let lista = pedidos.filter(p => p.status === c.id || (c.id === 'entregue' && p.status === 'cancelado'));
+    if (c.id === 'entregue') lista = lista.slice().reverse();
+    return `<div class="coluna"><h2>${c.nome}<span>${lista.length}</span></h2>
+      ${lista.map(cartao).join('') || '<div class="muted" style="text-align:center;padding:10px">—</div>'}</div>`;
+  }).join('');
+}
+
+function cartao(p) {
+  const e = p.entrega, pg = p.pagamento, min = minutos(p);
+  const conferido = Math.abs(Preco.subtotal(p.itens) + Preco.taxa(e.tipo) - p.total) < 0.01;
+  const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
+  const ativo = !['entregue', 'cancelado'].includes(p.status);
+
+  let pgTag;
+  if (pg.forma === 'pix') pgTag = pg.confirmado ? '<span class="tag ok">PIX ✔ PAGO</span>' : '<span class="tag pend">PIX AGUARDANDO</span>';
+  else if (pg.forma === 'dinheiro') pgTag = `<span class="tag info">DINHEIRO${pg.trocoPara ? ' • troco p/ ' + dinheiro(pg.trocoPara) + ' (' + dinheiro(pg.trocoPara - p.total) + ')' : ''}</span>`;
+  else pgTag = '<span class="tag info">CARTÃO NA ENTREGA</span>';
+
+  return `<div class="ped ${p.status}">
+    <div class="cab"><span class="num">#${p.numero}</span>
+      <span class="tempo ${ativo && min >= 40 ? 'atraso' : ''}">${hora}${ativo ? ' • há ' + min + ' min' : ''}</span></div>
+    <div><b>${esc(p.cliente.nome)}</b> • <a class="lnk" href="tel:${esc(p.cliente.telefone)}">${esc(fone(p.cliente.telefone))}</a></div>
+    ${e.tipo === 'entrega'
+      ? `<div>📍 ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' • ' + esc(e.complemento) : ''}</div>
+         ${e.referencia ? `<div class="muted">Ref.: ${esc(e.referencia)}</div>` : ''}
+         ${e.lat ? `<a class="lnk" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}">🗺️ Abrir no mapa</a>` : ''}`
+      : '<span class="tag info">🏪 RETIRADA NO BALCÃO</span>'}
+    <ul>${p.itens.map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>
+    ${p.obs ? `<div class="aviso" style="margin:4px 0">📝 ${esc(p.obs)}</div>` : ''}
+    <div><b>Total ${dinheiro(p.total)}</b> ${pgTag}
+      ${conferido ? '' : '<span class="tag erro" title="O total enviado não bate com os preços do cardápio">⚠️ CONFERIR VALOR</span>'}
+      ${p.impresso ? '' : '<span class="tag pend">NÃO IMPRESSO</span>'}
+      ${p.status === 'cancelado' ? '<span class="tag erro">CANCELADO</span>' : ''}</div>
+    <div class="acoes">
+      ${PROX[p.status] ? `<button class="btn avancar" onclick="mudarStatus('${p.id}','${PROX[p.status]}')">${p.status === 'producao' && e.tipo === 'retirada' ? '✅ Pronto p/ retirada' : BOTAO[p.status]}</button>` : ''}
+      ${pg.forma === 'pix' && ativo ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
+      <button class="btn sm sec" onclick="imprimirManual('${p.id}')">🖨️ Imprimir</button>
+      <a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>
+      ${ativo ? `<button class="btn sm sec" onclick="cancelar('${p.id}')">Cancelar</button>` : ''}
+    </div>
+  </div>`;
+}
+function fone(t) { const d = String(t).replace(/\D/g, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : t; }
+const achar = id => pedidos.find(p => p.id === id);
+
+async function mudarStatus(id, status) {
+  const p = achar(id); if (!p) return;
+  // abre a janela já no clique (navegadores bloqueiam pop-up depois de um await)
+  const jan = elWa.checked ? window.open('', '_blank') : null;
+  try {
+    await DB.atualizarPedido(id, { status }, status);
+    if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
+  } catch (e) {
+    if (jan) jan.close();
+    console.error(e); toast('Erro ao atualizar. Verifique a internet.');
+  }
+}
+async function alternarPix(id, confirmado) {
+  const p = achar(id); if (!p) return;
+  if (confirmado && !confirm(`Confirmar que o Pix de ${dinheiro(p.total)} do pedido #${p.numero} CAIU na conta?`)) return;
+  await DB.atualizarPedido(id, { pagamento: Object.assign({}, p.pagamento, { confirmado }) });
+}
+async function cancelar(id) {
+  const p = achar(id); if (!p) return;
+  if (!confirm(`Cancelar o pedido #${p.numero} de ${p.cliente.nome}?`)) return;
+  await mudarStatus(id, 'cancelado');
+}
+
+/* ---------------- IMPRESSÃO ---------------- */
+function verificarImpressao() {
+  if (!elAuto.checked) return;
+  pedidos.filter(p => p.status === 'novo' && !p.impresso && !naFila.has(p.id)).forEach(p => { naFila.add(p.id); fila.push(p.id); });
+  processarFila();
+}
+async function processarFila() {
+  if (imprimindo) return;
+  imprimindo = true;
+  while (fila.length) {
+    const id = fila.shift(), p = achar(id);
+    if (p && !p.impresso) {
+      try { await Impressora.imprimir(p); await DB.atualizarPedido(id, { impresso: true }); }
+      catch (e) { console.error(e); toast('Falha ao imprimir #' + p.numero); naFila.delete(id); }
+    }
+  }
+  imprimindo = false;
+}
+async function imprimirManual(id) {
+  const p = achar(id); if (!p) return;
+  await Impressora.imprimir(p);
+  if (!p.impresso) await DB.atualizarPedido(id, { impresso: true });
+}
+async function conectarBT() {
+  try {
+    const nome = await Impressora.conectar();
+    const b = document.getElementById('btnBT'); b.textContent = '🟢 ' + nome; b.classList.remove('sec'); b.classList.add('dark');
+    toast('Impressora conectada!');
+  } catch (e) { toast(e.message || 'Falha ao conectar.'); }
+}
+
+/* ---------------- SOM ---------------- */
+function ativarSom() {
+  audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+  audioCtx.resume();
+  tocar();
+  const b = document.getElementById('btnSom'); b.textContent = '🔔 Som ligado'; b.classList.remove('sec'); b.classList.add('dark');
+}
+function tocar() {
+  if (!audioCtx) return;
+  [0, 0.25, 0.5].forEach(t => {
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+    g.gain.setValueAtTime(0.4, audioCtx.currentTime + t);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + t + 0.2);
+    o.start(audioCtx.currentTime + t); o.stop(audioCtx.currentTime + t + 0.2);
+  });
+}
+
+function toast(t) {
+  const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 3500);
+}
+</script>
+</body>
+</html>
