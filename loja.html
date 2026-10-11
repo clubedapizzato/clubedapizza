@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<title>Clube da Pizza • Peça online</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="topo">
+  <div class="in">
+    <h1 id="nomeLoja">🍕 Clube da Pizza</h1>
+    <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
+  </div>
+</header>
+
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> os pedidos só aparecem na cozinha aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code> para uso real.</div>
+
+  <!-- ================= TELA 1: CARDÁPIO ================= -->
+  <section id="tela-cardapio">
+    <nav class="tabs" id="tabs"></nav>
+    <div id="listaCardapio"></div>
+  </section>
+
+  <!-- ================= TELA 2: FINALIZAR ================= -->
+  <section id="tela-checkout" class="hide">
+    <div class="card">
+      <h2>🛒 Seu pedido</h2>
+      <div id="carrinho"></div>
+    </div>
+
+    <div class="card">
+      <h2>👤 Seus dados</h2>
+      <label for="nome">Nome</label>
+      <input id="nome" autocomplete="name" placeholder="Seu nome">
+      <label for="telefone">Telefone / WhatsApp</label>
+      <input id="telefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(63) 99999-9999">
+      <div class="muted">Você receberá as atualizações do pedido neste WhatsApp.</div>
+    </div>
+
+    <div class="card">
+      <h2>📍 Entrega</h2>
+      <div class="opcoes" id="opcoesEntrega"></div>
+
+      <div id="blocoEndereco">
+        <div class="muted" style="margin-top:12px"><b>Arraste o pino</b> (ou toque no mapa) até a sua casa. Isso ajuda o entregador a chegar certinho.</div>
+        <div id="mapa"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn sm dark" type="button" onclick="minhaLocalizacao()">📡 Usar minha localização</button>
+          <button class="btn sm sec" type="button" onclick="buscarEndereco()">🔎 Localizar endereço digitado</button>
+        </div>
+        <div id="statusPino" class="muted" style="margin-top:6px"></div>
+
+        <div class="grid3">
+          <div><label for="rua">Rua / Avenida</label><input id="rua" autocomplete="address-line1"></div>
+          <div><label for="numero">Número</label><input id="numero" placeholder="S/N se não houver"></div>
+        </div>
+        <div class="grid2">
+          <div><label for="bairro">Bairro</label><input id="bairro"></div>
+          <div><label for="complemento">Complemento</label><input id="complemento" placeholder="Casa, apto, bloco..."></div>
+        </div>
+        <label for="referencia">Ponto de referência</label>
+        <input id="referencia" placeholder="Ex.: próximo à praça, portão azul">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>💳 Pagamento</h2>
+      <div class="opcoes" id="opcoesPagamento"></div>
+      <div id="blocoTroco" class="hide">
+        <label for="troco">Troco para quanto? (deixe vazio se não precisar)</label>
+        <input id="troco" inputmode="decimal" placeholder="Ex.: 100">
+      </div>
+      <div id="infoPix" class="muted hide" style="margin-top:8px">O código Pix com o valor exato aparece logo após confirmar o pedido.</div>
+    </div>
+
+    <div class="card">
+      <h2>📝 Observações</h2>
+      <textarea id="obs" placeholder="Algo que a cozinha ou o entregador precise saber?"></textarea>
+    </div>
+
+    <div class="card">
+      <h2>Resumo</h2>
+      <div id="resumo"></div>
+    </div>
+  </section>
+
+  <!-- ================= TELA 3: ACOMPANHAR ================= -->
+  <section id="tela-acompanhar" class="hide">
+    <div class="card" id="acompanhar"></div>
+  </section>
+</main>
+
+<!-- Barra inferior -->
+<div class="barra" id="barra">
+  <div class="in"><button class="btn full" id="btnBarra"></button></div>
+</div>
+
+<!-- Modal montar pizza -->
+<div class="modal" id="modalPizza" onclick="if(event.target===this)fecharModal()">
+  <div class="box" id="modalConteudo"></div>
+</div>
+
+<div id="toast"></div>
+
+<script src="js/config.js"></script>
+<script src="js/cardapio.js"></script>
+<script src="js/pix.js"></script>
+<script src="js/db.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+const C = CARDAPIO;
+let carrinho = [];            // itens {uid,tipo,...,qtd}
+let tela = 'cardapio';
+let tipoEntrega = 'entrega';
+let formaPagamento = 'pix';
+let mapa = null, pino = null, pinoAjustado = false, ruaAuto = true, bairroAuto = true;
+let pararObservar = null;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+document.getElementById('nomeLoja').textContent = '🍕 ' + CONFIG.loja.nome;
+document.title = CONFIG.loja.nome + ' • Peça online';
+if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
+
+/* ---------------- CARDÁPIO ---------------- */
+function renderCardapio() {
+  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(C.categorias.map(c => ({ id: c.id, nome: c.nome })));
+  document.getElementById('tabs').innerHTML = cats.map(c =>
+    `<button class="tab" data-cat="${c.id}" onclick="irPara('${c.id}')">${esc(c.nome)}</button>`).join('');
+
+  let h = `<div class="card" id="cat-pizzas"><h2>🍕 Pizzas</h2>
+    <div class="muted" style="margin-bottom:6px">P: 1 sabor • M e G: até 2 sabores (meio a meio)</div>`;
+  C.sabores.forEach((s, i) => {
+    h += `<div class="prod">
+      <div><div class="nome">${esc(s.nome)}</div>
+        ${s.desc ? `<div class="muted">${esc(s.desc)}</div>` : ''}
+        <div class="precos">${C.tamanhos.map(t => `<span>${t.id} ${dinheiro(s[t.id])}</span>`).join('')}</div></div>
+      <button class="btn sm" onclick="abrirPizza(${i})">Escolher</button>
+    </div>`;
+  });
+  h += `</div>`;
+
+  C.categorias.forEach(cat => {
+    h += `<div class="card" id="cat-${cat.id}"><h2>${esc(cat.nome)}</h2>`;
+    cat.produtos.forEach(p => {
+      const q = qtdProduto(p.id);
+      h += `<div class="prod">
+        <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}</div></div>
+        <div class="qty"><button onclick="alterarProduto('${p.id}',-1)">−</button><b>${q}</b><button onclick="alterarProduto('${p.id}',1)">+</button></div>
+      </div>`;
+    });
+    h += `</div>`;
+  });
+  document.getElementById('listaCardapio').innerHTML = h;
+}
+
+function irPara(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.cat === id));
+  const el = document.getElementById('cat-' + id);
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' });
+}
+
+function qtdProduto(id) { const it = carrinho.find(x => x.tipo === 'produto' && x.id === id); return it ? it.qtd : 0; }
+function alterarProduto(id, d) {
+  let it = carrinho.find(x => x.tipo === 'produto' && x.id === id);
+  if (!it && d > 0) { it = { uid: uid(), tipo: 'produto', id, qtd: 0 }; carrinho.push(it); }
+  if (!it) return;
+  it.qtd += d;
+  if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
+  atualizar();
+}
+
+/* ---------------- MODAL PIZZA ---------------- */
+let montagem = null;
+function abrirPizza(iSabor) {
+  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicional: false, qtd: 1, obs: '' };
+  renderModal();
+  document.getElementById('modalPizza').classList.add('on');
+}
+function fecharModal() { document.getElementById('modalPizza').classList.remove('on'); }
+
+function renderModal() {
+  const m = montagem, t = Preco.tamanho(m.tamanho);
+  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicional);
+  document.getElementById('modalConteudo').innerHTML = `
+    <h2>Monte sua pizza</h2>
+    <h3>Tamanho</h3>
+    <div class="opcoes">${C.tamanhos.map(x => `<div class="opcao ${x.id === m.tamanho ? 'on' : ''}" onclick="mTamanho('${x.id}')">${x.nome} (${x.id})<small>${x.maxSabores === 1 ? '1 sabor' : 'até ' + x.maxSabores + ' sabores'}</small></div>`).join('')}</div>
+    <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
+    <div class="chips">${C.sabores.map(s => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
+    ${t.maxSabores > 1 ? `<div class="muted" style="margin-top:6px">Meio a meio: preço pela ${CONFIG.meioAMeio === 'maior' ? 'pizza de maior valor' : 'média dos sabores'}.</div>` : ''}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600">
+      <input type="checkbox" style="width:auto" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
+      Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
+    </label>
+    <label for="mObs">Observação desta pizza</label>
+    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: sem cebola" oninput="montagem.obs=this.value">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">
+      <div class="qty"><button onclick="montagem.qtd=Math.max(1,montagem.qtd-1);renderModal()">−</button><b>${m.qtd}</b><button onclick="montagem.qtd++;renderModal()">+</button></div>
+      <button class="btn" style="flex:1" ${m.sabores.length ? '' : 'disabled'} onclick="adicionarPizza()">Adicionar • ${dinheiro(preco * m.qtd)}</button>
+    </div>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`;
+}
+function mTamanho(id) {
+  montagem.tamanho = id;
+  const max = Preco.tamanho(id).maxSabores;
+  montagem.sabores = montagem.sabores.slice(0, max);
+  renderModal();
+}
+function mSabor(nome) {
+  const m = montagem, max = Preco.tamanho(m.tamanho).maxSabores;
+  if (m.sabores.includes(nome)) m.sabores = m.sabores.filter(s => s !== nome);
+  else if (max === 1) m.sabores = [nome];
+  else if (m.sabores.length >= max) { toast(`Máximo de ${max} sabores neste tamanho.`); return; }
+  else m.sabores.push(nome);
+  renderModal();
+}
+function adicionarPizza() {
+  if (!montagem.sabores.length) return;
+  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { obs: montagem.obs.trim() }));
+  fecharModal();
+  atualizar();
+  toast('Pizza adicionada!');
+}
+
+/* ---------------- CARRINHO / CHECKOUT ---------------- */
+function totais() {
+  const subtotal = Preco.subtotal(carrinho);
+  const taxa = Preco.taxa(tipoEntrega);
+  return { subtotal, taxa, total: subtotal + taxa };
+}
+
+function renderCarrinho() {
+  const el = document.getElementById('carrinho');
+  if (!carrinho.length) { el.innerHTML = '<div class="muted">Seu carrinho está vazio.</div>'; return; }
+  el.innerHTML = carrinho.map(it => `
+    <div class="prod">
+      <div><div class="nome">${esc(Preco.descricao(it))}</div>
+        ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
+        <div class="muted">${dinheiro(Preco.unitario(it))} cada</div></div>
+      <div class="qty"><button onclick="alterarItem('${it.uid}',-1)">−</button><b>${it.qtd}</b><button onclick="alterarItem('${it.uid}',1)">+</button></div>
+    </div>`).join('');
+}
+function alterarItem(u, d) {
+  const it = carrinho.find(x => x.uid === u);
+  if (!it) return;
+  it.qtd += d;
+  if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
+  atualizar();
+}
+
+function renderResumo() {
+  const t = totais();
+  document.getElementById('resumo').innerHTML = `
+    <div class="linha"><span>Subtotal</span><span>${dinheiro(t.subtotal)}</span></div>
+    ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${dinheiro(t.taxa)}</span></div>` : ''}
+    <div class="linha total"><span>Total</span><span>${dinheiro(t.total)}</span></div>`;
+}
+
+function renderOpcoes() {
+  const ent = [{ id: 'entrega', nome: '🛵 Entrega', sub: dinheiro(CONFIG.entrega.taxa) }];
+  if (CONFIG.entrega.permitirRetirada) ent.push({ id: 'retirada', nome: '🏪 Retirar', sub: 'sem taxa' });
+  document.getElementById('opcoesEntrega').innerHTML = ent.map(o =>
+    `<div class="opcao ${tipoEntrega === o.id ? 'on' : ''}" onclick="setEntrega('${o.id}')">${o.nome}<small>${o.sub}</small></div>`).join('');
+  document.getElementById('blocoEndereco').classList.toggle('hide', tipoEntrega !== 'entrega');
+
+  const pg = [{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão', sub: 'na entrega' }];
+  document.getElementById('opcoesPagamento').innerHTML = pg.map(o =>
+    `<div class="opcao ${formaPagamento === o.id ? 'on' : ''}" onclick="setPagamento('${o.id}')">${o.nome}${o.sub ? `<small>${o.sub}</small>` : ''}</div>`).join('');
+  document.getElementById('blocoTroco').classList.toggle('hide', formaPagamento !== 'dinheiro');
+  document.getElementById('infoPix').classList.toggle('hide', formaPagamento !== 'pix');
+}
+function setEntrega(t) { tipoEntrega = t; renderOpcoes(); renderResumo(); if (t === 'entrega') iniciarMapa(); }
+function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
+
+function atualizar() {
+  if (tela === 'cardapio') renderCardapio();
+  if (tela === 'checkout') { renderCarrinho(); renderResumo(); }
+  const n = carrinho.reduce((s, x) => s + x.qtd, 0);
+  const b = document.getElementById('btnBarra');
+  const barra = document.getElementById('barra');
+  barra.classList.toggle('hide', tela === 'acompanhar');
+  if (tela === 'cardapio') {
+    b.disabled = !n;
+    b.textContent = n ? `Ver pedido (${n}) • ${dinheiro(totais().subtotal)}` : 'Escolha seus itens';
+    b.onclick = () => mostrar('checkout');
+  } else if (tela === 'checkout') {
+    b.disabled = !n;
+    b.textContent = `Confirmar pedido • ${dinheiro(totais().total)}`;
+    b.onclick = enviarPedido;
+  }
+}
+
+function mostrar(t) {
+  tela = t;
+  ['cardapio', 'checkout', 'acompanhar'].forEach(x => document.getElementById('tela-' + x).classList.toggle('hide', x !== t));
+  document.getElementById('btnVoltar').classList.toggle('hide', t !== 'checkout');
+  window.scrollTo(0, 0);
+  if (t === 'checkout') { renderOpcoes(); if (tipoEntrega === 'entrega') iniciarMapa(); }
+  atualizar();
+}
+
+/* ---------------- MAPA ---------------- */
+function iniciarMapa() {
+  setTimeout(() => {
+    if (mapa) { mapa.invalidateSize(); return; }
+    if (typeof L === 'undefined') {   // mapa não carregou (internet fraca): segue só com o endereço digitado
+      document.getElementById('mapa').classList.add('hide');
+      document.getElementById('statusPino').textContent = 'Mapa indisponível no momento — capriche no endereço e no ponto de referência.';
+      return;
+    }
+    const salvo = lerCliente();
+    const inicio = (salvo.lat && salvo.lng) ? [salvo.lat, salvo.lng] : CONFIG.entrega.centroMapa;
+    mapa = L.map('mapa').setView(inicio, CONFIG.entrega.zoom || 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(mapa);
+    pino = L.marker(inicio, { draggable: true }).addTo(mapa);
+    if (salvo.lat) { pinoAjustado = true; msgPino(); }
+    pino.on('dragend', () => pinoMovido(false));
+    mapa.on('click', e => { pino.setLatLng(e.latlng); pinoMovido(false); });
+    msgPino();
+  }, 50);
+}
+function msgPino() {
+  document.getElementById('statusPino').innerHTML = pinoAjustado
+    ? '✅ Localização marcada. Se precisar, arraste o pino para ajustar.'
+    : '⚠️ Marque sua casa no mapa antes de confirmar.';
+}
+async function pinoMovido(veioDeBusca) {
+  pinoAjustado = true; msgPino();
+  if (veioDeBusca) return;
+  const { lat, lng } = pino.getLatLng();
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=pt-BR&lat=${lat}&lon=${lng}`);
+    const j = await r.json(), a = j.address || {};
+    const rua = a.road || a.pedestrian || '';
+    const bairro = a.suburb || a.neighbourhood || a.quarter || a.village || '';
+    const elR = document.getElementById('rua'), elB = document.getElementById('bairro');
+    if (rua && (ruaAuto || !elR.value.trim())) { elR.value = rua; ruaAuto = true; }
+    if (bairro && (bairroAuto || !elB.value.trim())) { elB.value = bairro; bairroAuto = true; }
+  } catch (e) { /* sem internet ou limite do serviço: o cliente digita manualmente */ }
+}
+function minhaLocalizacao() {
+  if (!pino) return toast('Mapa indisponível.');
+  if (!navigator.geolocation) { toast('Seu aparelho não permite localização.'); return; }
+  toast('Buscando sua localização...');
+  navigator.geolocation.getCurrentPosition(p => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(false);
+  }, () => toast('Não foi possível obter a localização. Arraste o pino manualmente.'), { enableHighAccuracy: true, timeout: 15000 });
+}
+async function buscarEndereco() {
+  if (!pino) return toast('Mapa indisponível.');
+  const rua = val('rua'), num = val('numero'), bairro = val('bairro');
+  if (!rua) { toast('Digite a rua primeiro.'); return; }
+  const q = [rua + (num && !/s\/?n/i.test(num) ? ' ' + num : ''), bairro, CONFIG.loja.cidade, 'Brasil'].filter(Boolean).join(', ');
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    if (!j.length) { toast('Endereço não encontrado. Arraste o pino até sua casa.'); return; }
+    const ll = [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(true);
+    toast('Confira se o pino está na sua casa.');
+  } catch (e) { toast('Falha na busca. Arraste o pino manualmente.'); }
+}
+['rua', 'bairro'].forEach(id => document.getElementById(id).addEventListener('input', () => { if (id === 'rua') ruaAuto = false; else bairroAuto = false; }));
+
+/* ---------------- DADOS DO CLIENTE (lembrar no aparelho) ---------------- */
+const val = id => document.getElementById(id).value.trim();
+function lerCliente() { try { return JSON.parse(localStorage.getItem('cdp_cliente') || '{}'); } catch { return {}; } }
+function preencherCliente() {
+  const c = lerCliente();
+  ['nome', 'telefone', 'rua', 'numero', 'bairro', 'complemento', 'referencia'].forEach(k => { if (c[k]) document.getElementById(k).value = c[k]; });
+  if (c.rua) ruaAuto = false;
+  if (c.bairro) bairroAuto = false;
+}
+document.getElementById('telefone').addEventListener('input', e => {
+  let d = e.target.value.replace(/\D/g, '').slice(0, 11);
+  if (d.length > 6) d = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+  else if (d.length > 2) d = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  e.target.value = d;
+});
+
+/* ---------------- ENVIAR PEDIDO ---------------- */
+let enviando = false;
+async function enviarPedido() {
+  if (enviando) return;
+  const nome = val('nome'), tel = val('telefone').replace(/\D/g, '');
+  if (!carrinho.length) return toast('Seu carrinho está vazio.');
+  if (nome.length < 2) return foco('nome', 'Informe seu nome.');
+  if (tel.length < 10) return foco('telefone', 'Informe um telefone com DDD.');
+
+  let entrega = { tipo: tipoEntrega };
+  if (tipoEntrega === 'entrega') {
+    if (!val('rua')) return foco('rua', 'Informe a rua.');
+    if (!val('numero')) return foco('numero', 'Informe o número (ou S/N).');
+    if (!val('bairro')) return foco('bairro', 'Informe o bairro.');
+    if (pino && !pinoAjustado) { document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' }); return toast('Marque sua casa no mapa (arraste o pino).'); }
+    const ll = pino ? pino.getLatLng() : null;
+    entrega = Object.assign(entrega, {
+      rua: val('rua'), numero: val('numero'), bairro: val('bairro'),
+      complemento: val('complemento'), referencia: val('referencia'),
+      lat: ll ? +ll.lat.toFixed(6) : null, lng: ll ? +ll.lng.toFixed(6) : null
+    });
+  }
+
+  const t = totais();
+  let trocoPara = null;
+  if (formaPagamento === 'dinheiro' && val('troco')) {
+    trocoPara = parseFloat(val('troco').replace(/[^\d,.]/g, '').replace(',', '.')) || null;
+    if (trocoPara && trocoPara < t.total) return foco('troco', 'O valor do troco deve ser maior que o total.');
+  }
+
+  const pedido = {
+    cliente: { nome, telefone: tel },
+    entrega,
+    itens: carrinho.map(({ uid, ...it }) => it),
+    subtotal: t.subtotal, taxaEntrega: t.taxa, total: t.total,
+    pagamento: { forma: formaPagamento, trocoPara, confirmado: false },
+    obs: val('obs')
+  };
+
+  localStorage.setItem('cdp_cliente', JSON.stringify(Object.assign(
+    { nome, telefone: val('telefone') },
+    tipoEntrega === 'entrega' ? { rua: entrega.rua, numero: entrega.numero, bairro: entrega.bairro, complemento: entrega.complemento, referencia: entrega.referencia, lat: entrega.lat, lng: entrega.lng } : {}
+  )));
+
+  enviando = true;
+  const b = document.getElementById('btnBarra');
+  b.disabled = true; b.textContent = 'Enviando pedido...';
+  try {
+    const { id } = await DB.criarPedido(pedido);
+    localStorage.setItem('cdp_ultimo_pedido', id);
+    carrinho = [];
+    history.replaceState(null, '', '?pedido=' + id);
+    acompanhar(id);
+  } catch (e) {
+    console.error(e);
+    toast('Não foi possível enviar. Verifique a internet e tente de novo.');
+    atualizar();
+  } finally { enviando = false; }
+}
+function foco(id, msg) { const el = document.getElementById(id); el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); toast(msg); }
+
+/* ---------------- ACOMPANHAR PEDIDO ---------------- */
+async function acompanhar(id) {
+  mostrar('acompanhar');
+  const el = document.getElementById('acompanhar');
+  el.innerHTML = '<div class="muted">Carregando pedido...</div>';
+  if (pararObservar) pararObservar();
+  pararObservar = await DB.observarPedido(id, p => {
+    if (!p) { el.innerHTML = '<div class="muted">Pedido não encontrado.</div><button class="btn full" style="margin-top:12px" onclick="novoPedido()">Fazer um pedido</button>'; return; }
+    el.innerHTML = htmlAcompanhar(p);
+    if (p.pagamento.forma === 'pix' && !p.pagamento.confirmado && p.status !== 'cancelado') desenharQR(p);
+  });
+}
+
+function payloadPix(p) {
+  if (!CONFIG.pix.chave) return '';
+  return Pix.gerar({
+    chave: CONFIG.pix.chave, nome: CONFIG.pix.nomeRecebedor, cidade: CONFIG.pix.cidade,
+    valor: p.total, txid: 'PED' + String(p.data || '').replace(/-/g, '') + p.numero
+  });
+}
+
+function htmlAcompanhar(p) {
+  const cancel = p.status === 'cancelado';
+  const idx = STATUS.ordem.indexOf(p.status);
+  let h = `<h2>Pedido #${p.numero} ${cancel ? '— ❌ Cancelado' : ''}</h2>
+    <div class="muted">Obrigado, ${esc(p.cliente.nome.split(' ')[0])}! Acompanhe aqui em tempo real.</div>`;
+  if (!cancel) {
+    h += `<div class="passos">${STATUS.ordem.map((s, i) =>
+      `<div class="passo ${i <= idx ? 'feito' : ''}"><i></i>${STATUS.rotulo(s, p.entrega.tipo)}</div>`).join('')}</div>`;
+  }
+
+  if (p.pagamento.forma === 'pix' && !cancel) {
+    if (p.pagamento.confirmado) h += `<div class="okbox">✅ Pagamento Pix confirmado.</div>`;
+    else if (!CONFIG.pix.chave) h += `<div class="aviso">Chave Pix ainda não configurada pela loja.</div>`;
+    else {
+      const code = payloadPix(p);
+      h += `<div class="aviso"><b>⚡ Pague com Pix: ${dinheiro(p.total)}</b><br>
+        Copie o código abaixo e cole no app do seu banco (Pix → Copia e Cola).</div>
+        <div class="qr" id="qrPix"></div>
+        <div class="pixcode" id="pixCode">${esc(code)}</div>
+        <button class="btn dark full" style="margin-top:8px" onclick="copiarPix()">📋 Copiar código Pix</button>
+        <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank"
+           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.`)}">📎 Enviar comprovante no WhatsApp</a>`;
+    }
+  }
+
+  h += `<h3 style="margin-top:16px">Itens</h3>`;
+  p.itens.forEach(it => {
+    h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
+  });
+  if (p.taxaEntrega) h += `<div class="linha"><span>Taxa de entrega</span><span>${dinheiro(p.taxaEntrega)}</span></div>`;
+  h += `<div class="linha total"><span>Total</span><span>${dinheiro(p.total)}</span></div>`;
+  h += `<div class="muted" style="margin-top:8px">Pagamento: ${({ pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão na entrega' })[p.pagamento.forma]}
+        ${p.pagamento.trocoPara ? ` • troco para ${dinheiro(p.pagamento.trocoPara)}` : ''}</div>`;
+  if (p.entrega.tipo === 'entrega') {
+    const e = p.entrega;
+    h += `<div class="muted">Entrega: ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' (' + esc(e.complemento) + ')' : ''}</div>`;
+  } else h += `<div class="muted">Retirada no balcão.</div>`;
+  h += `<button class="btn sec full" style="margin-top:16px" onclick="novoPedido()">Fazer novo pedido</button>`;
+  return h;
+}
+function desenharQR(p) {
+  const el = document.getElementById('qrPix');
+  const code = payloadPix(p);
+  if (!el || !code || typeof qrcode === 'undefined') return;
+  const qr = qrcode(0, 'M'); qr.addData(code); qr.make();
+  el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+async function copiarPix() {
+  const t = document.getElementById('pixCode').textContent;
+  try { await navigator.clipboard.writeText(t); toast('Código Pix copiado!'); }
+  catch {
+    const r = document.createRange(); r.selectNodeContents(document.getElementById('pixCode'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    toast('Selecionado — toque em Copiar.');
+  }
+}
+function novoPedido() {
+  if (pararObservar) { pararObservar(); pararObservar = null; }
+  history.replaceState(null, '', location.pathname);
+  mostrar('cardapio');
+}
+
+function toast(t) {
+  const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);
+}
+
+/* ---------------- INÍCIO ---------------- */
+preencherCliente();
+const idUrl = new URLSearchParams(location.search).get('pedido');
+if (idUrl) acompanhar(idUrl);
+else {
+  mostrar('cardapio');
+  const ult = localStorage.getItem('cdp_ultimo_pedido');
+  if (ult) DB.observarPedido(ult, p => {
+    if (p && p.data === hojeISO() && !['entregue', 'cancelado'].includes(p.status) && tela === 'cardapio' && !document.getElementById('avisoUltimo')) {
+      const d = document.createElement('div');
+      d.id = 'avisoUltimo'; d.className = 'okbox';
+      d.innerHTML = `Você tem o pedido <b>#${p.numero}</b> em andamento. <a href="?pedido=${encodeURIComponent(p.id)}">Acompanhar →</a>`;
+      document.querySelector('main').prepend(d);
+    }
+  }).then(stop => setTimeout(stop, 4000));
+}
+</script>
+</body>
+</html>
