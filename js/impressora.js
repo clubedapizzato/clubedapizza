@@ -55,7 +55,7 @@ window.Impressora = (function () {
     s += `PAGAMENTO: ${fp}\n`;
     if (pg.forma === 'dinheiro' && pg.trocoPara) s += `TROCO PARA: ${dinheiro(pg.trocoPara)} (${dinheiro(pg.trocoPara - p.total)})\n`;
     s += linha('=') + '\n\n\n';
-    return semAcento(s);
+    return semAcento(s).replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[^\n\x20-\x7E]/g, '');
   }
 
   async function conectar() {
