@@ -90,11 +90,28 @@ window.Preco = (function () {
     return (itens || []).reduce((s, it) => s + unitario(it) * (it.qtd || 1), 0);
   }
 
-  function taxa(tipoEntrega) {
-    return tipoEntrega === 'retirada' ? 0 : (CONFIG.entrega.taxa || 0);
+  // Distância (km) da pizzaria até o ponto marcado no mapa
+  function distanciaKm(lat, lng) {
+    if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+    const [la, lo] = CONFIG.entrega.localLoja;
+    const r = d => d * Math.PI / 180;
+    const a = Math.sin(r(lat - la) / 2) ** 2 + Math.cos(r(la)) * Math.cos(r(lat)) * Math.sin(r(lng - lo) / 2) ** 2;
+    const km = 6371 * 2 * Math.asin(Math.sqrt(a)) * (CONFIG.entrega.fatorRota || 1);
+    return Math.round(km * 10) / 10;
   }
 
-  return { tamanho, sabor, produto, pizza, unitario, descricao, subtotal, taxa };
+  // Taxa: grátis até kmGratis; depois valorPorKm por km (ou fração) excedente.
+  // entrega = { tipo, lat, lng }. Sem localização => null (a combinar).
+  function taxa(entrega) {
+    if (!entrega || entrega.tipo === 'retirada') return 0;
+    const km = distanciaKm(entrega.lat, entrega.lng);
+    if (km == null) return null;
+    const E = CONFIG.entrega;
+    const excedente = Math.max(0, km - (E.kmGratis || 0));
+    return Math.max(0, Math.ceil(excedente - 1e-9)) * (E.valorPorKm || 0);
+  }
+
+  return { tamanho, sabor, produto, pizza, unitario, descricao, subtotal, taxa, distanciaKm };
 })();
 
 window.dinheiro = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

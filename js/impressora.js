@@ -44,7 +44,10 @@ window.Impressora = (function () {
     if (p.obs) s += linha('-') + `OBS: ${p.obs}\n`;
     s += linha('-');
     s += duasColunas('SUBTOTAL', dinheiro(p.subtotal));
-    if (p.taxaEntrega) s += duasColunas('ENTREGA', dinheiro(p.taxaEntrega));
+    if (p.entrega.tipo === 'entrega') {
+      const km = p.entrega.distanciaKm != null ? ` ${String(p.entrega.distanciaKm).replace('.', ',')}KM` : '';
+      s += duasColunas('ENTREGA' + km, p.taxaEntrega == null ? 'A COMBINAR' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'GRATIS');
+    }
     s += duasColunas('TOTAL', dinheiro(p.total));
     const pg = p.pagamento;
     let fp = ({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTAO NA ENTREGA' })[pg.forma] || pg.forma;

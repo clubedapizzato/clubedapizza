@@ -163,7 +163,8 @@ function render() {
 
 function cartao(p) {
   const e = p.entrega, pg = p.pagamento, min = minutos(p);
-  const conferido = Math.abs(Preco.subtotal(p.itens) + Preco.taxa(e.tipo) - p.total) < 0.01;
+  const taxaCalc = Preco.taxa(e);
+  const conferido = Math.abs(Preco.subtotal(p.itens) + (taxaCalc || 0) - p.total) < 0.01;
   const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
   const ativo = !['entregue', 'cancelado'].includes(p.status);
 
@@ -179,6 +180,7 @@ function cartao(p) {
     ${e.tipo === 'entrega'
       ? `<div>📍 ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' • ' + esc(e.complemento) : ''}</div>
          ${e.referencia ? `<div class="muted">Ref.: ${esc(e.referencia)}</div>` : ''}
+         <div class="muted">📏 ${e.distanciaKm != null ? String(e.distanciaKm).replace('.', ',') + ' km' : 'distância não informada'} • entrega ${taxaCalc == null ? '<span class="tag pend">TAXA A COMBINAR</span>' : taxaCalc ? dinheiro(taxaCalc) : 'grátis'}</div>
          ${e.lat ? `<a class="lnk" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}">🗺️ Abrir no mapa</a>` : ''}`
       : '<span class="tag info">🏪 RETIRADA NO BALCÃO</span>'}
     <ul>${p.itens.map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>

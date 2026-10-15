@@ -5,21 +5,26 @@ window.CONFIG = {
   loja: {
     nome: 'Clube da Pizza',
     // WhatsApp da loja (DDI + DDD + número, só dígitos) — recebe comprovantes Pix
-    whatsapp: '5563999999999',
+    whatsapp: '5563991332966',
     cidade: 'Novo Acordo - TO'
   },
 
   entrega: {
-    taxa: 5.00,               // taxa fixa de entrega (R$)
     permitirRetirada: true,   // cliente pode escolher "retirar no balcão"
-    // Centro inicial do mapa [latitude, longitude]
-    centroMapa: [-9.9706, -47.6772],
+    // Localização da PIZZARIA [latitude, longitude] — base do cálculo da distância
+    // (no Google Maps: clique com o botão direito em cima da loja e copie os números)
+    localLoja: [-9.962522, -47.677779],
+    kmGratis: 5,              // entrega grátis até esta distância (km)
+    valorPorKm: 5.00,         // R$ por km (ou fração) que passar do limite grátis
+    // Distância em linha reta x fator. 1.0 = linha reta; 1.3 ≈ caminho pelas ruas
+    fatorRota: 1.0,
+    raioMaximoKm: null,       // ex.: 15 para não aceitar entregas mais longe; null = sem limite
     zoom: 15
   },
 
   pix: {
-    chave: '',                    // CPF/CNPJ (só dígitos), e-mail, telefone (+5563...) ou chave aleatória
-    nomeRecebedor: 'CLUBE DA PIZZA', // até 25 caracteres, sem acento
+    chave: '55377043000182',      // CNPJ (só dígitos). Alternativa: celular '+5563991332966'
+    nomeRecebedor: 'HENRIQUE A E S AMARAL', // até 25 caracteres, sem acento
     cidade: 'NOVO ACORDO'            // até 15 caracteres, sem acento
   },
 
@@ -34,7 +39,14 @@ window.CONFIG = {
      null  => MODO DEMONSTRAÇÃO: loja e cozinha só se comunicam
               no MESMO navegador/computador (bom para testar).
      Para produção cole aqui o objeto firebaseConfig (ver README). */
-  firebase: null
+  firebase: {
+    apiKey: "AIzaSyAnDb8IE43MAVyCeWAT0KznnRQMgS3_Rgo",
+    authDomain: "clube-da-pizza-8749a.firebaseapp.com",
+    projectId: "clube-da-pizza-8749a",
+    storageBucket: "clube-da-pizza-8749a.firebasestorage.app",
+    messagingSenderId: "1098468521589",
+    appId: "1:1098468521589:web:4915555c3c9cee3fc32a3c"
+  }
   /* exemplo:
   firebase: {
     apiKey: "AIza...",
