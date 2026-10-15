@@ -26,7 +26,7 @@ Com `firebase: null` no `config.js`, abra `loja.html` e `cozinha.html` em **duas
 4. **Authentication** → Começar → ativar **E-mail/senha** → aba Usuários → **Adicionar usuário** (login da cozinha).
 5. Configurações do projeto (⚙️) → **Seus apps** → ícone `</>` (Web) → copie o `firebaseConfig` e cole em `CONFIG.firebase` no `js/config.js`.
 6. Authentication → Configurações → **Domínios autorizados** → adicione `SEU-USUARIO.github.io`.
-7. Preencha `pix.chave`, `loja.whatsapp` e `entrega.centroMapa` no `config.js`.
+7. Preencha `pix.chave`, `loja.whatsapp` e `entrega.localLoja` (coordenadas da pizzaria) no `config.js`.
 
 Links: cliente → `https://SEU-USUARIO.github.io/clubedapizza/loja.html` • cozinha → `.../cozinha.html`
 
@@ -40,4 +40,4 @@ Links: cliente → `https://SEU-USUARIO.github.io/clubedapizza/loja.html` • co
 |---|---|---|
 | WhatsApp ao cliente | Ao mudar a fase, o WhatsApp abre com a mensagem pronta → toque em *Enviar* | Envio 100% automático via API (Z-API, Evolution API ou WhatsApp Cloud API) |
 | Confirmação do Pix | QR/copia e cola com valor exato + comprovante via WhatsApp → cozinha toca em **Confirmar Pix** | Confirmação automática via API de cobrança (Mercado Pago, Efí, Asaas) com webhook |
-| Mapa | OpenStreetMap (grátis, sem chave) | Taxa de entrega por distância/bairro |
+| Taxa de entrega | Grátis até 5 km; acima, R$ 5 por km (ou fração) excedente, pela distância em linha reta até o pino | Distância pelas ruas (rota real) |

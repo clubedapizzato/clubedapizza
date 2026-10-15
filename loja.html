@@ -228,10 +228,20 @@ function adicionarPizza() {
 }
 
 /* ---------------- CARRINHO / CHECKOUT ---------------- */
+// Ponto de entrega atual (só conta depois que o cliente marcou no mapa)
+function localEntrega() {
+  const e = { tipo: tipoEntrega };
+  if (tipoEntrega === 'entrega' && pino && pinoAjustado) { const ll = pino.getLatLng(); e.lat = +ll.lat.toFixed(6); e.lng = +ll.lng.toFixed(6); }
+  return e;
+}
 function totais() {
   const subtotal = Preco.subtotal(carrinho);
-  const taxa = Preco.taxa(tipoEntrega);
-  return { subtotal, taxa, total: subtotal + taxa };
+  const taxa = Preco.taxa(localEntrega());   // null = ainda sem localização
+  return { subtotal, taxa, total: subtotal + (taxa || 0) };
+}
+function textoTaxa(taxa) {
+  if (taxa == null) return pino ? 'marque no mapa' : 'a combinar';
+  return taxa === 0 ? 'Grátis' : dinheiro(taxa);
 }
 
 function renderCarrinho() {
@@ -257,12 +267,12 @@ function renderResumo() {
   const t = totais();
   document.getElementById('resumo').innerHTML = `
     <div class="linha"><span>Subtotal</span><span>${dinheiro(t.subtotal)}</span></div>
-    ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${dinheiro(t.taxa)}</span></div>` : ''}
+    ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${textoTaxa(t.taxa)}</span></div>` : ''}
     <div class="linha total"><span>Total</span><span>${dinheiro(t.total)}</span></div>`;
 }
 
 function renderOpcoes() {
-  const ent = [{ id: 'entrega', nome: '🛵 Entrega', sub: dinheiro(CONFIG.entrega.taxa) }];
+  const ent = [{ id: 'entrega', nome: '🛵 Entrega', sub: `grátis até ${CONFIG.entrega.kmGratis} km` }];
   if (CONFIG.entrega.permitirRetirada) ent.push({ id: 'retirada', nome: '🏪 Retirar', sub: 'sem taxa' });
   document.getElementById('opcoesEntrega').innerHTML = ent.map(o =>
     `<div class="opcao ${tipoEntrega === o.id ? 'on' : ''}" onclick="setEntrega('${o.id}')">${o.nome}<small>${o.sub}</small></div>`).join('');
@@ -274,7 +284,7 @@ function renderOpcoes() {
   document.getElementById('blocoTroco').classList.toggle('hide', formaPagamento !== 'dinheiro');
   document.getElementById('infoPix').classList.toggle('hide', formaPagamento !== 'pix');
 }
-function setEntrega(t) { tipoEntrega = t; renderOpcoes(); renderResumo(); if (t === 'entrega') iniciarMapa(); }
+function setEntrega(t) { tipoEntrega = t; renderOpcoes(); atualizar(); if (t === 'entrega') iniciarMapa(); }
 function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
 
 function atualizar() {
@@ -314,11 +324,13 @@ function iniciarMapa() {
       return;
     }
     const salvo = lerCliente();
-    const inicio = (salvo.lat && salvo.lng) ? [salvo.lat, salvo.lng] : CONFIG.entrega.centroMapa;
+    const inicio = (salvo.lat && salvo.lng) ? [salvo.lat, salvo.lng] : CONFIG.entrega.localLoja;
     mapa = L.map('mapa').setView(inicio, CONFIG.entrega.zoom || 15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19, attribution: '© OpenStreetMap'
     }).addTo(mapa);
+    L.circleMarker(CONFIG.entrega.localLoja, { radius: 8, color: '#b91c1c', fillColor: '#ef4444', fillOpacity: .9 })
+      .addTo(mapa).bindTooltip('🍕 ' + CONFIG.loja.nome);
     pino = L.marker(inicio, { draggable: true }).addTo(mapa);
     if (salvo.lat) { pinoAjustado = true; msgPino(); }
     pino.on('dragend', () => pinoMovido(false));
@@ -327,9 +339,15 @@ function iniciarMapa() {
   }, 50);
 }
 function msgPino() {
-  document.getElementById('statusPino').innerHTML = pinoAjustado
-    ? '✅ Localização marcada. Se precisar, arraste o pino para ajustar.'
-    : '⚠️ Marque sua casa no mapa antes de confirmar.';
+  let h = '⚠️ Marque sua casa no mapa antes de confirmar — a taxa é calculada pela distância.';
+  if (pinoAjustado) {
+    const e = localEntrega(), km = Preco.distanciaKm(e.lat, e.lng), taxa = Preco.taxa(e);
+    const kmTxt = km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    h = `✅ Localização marcada • 📏 ${kmTxt} km da pizzaria • entrega <b>${textoTaxa(taxa)}</b>`;
+    if (CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) h = `❌ Fora da área de entrega (${kmTxt} km). Escolha "Retirar" ou fale conosco no WhatsApp.`;
+  }
+  document.getElementById('statusPino').innerHTML = h;
+  if (tela === 'checkout') { renderResumo(); atualizar(); }
 }
 async function pinoMovido(veioDeBusca) {
   pinoAjustado = true; msgPino();
@@ -401,11 +419,13 @@ async function enviarPedido() {
     if (!val('numero')) return foco('numero', 'Informe o número (ou S/N).');
     if (!val('bairro')) return foco('bairro', 'Informe o bairro.');
     if (pino && !pinoAjustado) { document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' }); return toast('Marque sua casa no mapa (arraste o pino).'); }
-    const ll = pino ? pino.getLatLng() : null;
+    const loc = localEntrega();
+    const km = Preco.distanciaKm(loc.lat, loc.lng);
+    if (km != null && CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) return toast('Endereço fora da área de entrega.');
     entrega = Object.assign(entrega, {
       rua: val('rua'), numero: val('numero'), bairro: val('bairro'),
       complemento: val('complemento'), referencia: val('referencia'),
-      lat: ll ? +ll.lat.toFixed(6) : null, lng: ll ? +ll.lng.toFixed(6) : null
+      lat: loc.lat ?? null, lng: loc.lng ?? null, distanciaKm: km
     });
   }
 
@@ -497,7 +517,7 @@ function htmlAcompanhar(p) {
   p.itens.forEach(it => {
     h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
   });
-  if (p.taxaEntrega) h += `<div class="linha"><span>Taxa de entrega</span><span>${dinheiro(p.taxaEntrega)}</span></div>`;
+  if (p.entrega.tipo === 'entrega') h += `<div class="linha"><span>Taxa de entrega${p.entrega.distanciaKm != null ? ` (${String(p.entrega.distanciaKm).replace('.', ',')} km)` : ''}</span><span>${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'Grátis'}</span></div>`;
   h += `<div class="linha total"><span>Total</span><span>${dinheiro(p.total)}</span></div>`;
   h += `<div class="muted" style="margin-top:8px">Pagamento: ${({ pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão na entrega' })[p.pagamento.forma]}
         ${p.pagamento.trocoPara ? ` • troco para ${dinheiro(p.pagamento.trocoPara)}` : ''}</div>`;
