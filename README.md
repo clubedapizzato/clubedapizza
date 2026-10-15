@@ -26,10 +26,12 @@ Com `firebase: null` no `config.js`, abra `index.html` e `cozinha.html` em **dua
 3. Aba **Regras** → cole o conteúdo de `firestore.rules` → Publicar.
 4. **Authentication** → Começar → ativar **E-mail/senha** → aba Usuários → **Adicionar usuário** (login da cozinha).
 5. Configurações do projeto (⚙️) → **Seus apps** → ícone `</>` (Web) → copie o `firebaseConfig` e cole em `CONFIG.firebase` no `js/config.js`.
-6. Authentication → Configurações → **Domínios autorizados** → adicione `SEU-USUARIO.github.io`.
+6. Authentication → Configurações → **Domínios autorizados** → adicione `clubedapizzato.com.br` e `www.clubedapizzato.com.br`.
 7. Preencha `pix.chave`, `loja.whatsapp` e `entrega.localLoja` (coordenadas da pizzaria) no `config.js`.
 
-Links: cliente → `https://henriquesilva-tjto.github.io/clubedapizza/` • cozinha → `.../cozinha.html` • balcão → `.../balcao.html`
+Links: cliente → **https://clubedapizzato.com.br** • cozinha → `https://clubedapizzato.com.br/cozinha.html` • balcão → `https://clubedapizzato.com.br/balcao.html`
+
+O domínio próprio é definido no arquivo `CNAME` (GitHub Pages). O endereço antigo `henriquesilva-tjto.github.io/clubedapizza` redireciona para ele.
 
 ## Impressão na cozinha
 - Marque **🖨️ Auto-imprimir** em **apenas um** aparelho (o que está ligado à impressora).
