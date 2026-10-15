@@ -13,7 +13,7 @@ window.CONFIG = {
     permitirRetirada: true,   // cliente pode escolher "retirar no balcão"
     // Localização da PIZZARIA [latitude, longitude] — base do cálculo da distância
     // (no Google Maps: clique com o botão direito em cima da loja e copie os números)
-    localLoja: [-9.9706, -47.6772],
+    localLoja: [-9.962522, -47.677779],
     kmGratis: 5,              // entrega grátis até esta distância (km)
     valorPorKm: 5.00,         // R$ por km (ou fração) que passar do limite grátis
     // Distância em linha reta x fator. 1.0 = linha reta; 1.3 ≈ caminho pelas ruas
