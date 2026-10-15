@@ -39,7 +39,14 @@ window.CONFIG = {
      null  => MODO DEMONSTRAÇÃO: loja e cozinha só se comunicam
               no MESMO navegador/computador (bom para testar).
      Para produção cole aqui o objeto firebaseConfig (ver README). */
-  firebase: null
+  firebase: {
+    apiKey: "AIzaSyAnDb8IE43MAVyCeWAT0KznnRQMgS3_Rgo",
+    authDomain: "clube-da-pizza-8749a.firebaseapp.com",
+    projectId: "clube-da-pizza-8749a",
+    storageBucket: "clube-da-pizza-8749a.firebasestorage.app",
+    messagingSenderId: "1098468521589",
+    appId: "1:1098468521589:web:4915555c3c9cee3fc32a3c"
+  }
   /* exemplo:
   firebase: {
     apiKey: "AIza...",
