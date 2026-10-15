@@ -3,483 +3,574 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#111111">
-<title>Pedidos • Clube da Pizza</title>
-<style>
-:root{--bg:#f4f4f5;--card:#fff;--ink:#18181b;--muted:#71717a;--line:#e4e4e7;--accent:#111827;--ok:#15803d;--danger:#b91c1c;--wa:#25d366}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-header{background:#111;color:#fff;padding:16px;position:sticky;top:0;z-index:5;box-shadow:0 2px 8px #0002}
-.header-row{max-width:900px;margin:auto;display:flex;justify-content:space-between;align-items:center;gap:10px}
-h1{font-size:20px;margin:0}
-main{max-width:900px;margin:0 auto;padding:14px 14px 100px}.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:14px;box-shadow:0 1px 3px #0000000b}
-h2{font-size:16px;margin:0 0 12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media(max-width:600px){.grid{grid-template-columns:1fr}}
-label{font-size:13px;font-weight:700;display:block;margin-bottom:5px}
-input,select,textarea{width:100%;border:1px solid #d4d4d8;border-radius:10px;padding:11px;font:inherit;background:#fff}
-textarea{min-height:70px;resize:vertical}
-.section-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.pizza{border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;background:#fafafa}
-.pizza-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.price{font-weight:800}
-.flavors{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin-top:10px}
-.flavor{border:1px solid #d4d4d8;border-radius:10px;padding:8px;cursor:pointer;display:flex;flex-direction:column;gap:2px;font-size:13px;background:#fff}
-.flavor input{margin-right:6px}
-.items{display:grid;grid-template-columns:1fr 92px;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid #f0f0f0}
-.qty{display:flex;align-items:center;justify-content:flex-end;gap:6px}.qty button{width:32px;height:32px;border:1px solid #d4d4d8;border-radius:8px;background:#fff;font-size:18px}
-.total{display:flex;justify-content:space-between;font-size:20px;font-weight:900;padding-top:12px}.muted{color:var(--muted);font-size:12px}
-button.primary{width:100%;border:0;border-radius:12px;background:#111;color:#fff;padding:14px;font-weight:800;font-size:16px;cursor:pointer}
-button.secondary{border:1px solid #d4d4d8;border-radius:10px;background:#fff;padding:10px 12px;font-weight:700;cursor:pointer}
-button.add-pizza{background:#111827;color:#fff;border:0;padding:8px 12px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px}
-button.remove-pizza{background:#fee2e2;color:#b91c1c;border:0;padding:4px 8px;border-radius:6px;font-weight:700;cursor:pointer;font-size:12px}
-button.bt{background:#2563eb;color:#fff;border:0;padding:8px 12px;border-radius:8px;font-weight:700;cursor:pointer}
-button.wa{background:#059669;color:#fff;border:0;padding:12px;border-radius:10px;font-weight:800;width:100%;cursor:pointer;margin-top:8px}
-.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}
-#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#18181b;color:#fff;padding:10px 14px;border-radius:999px;display:none;z-index:20;font-size:13px}
-.history-row{display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding:10px 0;font-size:14px}
-@media print{
- body{background:#fff}.no-print{display:none!important}.print-only{display:block!important}
- #ticketPrint{display:block!important;width:58mm;font-family:monospace;font-size:11px;line-height:1.25}
-}
-.print-only{display:none}
-</style>
+<meta name="theme-color" content="#1c1917">
+<title>Clube da Pizza • Peça online</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-<header class="no-print">
-  <div class="header-row">
-    <h1 id="appTitle">🍕 Clube da Pizza</h1>
-    <button id="btConnectBtn" class="bt" onclick="connectBT()">🛜 Conectar JP58H</button>
+<header class="topo">
+  <div class="in">
+    <h1 id="nomeLoja">🍕 Clube da Pizza</h1>
+    <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
   </div>
 </header>
-<main class="no-print">
-  <div class="card" style="border: 1px solid #10b981; background: #f0fdf4;">
-    <h2 style="color: #047857;">📲 Importação Rápida WhatsApp</h2>
-    <button class="wa" onclick="pasteFromClipboard()">📋 PEGAR DO WHATSAPP E PREENCHER</button>
-    <textarea id="waText" style="margin-top:8px;" placeholder="Ou cole o texto da mensagem do cliente diretamente aqui..."></textarea>
-    <button class="secondary" style="width:100%; margin-top:6px;" onclick="parseWhatsAppText()">Processar Texto Acima</button>
-  </div>
 
-  <div class="card">
-    <h2>1. Dados do pedido</h2>
-    <div class="grid">
-      <div><label>Nº do pedido</label><input id="orderNo" inputmode="numeric"></div>
-      <div><label>Nome do cliente</label><input id="customer" placeholder="Ex.: João"></div>
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> os pedidos só aparecem na cozinha aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code> para uso real.</div>
+
+  <!-- ================= TELA 1: CARDÁPIO ================= -->
+  <section id="tela-cardapio">
+    <nav class="tabs" id="tabs"></nav>
+    <div id="listaCardapio"></div>
+  </section>
+
+  <!-- ================= TELA 2: FINALIZAR ================= -->
+  <section id="tela-checkout" class="hide">
+    <div class="card">
+      <h2>🛒 Seu pedido</h2>
+      <div id="carrinho"></div>
     </div>
-    <div style="margin-top:10px"><label>Observação / Endereço</label><textarea id="note" placeholder="Ex.: sem cebola, entregar na Rua 2..."></textarea></div>
-  </div>
 
-  <div class="card">
-    <div class="section-title">
-      <h2>2. Pizzas</h2>
-      <div style="display:flex; gap:6px;">
-        <button class="add-pizza" onclick="addPizzaInstance('P')">+ Pizza P</button>
-        <button class="add-pizza" onclick="addPizzaInstance('M')">+ Pizza M</button>
-        <button class="add-pizza" onclick="addPizzaInstance('G')">+ Pizza G</button>
+    <div class="card">
+      <h2>👤 Seus dados</h2>
+      <label for="nome">Nome</label>
+      <input id="nome" autocomplete="name" placeholder="Seu nome">
+      <label for="telefone">Telefone / WhatsApp</label>
+      <input id="telefone" type="tel" inputmode="tel" autocomplete="tel" placeholder="(63) 99999-9999">
+      <div class="muted">Você receberá as atualizações do pedido neste WhatsApp.</div>
+    </div>
+
+    <div class="card">
+      <h2>📍 Entrega</h2>
+      <div class="opcoes" id="opcoesEntrega"></div>
+
+      <div id="blocoEndereco">
+        <div class="muted" style="margin-top:12px"><b>Arraste o pino</b> (ou toque no mapa) até a sua casa. Isso ajuda o entregador a chegar certinho.</div>
+        <div id="mapa"></div>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button class="btn sm dark" type="button" onclick="minhaLocalizacao()">📡 Usar minha localização</button>
+          <button class="btn sm sec" type="button" onclick="buscarEndereco()">🔎 Localizar endereço digitado</button>
+        </div>
+        <div id="statusPino" class="muted" style="margin-top:6px"></div>
+
+        <div class="grid3">
+          <div><label for="rua">Rua / Avenida</label><input id="rua" autocomplete="address-line1"></div>
+          <div><label for="numero">Número</label><input id="numero" placeholder="S/N se não houver"></div>
+        </div>
+        <div class="grid2">
+          <div><label for="bairro">Bairro</label><input id="bairro"></div>
+          <div><label for="complemento">Complemento</label><input id="complemento" placeholder="Casa, apto, bloco..."></div>
+        </div>
+        <label for="referencia">Ponto de referência</label>
+        <input id="referencia" placeholder="Ex.: próximo à praça, portão azul">
       </div>
     </div>
-    <div id="pizzasContainer"></div>
-  </div>
 
-  <div class="card">
-    <div class="section-title"><h2>3. Bebidas e adicionais</h2><span class="muted">Use + e − para quantidade</span></div>
-    <div id="extras"></div>
-  </div>
-
-  <div class="card">
-    <h2>4. Resumo</h2>
-    <div id="summary"></div>
-    <div class="total"><span>TOTAL</span><span id="total">R$ 0,00</span></div>
-    <div class="actions">
-      <button class="secondary" onclick="clearOrder()">Limpar</button>
-      <button class="secondary" onclick="printPreview()">Pré-visualizar</button>
+    <div class="card">
+      <h2>💳 Pagamento</h2>
+      <div class="opcoes" id="opcoesPagamento"></div>
+      <div id="blocoTroco" class="hide">
+        <label for="troco">Troco para quanto? (deixe vazio se não precisar)</label>
+        <input id="troco" inputmode="decimal" placeholder="Ex.: 100">
+      </div>
+      <div id="infoPix" class="muted hide" style="margin-top:8px">O código Pix com o valor exato aparece logo após confirmar o pedido.</div>
     </div>
-    <button class="primary" style="margin-top:10px" onclick="finalizeOrder()">FINALIZAR E IMPRIMIR</button>
-  </div>
 
-  <div class="card">
-    <h2>Cardápio e Preços Gravados</h2>
-    <div class="muted">Os produtos foram atualizados com base no cardápio oficial do Clube da Pizza.</div>
-  </div>
+    <div class="card">
+      <h2>📝 Observações</h2>
+      <textarea id="obs" placeholder="Algo que a cozinha ou o entregador precise saber?"></textarea>
+    </div>
 
-  <div class="card">
-    <h2>Pedidos recentes</h2>
-    <div id="history"></div>
-  </div>
+    <div class="card">
+      <h2>Resumo</h2>
+      <div id="resumo"></div>
+    </div>
+  </section>
+
+  <!-- ================= TELA 3: ACOMPANHAR ================= -->
+  <section id="tela-acompanhar" class="hide">
+    <div class="card" id="acompanhar"></div>
+  </section>
 </main>
 
-<div id="ticketPrint" class="print-only"></div>
+<!-- Barra inferior -->
+<div class="barra" id="barra">
+  <div class="in"><button class="btn full" id="btnBarra"></button></div>
+</div>
+
+<!-- Modal montar pizza -->
+<div class="modal" id="modalPizza" onclick="if(event.target===this)fecharModal()">
+  <div class="box" id="modalConteudo"></div>
+</div>
+
 <div id="toast"></div>
 
+<script src="js/config.js"></script>
+<script src="js/cardapio.js"></script>
+<script src="js/pix.js"></script>
+<script src="js/db.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
-const defaultMenu = {
-  pizzas: [
-    { id: 'P', name: 'Pizza P', max: 1 },
-    { id: 'M', name: 'Pizza M', max: 2 },
-    { id: 'G', name: 'Pizza G', max: 2 }
-  ],
-  flavors: [
-    { name: 'CALABRESA', P: 37, M: 53, G: 70 },
-    { name: 'VEGETARIANA', P: 37, M: 53, G: 70 },
-    { name: 'MUSSARELA', P: 37, M: 53, G: 70 },
-    { name: 'ROMEU E JULIETA', P: 37, M: 53, G: 70 },
-    { name: 'CAIPIRA', P: 40, M: 56, G: 73 },
-    { name: 'PORTUGUESA', P: 40, M: 56, G: 73 },
-    { name: 'QUATRO QUEIJOS', P: 40, M: 56, G: 73 },
-    { name: 'CARNE DE SOL C/ BANANA', P: 45, M: 62, G: 80 },
-    { name: 'CARNE DE SOL C/ CHAMPIGNON', P: 45, M: 62, G: 80 }
-  ],
-  extras: [
-    { id: 'coca-1l', name: 'COCA-COLA 1L', price: 11 },
-    { id: 'coca-zero-1l', name: 'COCA-COLA ZERO 1L', price: 11 },
-    { id: 'coca-2l', name: 'COCA-COLA 2L', price: 18 },
-    { id: 'coca-zero-2l', name: 'COCA-COLA ZERO 2L', price: 18 },
-    { id: 'fanta-2l', name: 'FANTA LARANJA 2L', price: 13 },
-    { id: 'kuat-2l', name: 'GUARANÁ KUAT 2L', price: 13 },
-    { id: 'lata-coca', name: 'LATA COCA-COLA 350ML', price: 6 },
-    { id: 'lata-coca-zero', name: 'LATA COCA-COLA ZERO 350ML', price: 6 },
-    { id: 'lata-fanta', name: 'LATA FANTA LARANJA 350ML', price: 6 },
-    { id: 'lata-kuat', name: 'LATA GUARANÁ KUAT 350ML', price: 6 },
-    { id: 'add-catupiry-p', name: 'ADC. CATUPIRY / CHEDDAR (P)', price: 3 },
-    { id: 'add-catupiry-m', name: 'ADC. CATUPIRY / CHEDDAR (M)', price: 5 },
-    { id: 'add-catupiry-g', name: 'ADC. CATUPIRY / CHEDDAR (G)', price: 7 }
-  ],
-  store: 'CLUBE DA PIZZA'
-};
+const C = CARDAPIO;
+let carrinho = [];            // itens {uid,tipo,...,qtd}
+let tela = 'cardapio';
+let tipoEntrega = 'entrega';
+let formaPagamento = 'pix';
+let mapa = null, pino = null, pinoAjustado = false, ruaAuto = true, bairroAuto = true;
+let pararObservar = null;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-let menu = defaultMenu;
-let pizzasDef = menu.pizzas, flavors = menu.flavors, extras = menu.extras;
-let selectedPizzas = []; // Array de pizzas selecionadas: { uid, size, flavors: [] }
-let stateExtras = {};
-let btDevice = null, btCharacteristic = null;
+document.getElementById('nomeLoja').textContent = '🍕 ' + CONFIG.loja.nome;
+document.title = CONFIG.loja.nome + ' • Peça online';
+if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
 
-const money = v => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+/* ---------------- CARDÁPIO ---------------- */
+function renderCardapio() {
+  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(C.categorias.map(c => ({ id: c.id, nome: c.nome })));
+  document.getElementById('tabs').innerHTML = cats.map(c =>
+    `<button class="tab" data-cat="${c.id}" onclick="irPara('${c.id}')">${esc(c.nome)}</button>`).join('');
 
-function nextOrder(){
- const d=new Date(), key='pizza_last_'+d.toISOString().slice(0,10);
- const n=(parseInt(localStorage.getItem(key)||'0',10)+1);
- localStorage.setItem(key,n);
- return String(n).padStart(3,'0');
-}
-document.getElementById('orderNo').value=nextOrder();
-
-function addPizzaInstance(size) {
-  selectedPizzas.push({
-    uid: Date.now() + '_' + Math.random().toString(36).substring(2, 5),
-    size: size,
-    flavors: []
+  let h = `<div class="card" id="cat-pizzas"><h2>🍕 Pizzas</h2>
+    <div class="muted" style="margin-bottom:6px">P: 1 sabor • M e G: até 2 sabores (meio a meio)</div>`;
+  C.sabores.forEach((s, i) => {
+    h += `<div class="prod">
+      <div><div class="nome">${esc(s.nome)}</div>
+        ${s.desc ? `<div class="muted">${esc(s.desc)}</div>` : ''}
+        <div class="precos">${C.tamanhos.map(t => `<span>${t.id} ${dinheiro(s[t.id])}</span>`).join('')}</div></div>
+      <button class="btn sm" onclick="abrirPizza(${i})">Escolher</button>
+    </div>`;
   });
-  renderPizzas();
-  renderSummary();
-}
+  h += `</div>`;
 
-function removePizzaInstance(uid) {
-  selectedPizzas = selectedPizzas.filter(p => p.uid !== uid);
-  renderPizzas();
-  renderSummary();
-}
-
-function getPizzaPrice(size, selectedFlavorNames) {
-  if (!selectedFlavorNames || selectedFlavorNames.length === 0) return 0;
-  let totalPriceSum = 0;
-  selectedFlavorNames.forEach(fn => {
-    const fObj = flavors.find(x => x.name === fn);
-    if (fObj) {
-      totalPriceSum += fObj[size];
-    }
+  C.categorias.forEach(cat => {
+    h += `<div class="card" id="cat-${cat.id}"><h2>${esc(cat.nome)}</h2>`;
+    cat.produtos.forEach(p => {
+      const q = qtdProduto(p.id);
+      h += `<div class="prod">
+        <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}</div></div>
+        <div class="qty"><button onclick="alterarProduto('${p.id}',-1)">−</button><b>${q}</b><button onclick="alterarProduto('${p.id}',1)">+</button></div>
+      </div>`;
+    });
+    h += `</div>`;
   });
-  return totalPriceSum / selectedFlavorNames.length;
+  document.getElementById('listaCardapio').innerHTML = h;
 }
 
-function renderPizzas(){
- const el=document.getElementById('pizzasContainer'); el.innerHTML='';
- if (selectedPizzas.length === 0) {
-   el.innerHTML = '<div class="muted" style="text-align:center; padding:15px;">Nenhuma pizza adicionada. Clique nos botões acima para incluir pizzas (P, M ou G).</div>';
-   return;
- }
-
- selectedPizzas.forEach((p, idx)=>{
-  const pDef = pizzasDef.find(x => x.id === p.size);
-  const pPrice = getPizzaPrice(p.size, p.flavors);
-  const box=document.createElement('div');box.className='pizza';
-  box.innerHTML=`<div class="pizza-head">
-    <div><strong>${pDef.name} (#${idx+1})</strong> <button class="remove-pizza" onclick="removePizzaInstance('${p.uid}')">Remover</button></div>
-    <span class="price">${pPrice > 0 ? money(pPrice) : 'A partir de ' + money(p.size==='P'?37:p.size==='M'?53:70)}</span>
-  </div>
-  <div class="muted" style="margin-top:4px">Escolha ${pDef.max===1?'1 sabor':'até 2 sabores (50% de cada)'}</div>
-  <div class="flavors">${flavors.map(f=>`
-    <label class="flavor">
-      <div><input type="checkbox" data-uid="${p.uid}" data-f="${f.name}" ${p.flavors.includes(f.name)?'checked':''}><strong>${f.name}</strong></div>
-      <div class="muted">${money(f[p.size])}</div>
-    </label>`).join('')}</div>`;
-  el.appendChild(box);
- });
-
- el.querySelectorAll('input[type=checkbox]').forEach(ch=>ch.addEventListener('change',e=>{
-   const uid=e.target.dataset.uid, f=e.target.dataset.f;
-   const pObj = selectedPizzas.find(x => x.uid === uid);
-   if (!pObj) return;
-   const pDef = pizzasDef.find(x => x.id === pObj.size);
-
-   if(e.target.checked){
-     if(pObj.flavors.length >= pDef.max){
-       e.target.checked=false;
-       toast('Selecione no máximo '+pDef.max+' sabor(es).');
-       return;
-     }
-     pObj.flavors.push(f);
-   } else {
-     pObj.flavors = pObj.flavors.filter(x => x !== f);
-   }
-   renderPizzas();renderSummary();
- }));
+function irPara(id) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.cat === id));
+  const el = document.getElementById('cat-' + id);
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 110, behavior: 'smooth' });
 }
 
-function renderExtras(){
- const el=document.getElementById('extras');el.innerHTML='';
- extras.forEach(x=>{
-  const q=stateExtras[x.id]||0;
-  const row=document.createElement('div');row.className='items';
-  row.innerHTML=`<div><strong>${x.name}</strong><div class="muted">${money(x.price)}</div></div>
-  <div class="qty"><button onclick="changeExtra('${x.id}',-1)">−</button><strong>${q}</strong><button onclick="changeExtra('${x.id}',1)">+</button></div>`;
-  el.appendChild(row);
- });
+function qtdProduto(id) { const it = carrinho.find(x => x.tipo === 'produto' && x.id === id); return it ? it.qtd : 0; }
+function alterarProduto(id, d) {
+  let it = carrinho.find(x => x.tipo === 'produto' && x.id === id);
+  if (!it && d > 0) { it = { uid: uid(), tipo: 'produto', id, qtd: 0 }; carrinho.push(it); }
+  if (!it) return;
+  it.qtd += d;
+  if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
+  atualizar();
 }
 
-function changeExtra(id,delta){stateExtras[id]=Math.max(0,(stateExtras[id]||0)+delta);if(!stateExtras[id])delete stateExtras[id];renderExtras();renderSummary()}
+/* ---------------- MODAL PIZZA ---------------- */
+let montagem = null;
+function abrirPizza(iSabor) {
+  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicional: false, qtd: 1, obs: '' };
+  renderModal();
+  document.getElementById('modalPizza').classList.add('on');
+}
+function fecharModal() { document.getElementById('modalPizza').classList.remove('on'); }
 
-function lines(){
- const out=[];
- selectedPizzas.forEach(p=>{
-   if(p.flavors.length) {
-     const price = getPizzaPrice(p.size, p.flavors);
-     out.push({text:`PIZZA ${p.size} - ${p.flavors.join(' / ')}`, price: price});
-   }
- });
- extras.forEach(x=>{const q=stateExtras[x.id]||0;for(let i=0;i<q;i++)out.push({text:x.name,price:x.price})});
- return out;
+function renderModal() {
+  const m = montagem, t = Preco.tamanho(m.tamanho);
+  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicional);
+  document.getElementById('modalConteudo').innerHTML = `
+    <h2>Monte sua pizza</h2>
+    <h3>Tamanho</h3>
+    <div class="opcoes">${C.tamanhos.map(x => `<div class="opcao ${x.id === m.tamanho ? 'on' : ''}" onclick="mTamanho('${x.id}')">${x.nome} (${x.id})<small>${x.maxSabores === 1 ? '1 sabor' : 'até ' + x.maxSabores + ' sabores'}</small></div>`).join('')}</div>
+    <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
+    <div class="chips">${C.sabores.map(s => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
+    ${t.maxSabores > 1 ? `<div class="muted" style="margin-top:6px">Meio a meio: preço pela ${CONFIG.meioAMeio === 'maior' ? 'pizza de maior valor' : 'média dos sabores'}.</div>` : ''}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600">
+      <input type="checkbox" style="width:auto" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
+      Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
+    </label>
+    <label for="mObs">Observação desta pizza</label>
+    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: sem cebola" oninput="montagem.obs=this.value">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">
+      <div class="qty"><button onclick="montagem.qtd=Math.max(1,montagem.qtd-1);renderModal()">−</button><b>${m.qtd}</b><button onclick="montagem.qtd++;renderModal()">+</button></div>
+      <button class="btn" style="flex:1" ${m.sabores.length ? '' : 'disabled'} onclick="adicionarPizza()">Adicionar • ${dinheiro(preco * m.qtd)}</button>
+    </div>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`;
+}
+function mTamanho(id) {
+  montagem.tamanho = id;
+  const max = Preco.tamanho(id).maxSabores;
+  montagem.sabores = montagem.sabores.slice(0, max);
+  renderModal();
+}
+function mSabor(nome) {
+  const m = montagem, max = Preco.tamanho(m.tamanho).maxSabores;
+  if (m.sabores.includes(nome)) m.sabores = m.sabores.filter(s => s !== nome);
+  else if (max === 1) m.sabores = [nome];
+  else if (m.sabores.length >= max) { toast(`Máximo de ${max} sabores neste tamanho.`); return; }
+  else m.sabores.push(nome);
+  renderModal();
+}
+function adicionarPizza() {
+  if (!montagem.sabores.length) return;
+  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { obs: montagem.obs.trim() }));
+  fecharModal();
+  atualizar();
+  toast('Pizza adicionada!');
 }
 
-function total(){return lines().reduce((s,x)=>s+x.price,0)}
-
-function renderSummary(){
- const ls=lines(),el=document.getElementById('summary');
- el.innerHTML=ls.length?ls.map(x=>`<div class="items"><div>${x.text}</div><strong style="text-align:right">${money(x.price)}</strong></div>`).join(''):'<div class="muted">Nenhum item selecionado.</div>';
- document.getElementById('total').textContent=money(total());
+/* ---------------- CARRINHO / CHECKOUT ---------------- */
+// Ponto de entrega atual (só conta depois que o cliente marcou no mapa)
+function localEntrega() {
+  const e = { tipo: tipoEntrega };
+  if (tipoEntrega === 'entrega' && pino && pinoAjustado) { const ll = pino.getLatLng(); e.lat = +ll.lat.toFixed(6); e.lng = +ll.lng.toFixed(6); }
+  return e;
+}
+function totais() {
+  const subtotal = Preco.subtotal(carrinho);
+  const taxa = Preco.taxa(localEntrega());   // null = ainda sem localização
+  return { subtotal, taxa, total: subtotal + (taxa || 0) };
+}
+function textoTaxa(taxa) {
+  if (taxa == null) return pino ? 'marque no mapa' : 'a combinar';
+  return taxa === 0 ? 'Grátis' : dinheiro(taxa);
 }
 
-async function pasteFromClipboard() {
-  try {
-    const text = await navigator.clipboard.readText();
-    if(text){
-      document.getElementById('waText').value = text;
-      parseWhatsAppText();
-    } else {
-      toast('Área de transferência vazia.');
-    }
-  } catch (err) {
-    toast('Selecione o texto da caixa e clique em Processar.');
+function renderCarrinho() {
+  const el = document.getElementById('carrinho');
+  if (!carrinho.length) { el.innerHTML = '<div class="muted">Seu carrinho está vazio.</div>'; return; }
+  el.innerHTML = carrinho.map(it => `
+    <div class="prod">
+      <div><div class="nome">${esc(Preco.descricao(it))}</div>
+        ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
+        <div class="muted">${dinheiro(Preco.unitario(it))} cada</div></div>
+      <div class="qty"><button onclick="alterarItem('${it.uid}',-1)">−</button><b>${it.qtd}</b><button onclick="alterarItem('${it.uid}',1)">+</button></div>
+    </div>`).join('');
+}
+function alterarItem(u, d) {
+  const it = carrinho.find(x => x.uid === u);
+  if (!it) return;
+  it.qtd += d;
+  if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
+  atualizar();
+}
+
+function renderResumo() {
+  const t = totais();
+  document.getElementById('resumo').innerHTML = `
+    <div class="linha"><span>Subtotal</span><span>${dinheiro(t.subtotal)}</span></div>
+    ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${textoTaxa(t.taxa)}</span></div>` : ''}
+    <div class="linha total"><span>Total</span><span>${dinheiro(t.total)}</span></div>`;
+}
+
+function renderOpcoes() {
+  const ent = [{ id: 'entrega', nome: '🛵 Entrega', sub: `grátis até ${CONFIG.entrega.kmGratis} km` }];
+  if (CONFIG.entrega.permitirRetirada) ent.push({ id: 'retirada', nome: '🏪 Retirar', sub: 'sem taxa' });
+  document.getElementById('opcoesEntrega').innerHTML = ent.map(o =>
+    `<div class="opcao ${tipoEntrega === o.id ? 'on' : ''}" onclick="setEntrega('${o.id}')">${o.nome}<small>${o.sub}</small></div>`).join('');
+  document.getElementById('blocoEndereco').classList.toggle('hide', tipoEntrega !== 'entrega');
+
+  const pg = [{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão', sub: 'na entrega' }];
+  document.getElementById('opcoesPagamento').innerHTML = pg.map(o =>
+    `<div class="opcao ${formaPagamento === o.id ? 'on' : ''}" onclick="setPagamento('${o.id}')">${o.nome}${o.sub ? `<small>${o.sub}</small>` : ''}</div>`).join('');
+  document.getElementById('blocoTroco').classList.toggle('hide', formaPagamento !== 'dinheiro');
+  document.getElementById('infoPix').classList.toggle('hide', formaPagamento !== 'pix');
+}
+function setEntrega(t) { tipoEntrega = t; renderOpcoes(); atualizar(); if (t === 'entrega') iniciarMapa(); }
+function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
+
+function atualizar() {
+  if (tela === 'cardapio') renderCardapio();
+  if (tela === 'checkout') { renderCarrinho(); renderResumo(); }
+  const n = carrinho.reduce((s, x) => s + x.qtd, 0);
+  const b = document.getElementById('btnBarra');
+  const barra = document.getElementById('barra');
+  barra.classList.toggle('hide', tela === 'acompanhar');
+  if (tela === 'cardapio') {
+    b.disabled = !n;
+    b.textContent = n ? `Ver pedido (${n}) • ${dinheiro(totais().subtotal)}` : 'Escolha seus itens';
+    b.onclick = () => mostrar('checkout');
+  } else if (tela === 'checkout') {
+    b.disabled = !n;
+    b.textContent = `Confirmar pedido • ${dinheiro(totais().total)}`;
+    b.onclick = enviarPedido;
   }
 }
 
-function parseWhatsAppText(){
- const raw = document.getElementById('waText').value;
- if(!raw.trim()){ toast('Cole o texto da mensagem primeiro.'); return; }
- 
- const linesArr = raw.split('\n').map(l=>l.trim()).filter(Boolean);
- let foundCustomer = '', foundObs = [];
- 
- selectedPizzas = [];
- stateExtras = {};
-
- linesArr.forEach(line => {
-   const upper = line.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-
-   if(upper.includes('CLIENTE:')){
-     foundCustomer = line.split(':')[1]?.trim() || '';
-   }
-
-   if(upper.includes('OBS:') || upper.includes('ENTREGAR') || upper.includes('RUA') || upper.includes('BAIRRO')){
-     foundObs.push(line.replace(/OBS:/i, '').trim());
-   }
-
-   let pSize = null;
-   if(upper.includes('PIZZA G') || upper.includes(' G ') || upper.endsWith(' G') || upper.includes('GRANDE')) pSize = 'G';
-   else if(upper.includes('PIZZA M') || upper.includes(' M ') || upper.endsWith(' M') || upper.includes('MEDIA')) pSize = 'M';
-   else if(upper.includes('PIZZA P') || upper.includes(' P ') || upper.endsWith(' P') || upper.includes('PEQUENA')) pSize = 'P';
-
-   if(pSize){
-     let matchedFlavors = [];
-     flavors.forEach(f => {
-       const fClean = f.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-       if(upper.includes(fClean)){
-         matchedFlavors.push(f.name);
-       }
-     });
-
-     if (matchedFlavors.length > 0) {
-       selectedPizzas.push({
-         uid: Date.now() + '_' + Math.random().toString(36).substring(2, 5),
-         size: pSize,
-         flavors: matchedFlavors.slice(0, pSize === 'P' ? 1 : 2)
-       });
-     }
-   }
-
-   extras.forEach(x => {
-     const nameClean = x.name.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/-/g, ' ');
-     if(upper.includes(nameClean)){
-       const matchQty = line.match(/(\d+)\s*x?/i);
-       const qty = matchQty ? parseInt(matchQty[1]) : 1;
-       stateExtras[x.id] = (stateExtras[x.id] || 0) + qty;
-     }
-   });
- });
-
- if(foundCustomer) document.getElementById('customer').value = foundCustomer;
- if(foundObs.length) document.getElementById('note').value = foundObs.join(' | ');
-
- renderPizzas();
- renderExtras();
- renderSummary();
- toast('Texto processado com sucesso!');
+function mostrar(t) {
+  tela = t;
+  ['cardapio', 'checkout', 'acompanhar'].forEach(x => document.getElementById('tela-' + x).classList.toggle('hide', x !== t));
+  document.getElementById('btnVoltar').classList.toggle('hide', t !== 'checkout');
+  window.scrollTo(0, 0);
+  if (t === 'checkout') { renderOpcoes(); if (tipoEntrega === 'entrega') iniciarMapa(); }
+  atualizar();
 }
 
-// FORMATO DE TICKET SEM VALORES UNITÁRIOS POR ITEM
-function buildTicketText(){
- const no=document.getElementById('orderNo').value.trim()||'---';
- const customer=document.getElementById('customer').value.trim()||'NAO INFORMADO';
- const note=document.getElementById('note').value.trim();
- const storeName=menu.store||'CLUBE DA PIZZA';
- const now=new Date().toLocaleString('pt-BR');
+/* ---------------- MAPA ---------------- */
+function iniciarMapa() {
+  setTimeout(() => {
+    if (mapa) { mapa.invalidateSize(); return; }
+    if (typeof L === 'undefined') {   // mapa não carregou (internet fraca): segue só com o endereço digitado
+      document.getElementById('mapa').classList.add('hide');
+      document.getElementById('statusPino').textContent = 'Mapa indisponível no momento — capriche no endereço e no ponto de referência.';
+      return;
+    }
+    const salvo = lerCliente();
+    const inicio = (salvo.lat && salvo.lng) ? [salvo.lat, salvo.lng] : CONFIG.entrega.localLoja;
+    mapa = L.map('mapa').setView(inicio, CONFIG.entrega.zoom || 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(mapa);
+    L.circleMarker(CONFIG.entrega.localLoja, { radius: 8, color: '#b91c1c', fillColor: '#ef4444', fillOpacity: .9 })
+      .addTo(mapa).bindTooltip('🍕 ' + CONFIG.loja.nome);
+    pino = L.marker(inicio, { draggable: true }).addTo(mapa);
+    if (salvo.lat) { pinoAjustado = true; msgPino(); }
+    pino.on('dragend', () => pinoMovido(false));
+    mapa.on('click', e => { pino.setLatLng(e.latlng); pinoMovido(false); });
+    msgPino();
+  }, 50);
+}
+function msgPino() {
+  let h = '⚠️ Marque sua casa no mapa antes de confirmar — a taxa é calculada pela distância.';
+  if (pinoAjustado) {
+    const e = localEntrega(), km = Preco.distanciaKm(e.lat, e.lng), taxa = Preco.taxa(e);
+    const kmTxt = km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    h = `✅ Localização marcada • 📏 ${kmTxt} km da pizzaria • entrega <b>${textoTaxa(taxa)}</b>`;
+    if (CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) h = `❌ Fora da área de entrega (${kmTxt} km). Escolha "Retirar" ou fale conosco no WhatsApp.`;
+  }
+  document.getElementById('statusPino').innerHTML = h;
+  if (tela === 'checkout') { renderResumo(); atualizar(); }
+}
+async function pinoMovido(veioDeBusca) {
+  pinoAjustado = true; msgPino();
+  if (veioDeBusca) return;
+  const { lat, lng } = pino.getLatLng();
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=pt-BR&lat=${lat}&lon=${lng}`);
+    const j = await r.json(), a = j.address || {};
+    const rua = a.road || a.pedestrian || '';
+    const bairro = a.suburb || a.neighbourhood || a.quarter || a.village || '';
+    const elR = document.getElementById('rua'), elB = document.getElementById('bairro');
+    if (rua && (ruaAuto || !elR.value.trim())) { elR.value = rua; ruaAuto = true; }
+    if (bairro && (bairroAuto || !elB.value.trim())) { elB.value = bairro; bairroAuto = true; }
+  } catch (e) { /* sem internet ou limite do serviço: o cliente digita manualmente */ }
+}
+function minhaLocalizacao() {
+  if (!pino) return toast('Mapa indisponível.');
+  if (!navigator.geolocation) { toast('Seu aparelho não permite localização.'); return; }
+  toast('Buscando sua localização...');
+  navigator.geolocation.getCurrentPosition(p => {
+    const ll = [p.coords.latitude, p.coords.longitude];
+    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(false);
+  }, () => toast('Não foi possível obter a localização. Arraste o pino manualmente.'), { enableHighAccuracy: true, timeout: 15000 });
+}
+async function buscarEndereco() {
+  if (!pino) return toast('Mapa indisponível.');
+  const rua = val('rua'), num = val('numero'), bairro = val('bairro');
+  if (!rua) { toast('Digite a rua primeiro.'); return; }
+  const q = [rua + (num && !/s\/?n/i.test(num) ? ' ' + num : ''), bairro, CONFIG.loja.cidade, 'Brasil'].filter(Boolean).join(', ');
+  try {
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`);
+    const j = await r.json();
+    if (!j.length) { toast('Endereço não encontrado. Arraste o pino até sua casa.'); return; }
+    const ll = [parseFloat(j[0].lat), parseFloat(j[0].lon)];
+    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(true);
+    toast('Confira se o pino está na sua casa.');
+  } catch (e) { toast('Falha na busca. Arraste o pino manualmente.'); }
+}
+['rua', 'bairro'].forEach(id => document.getElementById(id).addEventListener('input', () => { if (id === 'rua') ruaAuto = false; else bairroAuto = false; }));
 
- let s = `      ${storeName}\n`;
- s += `================================\n`;
- s += `PEDIDO Nº ${no}\n`;
- s += `CLIENTE: ${customer}\n`;
- s += `DATA: ${now}\n`;
- s += `--------------------------------\n`;
- lines().forEach(x => {
-   s += `${x.text}\n`;
- });
- if(note){
-   s += `--------------------------------\nOBS: ${note}\n`;
- }
- s += `--------------------------------\n`;
- s += `TOTAL: ${money(total())}\n`;
- s += `================================\n\n\n`;
- return s;
+/* ---------------- DADOS DO CLIENTE (lembrar no aparelho) ---------------- */
+const val = id => document.getElementById(id).value.trim();
+function lerCliente() { try { return JSON.parse(localStorage.getItem('cdp_cliente') || '{}'); } catch { return {}; } }
+function preencherCliente() {
+  const c = lerCliente();
+  ['nome', 'telefone', 'rua', 'numero', 'bairro', 'complemento', 'referencia'].forEach(k => { if (c[k]) document.getElementById(k).value = c[k]; });
+  if (c.rua) ruaAuto = false;
+  if (c.bairro) bairroAuto = false;
+}
+document.getElementById('telefone').addEventListener('input', e => {
+  let d = e.target.value.replace(/\D/g, '').slice(0, 11);
+  if (d.length > 6) d = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+  else if (d.length > 2) d = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  e.target.value = d;
+});
+
+/* ---------------- ENVIAR PEDIDO ---------------- */
+let enviando = false;
+async function enviarPedido() {
+  if (enviando) return;
+  const nome = val('nome'), tel = val('telefone').replace(/\D/g, '');
+  if (!carrinho.length) return toast('Seu carrinho está vazio.');
+  if (nome.length < 2) return foco('nome', 'Informe seu nome.');
+  if (tel.length < 10) return foco('telefone', 'Informe um telefone com DDD.');
+
+  let entrega = { tipo: tipoEntrega };
+  if (tipoEntrega === 'entrega') {
+    if (!val('rua')) return foco('rua', 'Informe a rua.');
+    if (!val('numero')) return foco('numero', 'Informe o número (ou S/N).');
+    if (!val('bairro')) return foco('bairro', 'Informe o bairro.');
+    if (pino && !pinoAjustado) { document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' }); return toast('Marque sua casa no mapa (arraste o pino).'); }
+    const loc = localEntrega();
+    const km = Preco.distanciaKm(loc.lat, loc.lng);
+    if (km != null && CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) return toast('Endereço fora da área de entrega.');
+    entrega = Object.assign(entrega, {
+      rua: val('rua'), numero: val('numero'), bairro: val('bairro'),
+      complemento: val('complemento'), referencia: val('referencia'),
+      lat: loc.lat ?? null, lng: loc.lng ?? null, distanciaKm: km
+    });
+  }
+
+  const t = totais();
+  let trocoPara = null;
+  if (formaPagamento === 'dinheiro' && val('troco')) {
+    trocoPara = parseFloat(val('troco').replace(/[^\d,.]/g, '').replace(',', '.')) || null;
+    if (trocoPara && trocoPara < t.total) return foco('troco', 'O valor do troco deve ser maior que o total.');
+  }
+
+  const pedido = {
+    cliente: { nome, telefone: tel },
+    entrega,
+    itens: carrinho.map(({ uid, ...it }) => it),
+    subtotal: t.subtotal, taxaEntrega: t.taxa, total: t.total,
+    pagamento: { forma: formaPagamento, trocoPara, confirmado: false },
+    obs: val('obs')
+  };
+
+  localStorage.setItem('cdp_cliente', JSON.stringify(Object.assign(
+    { nome, telefone: val('telefone') },
+    tipoEntrega === 'entrega' ? { rua: entrega.rua, numero: entrega.numero, bairro: entrega.bairro, complemento: entrega.complemento, referencia: entrega.referencia, lat: entrega.lat, lng: entrega.lng } : {}
+  )));
+
+  enviando = true;
+  const b = document.getElementById('btnBarra');
+  b.disabled = true; b.textContent = 'Enviando pedido...';
+  try {
+    const { id } = await DB.criarPedido(pedido);
+    localStorage.setItem('cdp_ultimo_pedido', id);
+    carrinho = [];
+    history.replaceState(null, '', '?pedido=' + id);
+    acompanhar(id);
+  } catch (e) {
+    console.error(e);
+    toast('Não foi possível enviar. Verifique a internet e tente de novo.');
+    atualizar();
+  } finally { enviando = false; }
+}
+function foco(id, msg) { const el = document.getElementById(id); el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); toast(msg); }
+
+/* ---------------- ACOMPANHAR PEDIDO ---------------- */
+async function acompanhar(id) {
+  mostrar('acompanhar');
+  const el = document.getElementById('acompanhar');
+  el.innerHTML = '<div class="muted">Carregando pedido...</div>';
+  if (pararObservar) pararObservar();
+  pararObservar = await DB.observarPedido(id, p => {
+    if (!p) { el.innerHTML = '<div class="muted">Pedido não encontrado.</div><button class="btn full" style="margin-top:12px" onclick="novoPedido()">Fazer um pedido</button>'; return; }
+    el.innerHTML = htmlAcompanhar(p);
+    if (p.pagamento.forma === 'pix' && !p.pagamento.confirmado && p.status !== 'cancelado') desenharQR(p);
+  });
 }
 
-async function connectBT(){
- if (!navigator.bluetooth) {
-   toast('Navegador sem suporte a Web Bluetooth.');
-   return;
- }
- try {
-   toast('Buscando JP58H...');
-   btDevice = await navigator.bluetooth.requestDevice({
-     acceptAllDevices: true,
-     optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb', 'e7810a71-73ae-499d-8c15-faa9aef0c3f2', '49535343-fe7d-41a3-8c53-0d02c7f947e0']
-   });
-   const server = await btDevice.gatt.connect();
-   const services = await server.getPrimaryServices();
-   for (let service of services) {
-     const characteristics = await service.getCharacteristics();
-     for (let c of characteristics) {
-       if (c.properties.write || c.properties.writeWithoutResponse) {
-         btCharacteristic = c;
-         break;
-       }
-     }
-     if (btCharacteristic) break;
-   }
-   if (btCharacteristic) {
-     const btn = document.getElementById('btConnectBtn');
-     btn.textContent = '🟢 JP58H Conectada';
-     btn.style.background = '#15803d';
-     toast('Impressora conectada com sucesso!');
-   } else {
-     toast('Serviço de escrita não encontrado.');
-   }
- } catch (err) {
-   console.error(err);
-   toast('Falha ao conectar Bluetooth.');
- }
+function payloadPix(p) {
+  if (!CONFIG.pix.chave) return '';
+  return Pix.gerar({
+    chave: CONFIG.pix.chave, nome: CONFIG.pix.nomeRecebedor, cidade: CONFIG.pix.cidade,
+    valor: p.total, txid: 'PED' + String(p.data || '').replace(/-/g, '') + p.numero
+  });
 }
 
-async function sendBT(text) {
- if (!btCharacteristic) return false;
- try {
-   const encoder = new TextEncoder();
-   const init = new Uint8Array([27, 64]);
-   await btCharacteristic.writeValue(init);
-   const data = encoder.encode(text);
-   
-   for (let i = 0; i < data.length; i += 20) {
-     const chunk = data.slice(i, i + 20);
-     await btCharacteristic.writeValue(chunk);
-   }
-   const cut = new Uint8Array([27, 100, 4]);
-   await btCharacteristic.writeValue(cut);
-   return true;
- } catch (err) {
-   console.error('Erro na impressão Bluetooth:', err);
-   return false;
- }
+function htmlAcompanhar(p) {
+  const cancel = p.status === 'cancelado';
+  const idx = STATUS.ordem.indexOf(p.status);
+  let h = `<h2>Pedido #${p.numero} ${cancel ? '— ❌ Cancelado' : ''}</h2>
+    <div class="muted">Obrigado, ${esc(p.cliente.nome.split(' ')[0])}! Acompanhe aqui em tempo real.</div>`;
+  if (!cancel) {
+    h += `<div class="passos">${STATUS.ordem.map((s, i) =>
+      `<div class="passo ${i <= idx ? 'feito' : ''}"><i></i>${STATUS.rotulo(s, p.entrega.tipo)}</div>`).join('')}</div>`;
+  }
+
+  if (p.pagamento.forma === 'pix' && !cancel) {
+    if (p.pagamento.confirmado) h += `<div class="okbox">✅ Pagamento Pix confirmado.</div>`;
+    else if (!CONFIG.pix.chave) h += `<div class="aviso">Chave Pix ainda não configurada pela loja.</div>`;
+    else {
+      const code = payloadPix(p);
+      h += `<div class="aviso"><b>⚡ Pague com Pix: ${dinheiro(p.total)}</b><br>
+        Copie o código abaixo e cole no app do seu banco (Pix → Copia e Cola).</div>
+        <div class="qr" id="qrPix"></div>
+        <div class="pixcode" id="pixCode">${esc(code)}</div>
+        <button class="btn dark full" style="margin-top:8px" onclick="copiarPix()">📋 Copiar código Pix</button>
+        <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank"
+           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.`)}">📎 Enviar comprovante no WhatsApp</a>`;
+    }
+  }
+
+  h += `<h3 style="margin-top:16px">Itens</h3>`;
+  p.itens.forEach(it => {
+    h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
+  });
+  if (p.entrega.tipo === 'entrega') h += `<div class="linha"><span>Taxa de entrega${p.entrega.distanciaKm != null ? ` (${String(p.entrega.distanciaKm).replace('.', ',')} km)` : ''}</span><span>${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'Grátis'}</span></div>`;
+  h += `<div class="linha total"><span>Total</span><span>${dinheiro(p.total)}</span></div>`;
+  h += `<div class="muted" style="margin-top:8px">Pagamento: ${({ pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão na entrega' })[p.pagamento.forma]}
+        ${p.pagamento.trocoPara ? ` • troco para ${dinheiro(p.pagamento.trocoPara)}` : ''}</div>`;
+  if (p.entrega.tipo === 'entrega') {
+    const e = p.entrega;
+    h += `<div class="muted">Entrega: ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' (' + esc(e.complemento) + ')' : ''}</div>`;
+  } else h += `<div class="muted">Retirada no balcão.</div>`;
+  h += `<button class="btn sec full" style="margin-top:16px" onclick="novoPedido()">Fazer novo pedido</button>`;
+  return h;
+}
+function desenharQR(p) {
+  const el = document.getElementById('qrPix');
+  const code = payloadPix(p);
+  if (!el || !code || typeof qrcode === 'undefined') return;
+  const qr = qrcode(0, 'M'); qr.addData(code); qr.make();
+  el.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+}
+async function copiarPix() {
+  const t = document.getElementById('pixCode').textContent;
+  try { await navigator.clipboard.writeText(t); toast('Código Pix copiado!'); }
+  catch {
+    const r = document.createRange(); r.selectNodeContents(document.getElementById('pixCode'));
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+    toast('Selecionado — toque em Copiar.');
+  }
+}
+function novoPedido() {
+  if (pararObservar) { pararObservar(); pararObservar = null; }
+  history.replaceState(null, '', location.pathname);
+  mostrar('cardapio');
 }
 
-function validate(){
- if(!document.getElementById('customer').value.trim()){toast('Informe o nome do cliente.');return false}
- if(!lines().length){toast('Adicione pelo menos um produto.');return false}
- return true;
+function toast(t) {
+  const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);
 }
 
-async function finalizeOrder(){
- if(!validate())return;
- const ticket = buildTicketText();
- 
- const h=JSON.parse(localStorage.getItem('pizza_history')||'[]');
- h.unshift({no:document.getElementById('orderNo').value,customer:document.getElementById('customer').value,total:total(),ticket,date:new Date().toISOString()});
- localStorage.setItem('pizza_history',JSON.stringify(h.slice(0,50)));
- renderHistory();
-
- if (btCharacteristic) {
-   toast('Enviando para JP58H...');
-   const success = await sendBT(ticket);
-   if (success) {
-     toast('Impresso com sucesso!');
-     clearOrder();
-     return;
-   } else {
-     toast('Erro ao imprimir via Bluetooth. Usando impressão padrão...');
-   }
- }
- 
- document.getElementById('ticketPrint').textContent = ticket;
- window.print();
- clearOrder();
+/* ---------------- INÍCIO ---------------- */
+preencherCliente();
+const idUrl = new URLSearchParams(location.search).get('pedido');
+if (idUrl) acompanhar(idUrl);
+else {
+  mostrar('cardapio');
+  const ult = localStorage.getItem('cdp_ultimo_pedido');
+  if (ult) DB.observarPedido(ult, p => {
+    if (p && p.data === hojeISO() && !['entregue', 'cancelado'].includes(p.status) && tela === 'cardapio' && !document.getElementById('avisoUltimo')) {
+      const d = document.createElement('div');
+      d.id = 'avisoUltimo'; d.className = 'okbox';
+      d.innerHTML = `Você tem o pedido <b>#${p.numero}</b> em andamento. <a href="?pedido=${encodeURIComponent(p.id)}">Acompanhar →</a>`;
+      document.querySelector('main').prepend(d);
+    }
+  }).then(stop => setTimeout(stop, 4000));
 }
-
-function printPreview(){if(!validate())return;document.getElementById('ticketPrint').textContent=buildTicketText();window.print()}
-
-function renderHistory(){
- const h=JSON.parse(localStorage.getItem('pizza_history')||'[]'),el=document.getElementById('history');
- el.innerHTML=h.length?h.slice(0,10).map(x=>`<div class="history-row"><span><strong>#${x.no}</strong> ${x.customer}<br><span class="muted">${new Date(x.date).toLocaleString('pt-BR')}</span></span><strong>${money(x.total)}</strong></div>`).join(''):'<span class="muted">Nenhum pedido registrado.</span>';
-}
-
-function clearOrder(){
- selectedPizzas = [];
- stateExtras = {};
- document.getElementById('orderNo').value=nextOrder();
- document.getElementById('customer').value='';
- document.getElementById('note').value='';
- document.getElementById('waText').value='';
- renderPizzas();
- renderExtras();
- renderSummary();
-}
-
-function toast(t){const e=document.getElementById('toast');e.textContent=t;e.style.display='block';setTimeout(()=>e.style.display='none',2500)}
-
-renderPizzas();renderExtras();renderSummary();renderHistory();
 </script>
 </body>
 </html>
