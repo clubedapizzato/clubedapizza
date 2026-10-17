@@ -18,6 +18,7 @@
 
 <main>
   <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> os pedidos só aparecem na cozinha aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code> para uso real.</div>
+  <div id="avisoHorario" class="aviso hide" style="font-size:15px"></div>
 
   <!-- ================= TELA 1: CARDÁPIO ================= -->
   <section id="tela-cardapio">
@@ -65,6 +66,11 @@
         <label for="referencia">Ponto de referência</label>
         <input id="referencia" placeholder="Ex.: próximo à praça, portão azul">
       </div>
+    </div>
+
+    <div class="card">
+      <h2>⏰ Quando?</h2>
+      <div id="blocoQuando"></div>
     </div>
 
     <div class="card">
@@ -118,6 +124,8 @@ let carrinho = [];            // itens {uid,tipo,...,qtd}
 let tela = 'cardapio';
 let tipoEntrega = 'entrega';
 let formaPagamento = 'pix';
+let quando = 'agora';           // 'agora' | 'agendar'
+let horaAgendada = null;        // ms do horário escolhido
 let mapa = null, pino = null, pinoAjustado = false, ruaAuto = true, bairroAuto = true;
 let pararObservar = null;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -268,6 +276,9 @@ function renderResumo() {
   document.getElementById('resumo').innerHTML = `
     <div class="linha"><span>Subtotal</span><span>${dinheiro(t.subtotal)}</span></div>
     ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${textoTaxa(t.taxa)}</span></div>` : ''}
+    <div class="linha"><span>${tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada'}</span><span>${quando === 'agendar'
+      ? (horaAgendada ? '📅 ' + Horario.textoAgendado(horaAgendada) : '<b style="color:var(--brand)">escolha o horário</b>')
+      : 'o quanto antes'}</span></div>
     <div class="linha total"><span>Total</span><span>${dinheiro(t.total)}</span></div>`;
 }
 
@@ -284,6 +295,36 @@ function renderOpcoes() {
   document.getElementById('blocoTroco').classList.toggle('hide', formaPagamento !== 'dinheiro');
   document.getElementById('infoPix').classList.toggle('hide', formaPagamento !== 'pix');
 }
+/* ---------------- HORÁRIO / AGENDAMENTO ---------------- */
+function renderHorario() {
+  const el = document.getElementById('avisoHorario');
+  const aberto = Horario.aberto();
+  el.classList.toggle('hide', aberto);
+  if (!aberto) el.innerHTML = `🔒 <b>Estamos fechados.</b> ${Horario.textoAbertura()} — você já pode <b>agendar</b> seu pedido.`;
+}
+function renderQuando() {
+  const aberto = Horario.aberto(), slots = Horario.horariosAgendamento();
+  if (!aberto) quando = 'agendar';
+  if (horaAgendada && !slots.includes(horaAgendada)) horaAgendada = null;
+  if (quando === 'agendar' && aberto && !slots.length) quando = 'agora';
+  const op = [];
+  if (aberto) op.push({ id: 'agora', nome: '⚡ O quanto antes' });
+  if (slots.length) op.push({ id: 'agendar', nome: '📅 Agendar', sub: aberto ? 'mais tarde' : Horario.quando(slots[0]) });
+  let h = '';
+  if (!aberto) h += `<div class="aviso">🔒 Estamos fechados agora. ${Horario.textoAbertura()}. Escolha um horário para agendar:</div>`;
+  h += `<div class="opcoes">${op.map(o => `<div class="opcao ${quando === o.id ? 'on' : ''}" onclick="setQuando('${o.id}')">${o.nome}${o.sub ? `<small>${o.sub}</small>` : ''}</div>`).join('')}</div>`;
+  if (quando === 'agendar') {
+    h += slots.length
+      ? `<div class="muted" style="margin:10px 0 6px">Horários de ${Horario.quando(slots[0])} (${new Date(slots[0]).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}):</div>
+         <div class="chips">${slots.map(x => `<span class="chip ${x === horaAgendada ? 'on' : ''}" onclick="setHora(${x})">${Horario.hora(x)}</span>`).join('')}</div>`
+      : '<div class="aviso">Nenhum horário disponível para agendamento.</div>';
+  }
+  document.getElementById('blocoQuando').innerHTML = h;
+}
+function setQuando(q) { quando = q; renderQuando(); atualizar(); }
+function setHora(ms) { horaAgendada = ms; renderQuando(); atualizar(); }
+setInterval(() => { renderHorario(); if (tela === 'checkout') { renderQuando(); atualizar(); } }, 60000);
+
 function setEntrega(t) { tipoEntrega = t; renderOpcoes(); atualizar(); if (t === 'entrega') iniciarMapa(); }
 function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
 
@@ -310,7 +351,7 @@ function mostrar(t) {
   ['cardapio', 'checkout', 'acompanhar'].forEach(x => document.getElementById('tela-' + x).classList.toggle('hide', x !== t));
   document.getElementById('btnVoltar').classList.toggle('hide', t !== 'checkout');
   window.scrollTo(0, 0);
-  if (t === 'checkout') { renderOpcoes(); if (tipoEntrega === 'entrega') iniciarMapa(); }
+  if (t === 'checkout') { renderOpcoes(); renderQuando(); if (tipoEntrega === 'entrega') iniciarMapa(); }
   atualizar();
 }
 
@@ -429,6 +470,12 @@ async function enviarPedido() {
     });
   }
 
+  // Horário: fora do expediente só agendado
+  renderQuando();
+  if (quando === 'agora' && !Horario.aberto()) return foco('blocoQuando', 'Estamos fechados — escolha um horário para agendar.');
+  if (quando === 'agendar' && !horaAgendada) return foco('blocoQuando', 'Escolha o horário do agendamento.');
+  const agendadoPara = quando === 'agendar' ? horaAgendada : null;
+
   const t = totais();
   let trocoPara = null;
   if (formaPagamento === 'dinheiro' && val('troco')) {
@@ -437,6 +484,9 @@ async function enviarPedido() {
   }
 
   const pedido = {
+    origem: 'site',
+    data: agendadoPara ? isoDe(new Date(agendadoPara)) : hojeISO(),
+    agendadoPara,
     cliente: { nome, telefone: tel },
     entrega,
     itens: carrinho.map(({ uid, ...it }) => it),
@@ -456,7 +506,7 @@ async function enviarPedido() {
   try {
     const { id } = await DB.criarPedido(pedido);
     localStorage.setItem('cdp_ultimo_pedido', id);
-    carrinho = [];
+    carrinho = []; horaAgendada = null; quando = 'agora';
     history.replaceState(null, '', '?pedido=' + id);
     acompanhar(id);
   } catch (e) {
@@ -493,6 +543,7 @@ function htmlAcompanhar(p) {
   const idx = STATUS.ordem.indexOf(p.status);
   let h = `<h2>Pedido #${p.numero} ${cancel ? '— ❌ Cancelado' : ''}</h2>
     <div class="muted">Obrigado, ${esc(p.cliente.nome.split(' ')[0])}! Acompanhe aqui em tempo real.</div>`;
+  if (p.agendadoPara && !cancel) h += `<div class="okbox" style="font-size:15px">📅 <b>Agendado para ${Horario.textoAgendado(p.agendadoPara)}</b> (${p.entrega.tipo === 'entrega' ? 'entrega' : 'retirada'})</div>`;
   if (!cancel) {
     h += `<div class="passos">${STATUS.ordem.map((s, i) =>
       `<div class="passo ${i <= idx ? 'feito' : ''}"><i></i>${STATUS.rotulo(s, p.entrega.tipo)}</div>`).join('')}</div>`;
@@ -509,7 +560,7 @@ function htmlAcompanhar(p) {
         <div class="pixcode" id="pixCode">${esc(code)}</div>
         <button class="btn dark full" style="margin-top:8px" onclick="copiarPix()">📋 Copiar código Pix</button>
         <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank"
-           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.`)}">📎 Enviar comprovante no WhatsApp</a>`;
+           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.${p.agendadoPara ? ' Agendado para ' + Horario.formatar(p.agendadoPara) + '.' : ''}`)}">📎 Enviar comprovante no WhatsApp</a>`;
     }
   }
 
@@ -557,13 +608,14 @@ function toast(t) {
 
 /* ---------------- INÍCIO ---------------- */
 preencherCliente();
+renderHorario();
 const idUrl = new URLSearchParams(location.search).get('pedido');
 if (idUrl) acompanhar(idUrl);
 else {
   mostrar('cardapio');
   const ult = localStorage.getItem('cdp_ultimo_pedido');
   if (ult) DB.observarPedido(ult, p => {
-    if (p && p.data === hojeISO() && !['entregue', 'cancelado'].includes(p.status) && tela === 'cardapio' && !document.getElementById('avisoUltimo')) {
+    if (p && p.data >= hojeISO() && !['entregue', 'cancelado'].includes(p.status) && tela === 'cardapio' && !document.getElementById('avisoUltimo')) {
       const d = document.createElement('div');
       d.id = 'avisoUltimo'; d.className = 'okbox';
       d.innerHTML = `Você tem o pedido <b>#${p.numero}</b> em andamento. <a href="?pedido=${encodeURIComponent(p.id)}">Acompanhar →</a>`;
