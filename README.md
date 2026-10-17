@@ -4,7 +4,8 @@
 |---|---|---|
 | `index.html` | **Cliente** (endereço principal) | Cardápio por categoria, monta pizza (meio a meio + adicional), nome/telefone, endereço com **mapa e pino arrastável**, pagamento (Pix / dinheiro com troco / cartão), resumo e **acompanhamento em tempo real** |
 | `cozinha.html` | **Cozinha** | Painel com colunas *Novos → Em produção → Saiu → Entregue*, alerta sonoro, **impressão automática**, confirmação manual do Pix e botão de WhatsApp para o cliente em cada fase |
-| `balcao.html` | **Balcão** | Sistema antigo de lançamento manual |
+| `balcao.html` | **Balcão** (login da cozinha) | Tela rápida de caixa: toca nos itens → *Comer aqui / Para levar* → Pix/Dinheiro (troco)/Cartão → pedido já PAGO, recebe número na hora e vai para a cozinha (impresso pela auto-impressão) |
+| `relatorios.html` | **Gestão** (login da cozinha) | Faturamento, ticket médio, pedidos por dia/origem, pizzas por sabor e tamanho, bebidas, formas de pagamento, entrega × retirada × balcão, exportar CSV |
 | `loja.html` | — | Redireciona para o endereço principal (links antigos) |
 
 ## Arquivos
@@ -32,6 +33,14 @@ Com `firebase: null` no `config.js`, abra `index.html` e `cozinha.html` em **dua
 Links: cliente → **https://clubedapizzato.com.br** • cozinha → `https://clubedapizzato.com.br/cozinha.html` • balcão → `https://clubedapizzato.com.br/balcao.html`
 
 O domínio próprio é definido no arquivo `CNAME` (GitHub Pages). O endereço antigo `henriquesilva-tjto.github.io/clubedapizza` redireciona para ele.
+
+## Horário e agendamento
+Configurável em `CONFIG.horario` (`js/config.js`): quinta a terça, 18:30–23:00 (fechado às quartas).
+- Loja aberta: pedido "o quanto antes" ou agendado para mais tarde no mesmo turno.
+- Loja fechada: aviso "🔒 Estamos fechados" e o pedido só pode ser **agendado** (horários de 30 em 30 min do próximo dia de funcionamento).
+- O campo `data` do pedido é o dia do turno de entrega (numeração e relatórios por dia de atendimento).
+- Cozinha: agendados ficam em **📅 Agendados** e entram em *Novos* (com alarme e auto-impressão) 40 min antes do horário. Agendamentos de dias futuros aparecem num aviso no topo.
+- O balcão não tem restrição de horário.
 
 ## Impressão na cozinha
 - Marque **🖨️ Auto-imprimir** em **apenas um** aparelho (o que está ligado à impressora).
