@@ -40,7 +40,8 @@ window.DB = (function () {
   /* ---------------- API ---------------- */
   async function criarPedido(pedido) {
     await init();
-    const data = hojeISO();
+    // data = dia do turno de ENTREGA (agendado para outro dia entra na fila daquele dia)
+    const data = pedido.data || hojeISO();
     pedido = Object.assign({}, pedido, {
       data, status: 'novo', impresso: false, criadoEm: Date.now(),
       historico: [{ status: 'novo', em: Date.now() }]
@@ -84,6 +85,23 @@ window.DB = (function () {
     return fs.onSnapshot(q, s => cb(s.docs.map(d => Object.assign({ id: d.id }, d.data()))), e => { console.error(e); erro && erro(e); });
   }
 
+  // Pedidos com data (YYYY-MM-DD) entre "de" e "ate" (inclusive) — relatórios
+  async function listarPedidos(de, ate) {
+    await init();
+    if (modo() === 'demo') return Object.values(lerTodos()).filter(p => p.data >= de && p.data <= ate);
+    const q = fs.query(fs.collection(db, 'pedidos'), fs.where('data', '>=', de), fs.where('data', '<=', ate));
+    const s = await fs.getDocs(q);
+    return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  }
+
+  // Pedidos de dias FUTUROS (agendamentos), em tempo real
+  async function observarPedidosFuturos(data, cb, erro) {
+    await init();
+    if (modo() === 'demo') return ouvirLocal(() => cb(Object.values(lerTodos()).filter(p => p.data > data)));
+    const q = fs.query(fs.collection(db, 'pedidos'), fs.where('data', '>', data));
+    return fs.onSnapshot(q, s => cb(s.docs.map(d => Object.assign({ id: d.id }, d.data()))), e => { console.error(e); erro && erro(e); });
+  }
+
   async function atualizarPedido(id, campos, novoStatus) {
     await init();
     if (modo() === 'demo') {
@@ -111,5 +129,5 @@ window.DB = (function () {
     return authMod.onAuthStateChanged(auth, cb);
   }
 
-  return { init, modo, criarPedido, observarPedido, observarPedidosDoDia, atualizarPedido, login, sair, observarUsuario };
+  return { init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, atualizarPedido, login, sair, observarUsuario };
 })();

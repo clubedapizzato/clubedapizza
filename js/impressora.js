@@ -25,10 +25,14 @@ window.Impressora = (function () {
     let s = centro(semAcento(CONFIG.loja.nome).toUpperCase());
     s += linha('=');
     s += centro(`PEDIDO #${p.numero}`);
-    s += centro(p.entrega.tipo === 'retirada' ? '*** RETIRADA ***' : '*** ENTREGA ***');
+    const tipo = p.entrega.tipo;
+    s += centro(tipo === 'balcao' ? `*** BALCAO - ${p.entrega.consumo === 'local' ? 'COMER AQUI' : 'PARA LEVAR'} ***`
+      : tipo === 'retirada' ? '*** RETIRADA ***' : '*** ENTREGA ***');
     s += `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR').slice(0, 5)}\n`;
+    if (p.agendadoPara) s += linha('*') + centro(`AGENDADO PARA: ${Horario.formatar(p.agendadoPara)}`) + linha('*');
     s += linha('-');
-    s += `CLIENTE: ${p.cliente.nome}\nFONE: ${fone(p.cliente.telefone)}\n`;
+    if (p.cliente.nome) s += `CLIENTE: ${p.cliente.nome}\n`;
+    if (p.cliente.telefone) s += `FONE: ${fone(p.cliente.telefone)}\n`;
     if (p.entrega.tipo === 'entrega') {
       const e = p.entrega;
       s += `END: ${e.rua}, ${e.numero}\n`;
@@ -50,8 +54,9 @@ window.Impressora = (function () {
     }
     s += duasColunas('TOTAL', dinheiro(p.total));
     const pg = p.pagamento;
-    let fp = ({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTAO NA ENTREGA' })[pg.forma] || pg.forma;
-    if (pg.forma === 'pix') fp += pg.confirmado ? ' (CONFIRMADO)' : ' (AGUARDANDO)';
+    let fp = ({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: tipo === 'balcao' ? 'CARTAO' : 'CARTAO NA ENTREGA' })[pg.forma] || pg.forma;
+    if (tipo === 'balcao') fp += ' (PAGO)';
+    else if (pg.forma === 'pix') fp += pg.confirmado ? ' (CONFIRMADO)' : ' (AGUARDANDO)';
     s += `PAGAMENTO: ${fp}\n`;
     if (pg.forma === 'dinheiro' && pg.trocoPara) s += `TROCO PARA: ${dinheiro(pg.trocoPara)} (${dinheiro(pg.trocoPara - p.total)})\n`;
     s += linha('=') + '\n\n\n';

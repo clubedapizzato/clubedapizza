@@ -13,19 +13,27 @@ service cloud.firestore {
     match /pedidos/{id} {
       // Cliente acompanha o próprio pedido pelo link (id impossível de adivinhar).
       allow get: if true;
-      // Só a cozinha (usuário logado) lista todos os pedidos.
+      // Só a cozinha / balcão / relatórios (usuário logado) listam pedidos.
       allow list: if request.auth != null;
 
-      // Qualquer cliente cria pedido, mas sempre como "novo" e com Pix NÃO confirmado.
+      // Pedido do SITE: qualquer cliente cria, sempre "novo", não impresso e com pagamento NÃO confirmado.
+      // Pedido do BALCÃO: só usuário logado (atendente), já pago.
       allow create: if request.resource.data.status == 'novo'
                     && request.resource.data.impresso == false
-                    && request.resource.data.pagamento.confirmado == false
                     && request.resource.data.itens is list
                     && request.resource.data.itens.size() > 0
                     && request.resource.data.itens.size() <= 50
                     && request.resource.data.cliente.nome is string
-                    && request.resource.data.cliente.telefone is string
-                    && request.resource.data.total is number;
+                    && request.resource.data.total is number
+                    && (request.resource.data.get('agendadoPara', null) == null
+                        || request.resource.data.agendadoPara is number)
+                    && ((request.resource.data.origem == 'site'
+                         && request.resource.data.pagamento.confirmado == false
+                         && request.resource.data.cliente.telefone is string)
+                     || (request.auth != null
+                         && request.resource.data.origem == 'balcao'
+                         && request.resource.data.entrega.tipo == 'balcao'
+                         && request.resource.data.pagamento.confirmado == true));
 
       // Mudar status / confirmar Pix / marcar impresso: só a cozinha.
       allow update: if request.auth != null;
