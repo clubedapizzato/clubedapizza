@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<meta name="robots" content="noindex">
+<title>Relatórios • Clube da Pizza</title>
+<link rel="stylesheet" href="css/app.css">
+<style>
+main{max-width:1100px;padding-bottom:30px}
+.topo .in{max-width:1100px}
+#login{max-width:380px;margin:40px auto}
+.filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filtros .chip{padding:9px 13px;font-size:14px}
+.datas{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.datas input{width:auto;padding:8px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.kpi small{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.kpi b{display:block;font-size:24px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grade .card{margin:0}
+@media(max-width:760px){.grade{grid-template-columns:1fr}}
+/* barras verticais (por dia) */
+.colunasDia{display:flex;align-items:flex-end;gap:2px;height:180px;border-bottom:1px solid #d6d3d1;padding-top:8px}
+.colunasDia .c{flex:1;min-width:0;height:100%;display:flex;align-items:flex-end;position:relative;cursor:default}
+.colunasDia .c i{display:block;width:100%;max-width:56px;margin:0 auto;background:var(--brand);border-radius:4px 4px 0 0;min-height:0}
+.colunasDia .c:hover i{background:#7f1d1d}
+.eixo{display:flex;gap:2px;font-size:10px;color:var(--muted);margin-top:4px}
+.eixo span{flex:1;min-width:0;text-align:center;overflow:hidden}
+.tip{position:fixed;pointer-events:none;background:var(--dark);color:#fff;font-size:12px;padding:6px 9px;border-radius:8px;z-index:300;display:none;white-space:nowrap}
+/* barras horizontais (rankings) */
+.hb{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:8px;align-items:center;padding:5px 0;font-size:14px}
+.hb .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb .t{background:#f5f5f4;border-radius:4px;height:14px;overflow:hidden}
+.hb .t i{display:block;height:100%;background:var(--brand);border-radius:0 4px 4px 0}
+.hb .v{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.hb .v small{font-weight:400;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="topo">
+  <div class="in">
+    <h1>📊 Relatórios</h1>
+    <div class="hide" id="ferramentas" style="display:flex;gap:6px">
+      <a class="btn sm sec" style="text-decoration:none" href="cozinha.html">👨‍🍳 Cozinha</a>
+      <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> mostra só os pedidos feitos neste navegador.</div>
+
+  <div id="login" class="card hide">
+    <h2>Acesso aos relatórios</h2>
+    <div class="muted">Use o mesmo login da cozinha.</div>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
+    <button class="btn full" style="margin-top:14px" onclick="entrar()">Entrar</button>
+    <div id="erroLogin" class="muted" style="color:#b91c1c;margin-top:8px"></div>
+  </div>
+
+  <div id="painel" class="hide">
+    <div class="card">
+      <div class="filtros" id="filtros"></div>
+      <div class="datas">
+        <label style="margin:0" for="de">De</label><input type="date" id="de">
+        <label style="margin:0" for="ate">até</label><input type="date" id="ate">
+        <button class="btn sm dark" onclick="periodo='livre';carregar()">Ver</button>
+        <button class="btn sm sec" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+      </div>
+      <div class="muted" id="status" style="margin-top:8px"></div>
+    </div>
+    <div id="resultado"></div>
+  </div>
+</main>
+
+<div class="tip" id="tip"></div>
+<div id="toast"></div>
+
+<script src="js/config.js"></script>
+<script src="js/cardapio.js"></script>
+<script src="js/db.js"></script>
+<script>
+let periodo = 'hoje';
+let pedidos = [];
+const PERIODOS = [{ id: 'hoje', nome: 'Hoje' }, { id: '7d', nome: '7 dias' }, { id: 'mes', nome: 'Este mês' }, { id: 'mesPassado', nome: 'Mês passado' }];
+const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
+const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
+const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+
+if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
+
+/* ---------------- LOGIN ---------------- */
+DB.observarUsuario(u => {
+  const logado = !!u;
+  document.getElementById('login').classList.toggle('hide', logado);
+  document.getElementById('painel').classList.toggle('hide', !logado);
+  document.getElementById('ferramentas').classList.toggle('hide', !logado);
+  document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
+  if (logado) carregar();
+});
+async function entrar() {
+  document.getElementById('erroLogin').textContent = '';
+  try { await DB.login(document.getElementById('email').value.trim(), document.getElementById('senha').value); }
+  catch (e) { document.getElementById('erroLogin').textContent = 'E-mail ou senha inválidos.'; }
+}
+document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+
+/* ---------------- PERÍODO ---------------- */
+function intervalo(id) {
+  const h = new Date(), d = (y, m, dia) => isoDe(new Date(y, m, dia));
+  if (id === 'hoje') return [hojeISO(), hojeISO()];
+  if (id === '7d') return [d(h.getFullYear(), h.getMonth(), h.getDate() - 6), hojeISO()];
+  if (id === 'mes') return [d(h.getFullYear(), h.getMonth(), 1), hojeISO()];
+  if (id === 'mesPassado') return [d(h.getFullYear(), h.getMonth() - 1, 1), d(h.getFullYear(), h.getMonth(), 0)];
+  return [document.getElementById('de').value, document.getElementById('ate').value];
+}
+function renderFiltros() {
+  document.getElementById('filtros').innerHTML = PERIODOS.map(p =>
+    `<span class="chip ${p.id === periodo ? 'on' : ''}" onclick="periodo='${p.id}';carregar()">${p.nome}</span>`).join('');
+}
+
+async function carregar() {
+  renderFiltros();
+  const [de, ate] = intervalo(periodo);
+  if (!de || !ate || de > ate) return toast('Período inválido.');
+  document.getElementById('de').value = de;
+  document.getElementById('ate').value = ate;
+  const st = document.getElementById('status');
+  st.textContent = 'Carregando...';
+  try {
+    pedidos = (await DB.listarPedidos(de, ate)).sort((a, b) => a.data.localeCompare(b.data) || a.numero - b.numero);
+    st.textContent = `${br(de)} a ${br(ate)} • ${pedidos.length} pedido(s) no período`;
+    render(calcular(pedidos, de, ate));
+  } catch (e) {
+    console.error(e);
+    st.textContent = 'Erro ao carregar. Verifique a internet e o login.';
+  }
+}
+const br = iso => iso.split('-').reverse().join('/');
+
+/* ---------------- CÁLCULOS ---------------- */
+function calcular(lista, de, ate) {
+  const r = {
+    faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, taxas: 0,
+    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}
+  };
+  // todos os dias do período (dias sem venda aparecem zerados)
+  for (let d = new Date(de + 'T12:00'); isoDe(d) <= ate; d.setDate(d.getDate() + 1)) r.dias[isoDe(d)] = { valor: 0, qtd: 0 };
+  const soma = (o, k, valor, qtd = 1) => { o[k] = o[k] || { valor: 0, qtd: 0 }; o[k].valor += valor; o[k].qtd += qtd; };
+
+  lista.forEach(p => {
+    if (p.status === 'cancelado') { r.cancelados++; r.valorCancelado += p.total || 0; return; }
+    const total = p.total || 0;
+    r.pedidos++; r.faturamento += total;
+    r.taxas += p.taxaEntrega || 0;
+    soma(r.dias, p.data, total);
+    soma(r.origem, p.origem || 'site', total);
+    soma(r.formas, p.pagamento.forma, total);
+    soma(r.tipos, p.entrega.tipo, total);
+    (p.itens || []).forEach(it => {
+      const q = it.qtd || 1;
+      if (it.tipo === 'pizza') {
+        it.sabores.forEach(s => { r.sabores[s] = (r.sabores[s] || 0) + q / it.sabores.length; });   // meio a meio = ½ por sabor
+        r.tamanhos[it.tamanho] = (r.tamanhos[it.tamanho] || 0) + q;
+      } else {
+        const nome = Preco.descricao(it);
+        r.produtos[nome] = (r.produtos[nome] || 0) + q;
+      }
+    });
+  });
+  r.ticketMedio = r.pedidos ? r.faturamento / r.pedidos : 0;
+  r.pizzas = Object.values(r.tamanhos).reduce((a, b) => a + b, 0);
+  return r;
+}
+
+/* ---------------- TELA ---------------- */
+function barras(itens, fmt) {   // itens: [[nome, valor, extra]]
+  if (!itens.length) return '<div class="muted">Sem dados no período.</div>';
+  const max = Math.max(...itens.map(x => x[1])) || 1;
+  return itens.map(([n, v, extra]) => `<div class="hb"><span class="n" title="${esc(n)}">${esc(n)}</span>
+    <span class="t"><i style="width:${(v / max * 100).toFixed(1)}%"></i></span>
+    <span class="v">${fmt(v)}${extra ? ` <small>${extra}</small>` : ''}</span></div>`).join('');
+}
+const ordenar = o => Object.entries(o).sort((a, b) => b[1] - a[1]);
+
+function render(r) {
+  const dias = Object.entries(r.dias);
+  const maxDia = Math.max(...dias.map(([, x]) => x.valor)) || 1;
+  const passo = Math.ceil(dias.length / 12);
+  const kpi = (t, v, s) => `<div class="kpi"><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+  const qv = (o, nomes) => Object.entries(o).sort((a, b) => b[1].valor - a[1].valor)
+    .map(([k, x]) => [nomes[k] || k, x.valor, `${x.qtd} ped.`]);
+
+  document.getElementById('resultado').innerHTML = `
+    <div class="kpis">
+      ${kpi('💰 Faturamento', dinheiro(r.faturamento), 'cancelados fora')}
+      ${kpi('🧾 Pedidos', r.pedidos, `${num(r.pedidos / dias.length)} por dia`)}
+      ${kpi('🎯 Ticket médio', dinheiro(r.ticketMedio))}
+      ${kpi('🍕 Pizzas', num(r.pizzas))}
+      ${kpi('❌ Cancelados', r.cancelados, r.cancelados ? dinheiro(r.valorCancelado) + ' não faturados' : '')}
+      ${kpi('🛵 Taxas de entrega', dinheiro(r.taxas))}
+    </div>
+
+    <div class="card">
+      <h2>💰 Faturamento por dia</h2>
+      <div class="colunasDia">${dias.map(([d, x]) =>
+        `<div class="c" data-tip="${br(d)} • ${dinheiro(x.valor)} • ${x.qtd} pedido(s)"><i style="height:${(x.valor / maxDia * 100).toFixed(1)}%"></i></div>`).join('')}</div>
+      <div class="eixo">${dias.map(([d], i) => `<span>${i % passo === 0 ? d.slice(8) + '/' + d.slice(5, 7) : ''}</span>`).join('')}</div>
+      <details><summary>Ver tabela por dia</summary>
+        <table><tr><th>Dia</th><th class="r">Pedidos</th><th class="r">Faturamento</th></tr>
+        ${dias.map(([d, x]) => `<tr><td>${br(d)}</td><td class="r">${x.qtd}</td><td class="r">${dinheiro(x.valor)}</td></tr>`).join('')}</table>
+      </details>
+    </div>
+
+    <div class="grade">
+      <div class="card"><h2>🧾 Pedidos por origem</h2>${barras(qv(r.origem, { site: '🌐 Site', balcao: '🏪 Balcão' }), dinheiro)}</div>
+      <div class="card"><h2>💳 Formas de pagamento</h2>${barras(qv(r.formas, FORMAS), dinheiro)}</div>
+      <div class="card"><h2>🍕 Pizzas por sabor</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div>${barras(ordenar(r.sabores), num)}</div>
+      <div class="card"><h2>📏 Pizzas por tamanho</h2>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, r.tamanhos[t.id] || 0]).filter(x => x[1]), num)}</div>
+      <div class="card"><h2>🥤 Bebidas e outros produtos</h2>${barras(ordenar(r.produtos), num)}</div>
+      <div class="card"><h2>🛵 Entrega × Retirada × Balcão</h2>${barras(qv(r.tipos, TIPOS), dinheiro)}
+        <div class="linha total"><span>Taxas de entrega arrecadadas</span><span>${dinheiro(r.taxas)}</span></div></div>
+    </div>`;
+}
+
+// tooltip das barras por dia (mouse e toque)
+const tip = document.getElementById('tip');
+document.addEventListener('pointerover', e => {
+  const c = e.target.closest('[data-tip]');
+  if (!c) { tip.style.display = 'none'; return; }
+  tip.textContent = c.dataset.tip; tip.style.display = 'block';
+  const b = c.getBoundingClientRect();
+  tip.style.left = Math.min(window.innerWidth - tip.offsetWidth - 8, Math.max(8, b.left + b.width / 2 - tip.offsetWidth / 2)) + 'px';
+  tip.style.top = (b.top - tip.offsetHeight - 6 + Math.max(0, b.height - 180)) + 'px';
+});
+
+/* ---------------- CSV ---------------- */
+function exportarCSV() {
+  if (!pedidos.length) return toast('Nenhum pedido no período.');
+  const n = v => (Number(v) || 0).toFixed(2).replace('.', ',');
+  const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago']];
+  pedidos.forEach(p => linhas.push([
+    br(p.data), p.numero, p.criadoEm ? new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5) : '',
+    p.origem || 'site', p.status, p.cliente.nome, p.cliente.telefone, p.entrega.tipo,
+    p.entrega.consumo === 'local' ? 'comer aqui' : p.entrega.consumo === 'levar' ? 'para levar' : '',
+    p.agendadoPara ? Horario.formatar(p.agendadoPara) : '',
+    (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}`).join(' | '),
+    n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao'
+  ]));
+  const csv = '﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const [de, ate] = intervalo(periodo);
+  a.download = `pedidos_${de}_a_${ate}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function toast(t) {
+  const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);
+}
+renderFiltros();
+</script>
+</body>
+</html>

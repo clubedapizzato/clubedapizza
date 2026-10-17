@@ -42,6 +42,12 @@ main{max-width:1400px;padding-bottom:30px}
 .acoes .avancar{flex:1 1 100%}
 a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 #login{max-width:380px;margin:40px auto}
+.agendados{background:#eff6ff;border:1px solid #bfdbfe;border-radius:14px;padding:10px 12px;margin-bottom:12px}
+.agendados h2{font-size:15px;margin:0 0 8px;display:flex;justify-content:space-between;align-items:center}
+.agendados .lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.agendados .ped{margin:0;border-left-color:#2563eb}
+.hora-ag{display:block;background:#1d4ed8;color:#fff;border-radius:8px;padding:5px 8px;margin:6px 0;font-weight:900;font-size:16px;text-align:center}
+#futuros{cursor:pointer}
 </style>
 </head>
 <body>
@@ -54,6 +60,8 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
       <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
       <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
       <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
+      <a class="btn sm sec" style="text-decoration:none" href="balcao.html" target="_blank">🏪 Balcão</a>
+      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html" target="_blank">📊 Relatórios</a>
       <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
     </div>
   </div>
@@ -71,6 +79,8 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
   </div>
 
   <div id="painel" class="hide">
+    <div id="futuros" class="aviso hide"></div>
+    <div id="agendados" class="agendados hide"></div>
     <div class="colunas" id="colunas"></div>
   </div>
 </main>
@@ -86,10 +96,12 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
 let fila = [], imprimindo = false, naFila = new Set();
-let pararLista = null;
+let pararLista = null, pararFuturos = null;
+let emEspera = new Set();       // agendados ainda fora da fila (faltam > alertaAntesMin)
 let audioCtx = null;
 const PROX = { novo: 'producao', producao: 'saiu', saiu: 'entregue' };
 const BOTAO = { novo: '▶️ Iniciar produção', producao: '🛵 Saiu para entrega', saiu: '✅ Marcar entregue' };
+const ANTES = (CONFIG.horario && CONFIG.horario.alertaAntesMin) || 40;
 
 const pref = (k, padrao) => { const v = localStorage.getItem('cdp_coz_' + k); return v == null ? padrao : v === '1'; };
 const setPref = (k, v) => localStorage.setItem('cdp_coz_' + k, v ? '1' : '0');
@@ -107,7 +119,7 @@ if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove(
 
 setInterval(() => {
   document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
-  if (pedidos.length) render();   // atualiza "há X min"
+  if (pedidos.length) { liberarAgendados(); render(); verificarImpressao(); }   // atualiza "há X min" e agendados
 }, 30000);
 document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
 
@@ -118,7 +130,11 @@ DB.observarUsuario(u => {
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
-  if (logado) assinar(); else if (pararLista) { pararLista(); pararLista = null; }
+  if (logado) { assinar(); assinarFuturos(); }
+  else {
+    if (pararLista) { pararLista(); pararLista = null; }
+    if (pararFuturos) { pararFuturos(); pararFuturos = null; }
+  }
 });
 async function entrar() {
   document.getElementById('erroLogin').textContent = '';
@@ -135,14 +151,44 @@ async function assinar() {
     pedidos = lista.sort((a, b) => a.numero - b.numero);
     const ids = new Set(pedidos.map(p => p.id));
     if (conhecidos) {
-      const novos = pedidos.filter(p => !conhecidos.has(p.id));
+      const chegaram = pedidos.filter(p => !conhecidos.has(p.id));
+      const novos = chegaram.filter(p => !Horario.emEspera(p)), agend = chegaram.filter(p => Horario.emEspera(p));
       if (novos.length) { tocar(); toast(`🔔 Novo pedido #${novos.map(p => p.numero).join(', #')}`); }
+      else if (agend.length) toast(`📅 Novo agendamento #${agend.map(p => p.numero + ' p/ ' + Horario.hora(p.agendadoPara)).join(', #')}`);
     }
+    if (!conhecidos) emEspera = new Set(pedidos.filter(p => Horario.emEspera(p)).map(p => p.id));
     conhecidos = ids;
+    liberarAgendados();
     render();
     verificarImpressao();
   }, () => toast('Sem permissão para ler pedidos. Verifique o login/regras do Firebase.'));
 }
+
+// Agendado que chegou a ANTES min do horário: entra em "Novos" com alarme (e auto-impressão)
+function liberarAgendados() {
+  const liberados = pedidos.filter(p => emEspera.has(p.id) && !Horario.emEspera(p));
+  pedidos.forEach(p => { if (Horario.emEspera(p)) emEspera.add(p.id); });
+  liberados.forEach(p => emEspera.delete(p.id));
+  const vivos = liberados.filter(p => p.status === 'novo');
+  if (vivos.length) { tocar(); toast(`⏰ Agendado #${vivos.map(p => p.numero + ' (' + Horario.hora(p.agendadoPara) + ')').join(', #')} entrou em Novos!`); }
+}
+
+/* Agendamentos de dias futuros: aviso para a cozinha saber que existem */
+async function assinarFuturos() {
+  if (pararFuturos) pararFuturos();
+  pararFuturos = await DB.observarPedidosFuturos(hojeISO(), lista => {
+    const porDia = {};
+    lista.filter(p => p.status !== 'cancelado').forEach(p => { porDia[p.data] = (porDia[p.data] || 0) + 1; });
+    const dias = Object.keys(porDia).sort();
+    const el = document.getElementById('futuros');
+    el.classList.toggle('hide', !dias.length);
+    const total = dias.reduce((s, d) => s + porDia[d], 0);
+    el.innerHTML = `📅 <b>${total} pedido${total > 1 ? 's' : ''} agendado${total > 1 ? 's' : ''} para os próximos dias:</b> ` +
+      dias.map(d => `<a class="lnk" href="#" onclick="verDia('${d}');return false">${d.slice(8)}/${d.slice(5, 7)} (${porDia[d]})</a>`).join(' • ') +
+      ` <span class="muted">— toque na data para ver</span>`;
+  });
+}
+function verDia(d) { elData.value = d; assinar(); }
 
 function minutos(p) { return Math.floor((Date.now() - p.criadoEm) / 60000); }
 
@@ -153,8 +199,12 @@ function render() {
     { id: 'saiu', nome: '🛵 Saiu / Pronto' },
     { id: 'entregue', nome: '✅ Entregues' }
   ];
+  const agend = pedidos.filter(p => Horario.emEspera(p)).sort((a, b) => a.agendadoPara - b.agendadoPara);
+  const elAg = document.getElementById('agendados');
+  elAg.classList.toggle('hide', !agend.length);
+  elAg.innerHTML = `<h2>📅 Agendados <span class="tag info">entram em Novos ${ANTES} min antes</span></h2><div class="lista">${agend.map(cartao).join('')}</div>`;
   document.getElementById('colunas').innerHTML = cols.map(c => {
-    let lista = pedidos.filter(p => p.status === c.id || (c.id === 'entregue' && p.status === 'cancelado'));
+    let lista = pedidos.filter(p => (p.status === c.id && !Horario.emEspera(p)) || (c.id === 'entregue' && p.status === 'cancelado'));
     if (c.id === 'entregue') lista = lista.slice().reverse();
     return `<div class="coluna"><h2>${c.nome}<span>${lista.length}</span></h2>
       ${lista.map(cartao).join('') || '<div class="muted" style="text-align:center;padding:10px">—</div>'}</div>`;
@@ -168,16 +218,20 @@ function cartao(p) {
   const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
   const ativo = !['entregue', 'cancelado'].includes(p.status);
 
+  const balcao = e.tipo === 'balcao';
   let pgTag;
-  if (pg.forma === 'pix') pgTag = pg.confirmado ? '<span class="tag ok">PIX ✔ PAGO</span>' : '<span class="tag pend">PIX AGUARDANDO</span>';
+  if (balcao) pgTag = `<span class="tag ok">✔ PAGO • ${({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTÃO' })[pg.forma] || pg.forma}${pg.trocoPara ? ' • troco ' + dinheiro(pg.trocoPara - p.total) : ''}</span>`;
+  else if (pg.forma === 'pix') pgTag = pg.confirmado ? '<span class="tag ok">PIX ✔ PAGO</span>' : '<span class="tag pend">PIX AGUARDANDO</span>';
   else if (pg.forma === 'dinheiro') pgTag = `<span class="tag info">DINHEIRO${pg.trocoPara ? ' • troco p/ ' + dinheiro(pg.trocoPara) + ' (' + dinheiro(pg.trocoPara - p.total) + ')' : ''}</span>`;
   else pgTag = '<span class="tag info">CARTÃO NA ENTREGA</span>';
 
   return `<div class="ped ${p.status}">
     <div class="cab"><span class="num">#${p.numero}</span>
-      <span class="tempo ${ativo && min >= 40 ? 'atraso' : ''}">${hora}${ativo ? ' • há ' + min + ' min' : ''}</span></div>
-    <div><b>${esc(p.cliente.nome)}</b> • <a class="lnk" href="tel:${esc(p.cliente.telefone)}">${esc(fone(p.cliente.telefone))}</a></div>
-    ${e.tipo === 'entrega'
+      <span class="tempo ${ativo && !p.agendadoPara && min >= 40 ? 'atraso' : ''}">${hora}${ativo && !p.agendadoPara ? ' • há ' + min + ' min' : ''}</span></div>
+    ${p.agendadoPara ? `<span class="hora-ag">📅 AGENDADO ${Horario.quando(p.agendadoPara).toUpperCase()} ${Horario.hora(p.agendadoPara)}${ativo ? ` • ${faltam(p)}` : ''}</span>` : ''}
+    ${p.cliente.nome || p.cliente.telefone ? `<div><b>${esc(p.cliente.nome)}</b>${p.cliente.telefone ? ` • <a class="lnk" href="tel:${esc(p.cliente.telefone)}">${esc(fone(p.cliente.telefone))}</a>` : ''}</div>` : ''}
+    ${balcao ? `<span class="tag info" style="font-size:13px">🏪 BALCÃO • ${e.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'}</span>`
+    : e.tipo === 'entrega'
       ? `<div>📍 ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' • ' + esc(e.complemento) : ''}</div>
          ${e.referencia ? `<div class="muted">Ref.: ${esc(e.referencia)}</div>` : ''}
          <div class="muted">📏 ${e.distanciaKm != null ? String(e.distanciaKm).replace('.', ',') + ' km' : 'distância não informada'} • entrega ${taxaCalc == null ? '<span class="tag pend">TAXA A COMBINAR</span>' : taxaCalc ? dinheiro(taxaCalc) : 'grátis'}</div>
@@ -190,13 +244,17 @@ function cartao(p) {
       ${p.impresso ? '' : '<span class="tag pend">NÃO IMPRESSO</span>'}
       ${p.status === 'cancelado' ? '<span class="tag erro">CANCELADO</span>' : ''}</div>
     <div class="acoes">
-      ${PROX[p.status] ? `<button class="btn avancar" onclick="mudarStatus('${p.id}','${PROX[p.status]}')">${p.status === 'producao' && e.tipo === 'retirada' ? '✅ Pronto p/ retirada' : BOTAO[p.status]}</button>` : ''}
-      ${pg.forma === 'pix' && ativo ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
+      ${PROX[p.status] ? `<button class="btn avancar" onclick="mudarStatus('${p.id}','${PROX[p.status]}')">${p.status === 'producao' && e.tipo === 'retirada' ? '✅ Pronto p/ retirada' : p.status === 'producao' && balcao ? '✅ Pronto' : BOTAO[p.status]}</button>` : ''}
+      ${pg.forma === 'pix' && ativo && !balcao ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
       <button class="btn sm sec" onclick="imprimirManual('${p.id}')">🖨️ Imprimir</button>
-      <a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>
+      ${p.cliente.telefone ? `<a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>` : ''}
       ${ativo ? `<button class="btn sm sec" onclick="cancelar('${p.id}')">Cancelar</button>` : ''}
     </div>
   </div>`;
+}
+function faltam(p) {
+  const m = Math.round((p.agendadoPara - Date.now()) / 60000);
+  return m >= 60 ? `faltam ${Math.floor(m / 60)}h${String(m % 60).padStart(2, '0')}` : m >= 0 ? `faltam ${m} min` : `atrasado ${-m} min`;
 }
 function fone(t) { const d = String(t).replace(/\D/g, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : t; }
 const achar = id => pedidos.find(p => p.id === id);
@@ -204,7 +262,7 @@ const achar = id => pedidos.find(p => p.id === id);
 async function mudarStatus(id, status) {
   const p = achar(id); if (!p) return;
   // abre a janela já no clique (navegadores bloqueiam pop-up depois de um await)
-  const jan = elWa.checked ? window.open('', '_blank') : null;
+  const jan = elWa.checked && p.cliente.telefone ? window.open('', '_blank') : null;
   try {
     await DB.atualizarPedido(id, { status }, status);
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
@@ -220,14 +278,14 @@ async function alternarPix(id, confirmado) {
 }
 async function cancelar(id) {
   const p = achar(id); if (!p) return;
-  if (!confirm(`Cancelar o pedido #${p.numero} de ${p.cliente.nome}?`)) return;
+  if (!confirm(`Cancelar o pedido #${p.numero}${p.cliente.nome ? ' de ' + p.cliente.nome : ''}?`)) return;
   await mudarStatus(id, 'cancelado');
 }
 
 /* ---------------- IMPRESSÃO ---------------- */
 function verificarImpressao() {
   if (!elAuto.checked) return;
-  pedidos.filter(p => p.status === 'novo' && !p.impresso && !naFila.has(p.id)).forEach(p => { naFila.add(p.id); fila.push(p.id); });
+  pedidos.filter(p => p.status === 'novo' && !p.impresso && !naFila.has(p.id) && !Horario.emEspera(p)).forEach(p => { naFila.add(p.id); fila.push(p.id); });
   processarFila();
 }
 async function processarFila() {
@@ -235,7 +293,7 @@ async function processarFila() {
   imprimindo = true;
   while (fila.length) {
     const id = fila.shift(), p = achar(id);
-    if (p && !p.impresso) {
+    if (p && !p.impresso && !Horario.emEspera(p)) {
       try { await Impressora.imprimir(p); await DB.atualizarPedido(id, { impresso: true }); }
       catch (e) { console.error(e); toast('Falha ao imprimir #' + p.numero); naFila.delete(id); }
     }

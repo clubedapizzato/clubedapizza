@@ -103,7 +103,7 @@ window.Preco = (function () {
   // Taxa: grátis até kmGratis; depois valorPorKm por km (ou fração) excedente.
   // entrega = { tipo, lat, lng }. Sem localização => null (a combinar).
   function taxa(entrega) {
-    if (!entrega || entrega.tipo === 'retirada') return 0;
+    if (!entrega || entrega.tipo === 'retirada' || entrega.tipo === 'balcao') return 0;
     const km = distanciaKm(entrega.lat, entrega.lng);
     if (km == null) return null;
     const E = CONFIG.entrega;
@@ -124,7 +124,7 @@ window.STATUS = {
     return ({
       novo: 'Recebido',
       producao: 'Em produção',
-      saiu: tipo === 'retirada' ? 'Pronto p/ retirada' : 'Saiu para entrega',
+      saiu: tipo === 'retirada' ? 'Pronto p/ retirada' : tipo === 'balcao' ? 'Pronto' : 'Saiu para entrega',
       entregue: 'Entregue',
       cancelado: 'Cancelado'
     })[status] || status;
@@ -134,8 +134,9 @@ window.STATUS = {
     const loja = CONFIG.loja.nome;
     const n = p.numero;
     const nome = (p.cliente.nome || '').split(' ')[0];
+    const ag = p.agendadoPara ? ` 📅 Agendado para *${Horario.formatar(p.agendadoPara)}*.` : '';
     return ({
-      novo: `Olá ${nome}! 🍕 Recebemos seu pedido *#${n}* no ${loja}. Total: ${dinheiro(p.total)}.`,
+      novo: `Olá ${nome}! 🍕 Recebemos seu pedido *#${n}* no ${loja}. Total: ${dinheiro(p.total)}.${ag}`,
       producao: `Olá ${nome}! 👨‍🍳 Seu pedido *#${n}* já está em produção no ${loja}.`,
       saiu: p.entrega.tipo === 'retirada'
         ? `Olá ${nome}! ✅ Seu pedido *#${n}* está pronto para retirada no ${loja}.`
@@ -152,7 +153,62 @@ window.linkWhats = function (telefone, texto) {
   return `https://wa.me/${d}?text=${encodeURIComponent(texto || '')}`;
 };
 
-window.hojeISO = function () {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+window.isoDe = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+window.hojeISO = () => isoDe(new Date());
+
+/* ---------- horário de atendimento / agendamento ---------- */
+window.Horario = (function () {
+  const H = () => CONFIG.horario || { dias: [0, 1, 2, 3, 4, 5, 6], abre: '00:00', fecha: '23:59', intervaloAgendamentoMin: 30, alertaAntesMin: 40 };
+  const min = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+  const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const em = (dia, hhmm) => { const d = new Date(dia); d.setHours(0, min(hhmm), 0, 0); return d; };
+
+  function aberto(agora = new Date()) {
+    const h = H(), m = agora.getHours() * 60 + agora.getMinutes();
+    return h.dias.includes(agora.getDay()) && m >= min(h.abre) && m < min(h.fecha);
+  }
+
+  // Turno atual (se aberto) ou o próximo: { data, inicio, fim, aberto }
+  function proximoTurno(agora = new Date()) {
+    const h = H();
+    for (let i = 0; i < 8; i++) {
+      const dia = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + i);
+      if (!h.dias.includes(dia.getDay())) continue;
+      const inicio = em(dia, h.abre), fim = em(dia, h.fecha);
+      if (agora < fim) return { data: isoDe(dia), inicio, fim, aberto: agora >= inicio };
+    }
+    return null;
+  }
+
+  // Horários (ms) para agendar: de 30 em 30 min, do turno atual (só futuros) ou do próximo
+  function horariosAgendamento(agora = new Date()) {
+    const t = proximoTurno(agora);
+    if (!t) return [];
+    const passo = (H().intervaloAgendamentoMin || 30) * 60000, lista = [];
+    for (let x = t.inicio.getTime(); x + passo <= t.fim.getTime(); x += passo) if (x > agora.getTime()) lista.push(x);
+    return lista;
+  }
+
+  const hora = ms => new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const formatar = ms => `${new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} ${hora(ms)}`;
+
+  // "hoje", "amanhã" ou o dia da semana
+  function quando(ms, agora = new Date()) {
+    const d = new Date(ms), dias = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()) - new Date(agora.getFullYear(), agora.getMonth(), agora.getDate())) / 864e5);
+    return dias === 0 ? 'hoje' : dias === 1 ? 'amanhã' : DIAS[d.getDay()];
+  }
+  // "Abrimos hoje às 18:30" / "Abrimos quinta às 18:30"
+  function textoAbertura(agora = new Date()) {
+    const t = proximoTurno(agora);
+    return t ? `Abrimos ${quando(t.inicio, agora)} às ${H().abre}` : '';
+  }
+  // "hoje às 20:00" / "sexta (18/10) às 20:00"
+  function textoAgendado(ms, agora = new Date()) {
+    const q = quando(ms, agora);
+    return (q === 'hoje' || q === 'amanhã' ? q : `${q} (${new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})`) + ` às ${hora(ms)}`;
+  }
+  // Pedido agendado que ainda não deve ir para produção
+  const emEspera = (p, agora = Date.now()) => !!p.agendadoPara && p.status === 'novo' && p.agendadoPara - agora > (H().alertaAntesMin || 40) * 60000;
+
+  return { aberto, proximoTurno, horariosAgendamento, hora, formatar, quando, textoAbertura, textoAgendado, emEspera };
+})();

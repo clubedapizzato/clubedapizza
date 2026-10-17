@@ -22,6 +22,17 @@ window.CONFIG = {
     zoom: 15
   },
 
+  /* Horário de atendimento da loja online (o balcão não tem restrição).
+     dias: 0 = domingo, 1 = segunda ... 6 = sábado (3 = quarta: FECHADO).
+     Pedidos "o quanto antes" só dentro do horário; fora dele o cliente só AGENDA. */
+  horario: {
+    dias: [0, 1, 2, 4, 5, 6],
+    abre: '18:30',
+    fecha: '23:00',
+    intervaloAgendamentoMin: 30,   // horários de agendamento de 30 em 30 min
+    alertaAntesMin: 40             // agendado entra em "Novos" (alarme + impressão) X min antes
+  },
+
   pix: {
     chave: '55377043000182',      // CNPJ (só dígitos). Alternativa: celular '+5563991332966'
     nomeRecebedor: 'HENRIQUE A E S AMARAL', // até 25 caracteres, sem acento
