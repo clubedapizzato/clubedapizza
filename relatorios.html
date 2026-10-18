@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
-<title>Relatórios • Clube da Pizza</title>
+<title>Gestão • Clube da Pizza</title>
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:1100px;padding-bottom:30px}
@@ -14,7 +14,7 @@ main{max-width:1100px;padding-bottom:30px}
 .filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .filtros .chip{padding:9px 13px;font-size:14px}
 .datas{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
-.datas input{width:auto;padding:8px}
+.datas input,.datas select{width:auto;padding:8px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
 .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .kpi small{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
@@ -41,13 +41,29 @@ main{max-width:1100px;padding-bottom:30px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left}
 td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--muted)}
 details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;color:var(--muted)}
+.rolar{overflow-x:auto}
+/* produtos & estoque */
+.abas{position:static;margin-bottom:6px}
+.acoesTopo{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.neg{color:#dc2626;font-weight:900}
+.baixo{color:var(--warn);font-weight:800}
+.inativo td{opacity:.5}
+.alerta{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:14px}
+.calc{background:#f5f5f4;border-radius:12px;padding:10px 12px;margin-top:12px;font-size:14px}
+.calc .linha{padding:3px 0}
+.chk{display:flex;gap:8px;align-items:center;font-weight:600;margin:10px 0 0}
+.chk input{width:auto}
+.cfg{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+@media(max-width:640px){.cfg{grid-template-columns:1fr}}
+.modal .box{max-width:640px}
 </style>
 </head>
 <body>
 <header class="topo">
   <div class="in">
-    <h1>📊 Relatórios</h1>
+    <h1>📊 Gestão</h1>
     <div class="hide" id="ferramentas" style="display:flex;gap:6px">
       <a class="btn sm sec" style="text-decoration:none" href="cozinha.html">👨‍🍳 Cozinha</a>
       <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
@@ -59,7 +75,7 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
   <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> mostra só os pedidos feitos neste navegador.</div>
 
   <div id="login" class="card hide">
-    <h2>Acesso aos relatórios</h2>
+    <h2>Acesso à gestão</h2>
     <div class="muted">Use o mesmo login da cozinha.</div>
     <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
     <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
@@ -68,19 +84,69 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
   </div>
 
   <div id="painel" class="hide">
-    <div class="card">
-      <div class="filtros" id="filtros"></div>
-      <div class="datas">
-        <label style="margin:0" for="de">De</label><input type="date" id="de">
-        <label style="margin:0" for="ate">até</label><input type="date" id="ate">
-        <button class="btn sm dark" onclick="periodo='livre';carregar()">Ver</button>
-        <button class="btn sm sec" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+    <nav class="tabs abas" id="abas"></nav>
+
+    <!-- ================= RELATÓRIOS ================= -->
+    <section id="aba-relatorios">
+      <div class="card">
+        <div class="filtros" id="filtros"></div>
+        <div class="datas">
+          <label style="margin:0" for="de">De</label><input type="date" id="de">
+          <label style="margin:0" for="ate">até</label><input type="date" id="ate">
+          <button class="btn sm dark" onclick="periodo='livre';carregar()">Ver</button>
+          <button class="btn sm sec" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+        </div>
+        <div class="muted" id="status" style="margin-top:8px"></div>
       </div>
-      <div class="muted" id="status" style="margin-top:8px"></div>
-    </div>
-    <div id="resultado"></div>
+      <div id="resultado"></div>
+    </section>
+
+    <!-- ================= PRODUTOS & ESTOQUE ================= -->
+    <section id="aba-produtos" class="hide">
+      <div id="importar" class="card hide">
+        <h2>📥 Catálogo ainda não está no banco</h2>
+        <div class="muted">A loja está usando o cardápio fixo do arquivo <code>js/cardapio.js</code>. Importe para editar preços, ativar/desativar itens e controlar estoque. Os sachês (Maionese, Ketchup, Mostarda, Barbecue, Molho de pimenta) são criados com estoque 0.</div>
+        <button class="btn" style="margin-top:12px" onclick="importar()">📥 Importar cardápio atual</button>
+      </div>
+
+      <div id="alertas"></div>
+      <div class="kpis" id="kpisEstoque"></div>
+
+      <div class="card">
+        <h2>⚙️ Configurações da loja</h2>
+        <div class="cfg">
+          <div><label for="cfgCortesia">Sachês grátis por pizza</label><input id="cfgCortesia" type="number" min="0" step="1"></div>
+          <div><label for="cfgTaxa">Taxa padrão da maquininha (%)</label><input id="cfgTaxa" type="number" min="0" max="50" step="0.01"></div>
+          <button class="btn dark" onclick="salvarCfg()">Salvar</button>
+        </div>
+        <div class="muted" style="margin-top:6px">A cortesia vale para os sachês mais baratos; o restante é cobrado. A taxa entra no preço sugerido (cada produto pode ter a sua).</div>
+      </div>
+
+      <div class="acoesTopo">
+        <button class="btn" onclick="abrirMov('entrada')">➕ Entrada de compra</button>
+        <button class="btn dark" onclick="abrirMov('ajuste')">➖ Ajuste de estoque</button>
+        <button class="btn sec" onclick="editarProduto(null)">🆕 Novo produto</button>
+      </div>
+
+      <div id="tabelas"></div>
+
+      <div class="card">
+        <h2>🧾 Movimentações de estoque</h2>
+        <div class="datas" style="margin-top:0">
+          <select id="movProduto"></select>
+          <label style="margin:0" for="movDe">De</label><input type="date" id="movDe">
+          <label style="margin:0" for="movAte">até</label><input type="date" id="movAte">
+          <button class="btn sm dark" onclick="carregarMov()">Ver</button>
+        </div>
+        <div id="movs" class="rolar" style="margin-top:10px"></div>
+      </div>
+    </section>
   </div>
 </main>
+
+<div class="modal" id="modal" onclick="if(event.target===this)fecharModal()">
+  <div class="box" id="modalConteudo"></div>
+</div>
 
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
@@ -88,24 +154,35 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <script src="js/config.js"></script>
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
+<script src="js/catalogo.js"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
+let aba = (() => { try { return localStorage.getItem('cdp_gestao_aba') || 'relatorios'; } catch { return 'relatorios'; } })();
 const PERIODOS = [{ id: 'hoje', nome: 'Hoje' }, { id: '7d', nome: '7 dias' }, { id: 'mes', nome: 'Este mês' }, { id: 'mesPassado', nome: 'Mês passado' }];
 const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
 const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
 const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const pct = v => v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+const numero = t => { const v = parseFloat(String(t == null ? '' : t).replace(/[^\d,.-]/g, '').replace(',', '.')); return isNaN(v) ? null : v; };
+const val = id => document.getElementById(id).value.trim();
 
 if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
 
 /* ---------------- LOGIN ---------------- */
+let iniciado = false;
 DB.observarUsuario(u => {
+  if (u && Equipe.de(u.email).papel === 'entregador') return location.replace('entregador.html');
   const logado = !!u;
   document.getElementById('login').classList.toggle('hide', logado);
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
-  if (logado) carregar();
+  if (logado) {
+    mostrarAba(aba);
+    carregar();
+    if (!iniciado) { iniciado = true; Catalogo.iniciar(() => { renderProdutos(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); }); }
+  }
 });
 async function entrar() {
   document.getElementById('erroLogin').textContent = '';
@@ -113,6 +190,15 @@ async function entrar() {
   catch (e) { document.getElementById('erroLogin').textContent = 'E-mail ou senha inválidos.'; }
 }
 document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+
+function mostrarAba(a) {
+  aba = a;
+  try { localStorage.setItem('cdp_gestao_aba', a); } catch { }
+  document.getElementById('abas').innerHTML = [['relatorios', '📊 Relatórios'], ['produtos', '📦 Produtos & Estoque']]
+    .map(([id, n]) => `<button class="tab ${id === a ? 'on' : ''}" onclick="mostrarAba('${id}')">${n}</button>`).join('');
+  ['relatorios', 'produtos'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
+  if (a === 'produtos') { renderProdutos(); if (!document.getElementById('movs').innerHTML) carregarMov(); }
+}
 
 /* ---------------- PERÍODO ---------------- */
 function intervalo(id) {
@@ -148,17 +234,36 @@ async function carregar() {
 const br = iso => iso.split('-').reverse().join('/');
 
 /* ---------------- CÁLCULOS ---------------- */
+// Custo unitário do item: o gravado na venda; senão o custo atual do cadastro (estimado)
+function custoItem(it) {
+  if (it.custoUnitario != null && (it.custoUnitario || it.custoExtras)) return { v: it.custoUnitario + (it.custoExtras || 0), est: false };
+  if (it.tipo === 'produto') { const d = Catalogo.doc(it.id); if (d && (d.custoUnitario || d.custosExtras)) return { v: (d.custoUnitario || 0) + (d.custosExtras || 0), est: true }; }
+  if (it.tipo === 'pizza') { const c = Catalogo.custoPizza(it); if (c) return { v: c, est: true }; }
+  return null;
+}
+
 function calcular(lista, de, ate) {
   const r = {
-    faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, taxas: 0,
-    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}
+    faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, naoEntregues: 0, taxas: 0,
+    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {},
+    lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {}
   };
   // todos os dias do período (dias sem venda aparecem zerados)
   for (let d = new Date(de + 'T12:00'); isoDe(d) <= ate; d.setDate(d.getDate() + 1)) r.dias[isoDe(d)] = { valor: 0, qtd: 0 };
   const soma = (o, k, valor, qtd = 1) => { o[k] = o[k] || { valor: 0, qtd: 0 }; o[k].valor += valor; o[k].qtd += qtd; };
+  const ent = nome => (r.entregadores[nome] = r.entregadores[nome] || { entregues: 0, nao: 0, taxas: 0, tempos: [] });
 
   lista.forEach(p => {
+    // entregas por entregador (cada tentativa frustrada conta como "não entregue")
+    (p.falhas || []).forEach(f => { ent((f.entregador && f.entregador.nome) || f.entregador || '—').nao++; });
+    if (p.status === 'entregue' && p.entregador && p.entrega.tipo === 'entrega') {
+      const e = ent(p.entregador.nome || p.entregador.email);
+      e.entregues++; e.taxas += p.taxaEntrega || 0;
+      if (p.saiuEm && p.entregueEm) e.tempos.push(p.entregueEm - p.saiuEm);
+    }
+
     if (p.status === 'cancelado') { r.cancelados++; r.valorCancelado += p.total || 0; return; }
+    if (p.status === 'nao_entregue') { r.naoEntregues++; return; }   // pendente: fora do faturamento
     const total = p.total || 0;
     r.pedidos++; r.faturamento += total;
     r.taxas += p.taxaEntrega || 0;
@@ -166,7 +271,8 @@ function calcular(lista, de, ate) {
     soma(r.origem, p.origem || 'site', total);
     soma(r.formas, p.pagamento.forma, total);
     soma(r.tipos, p.entrega.tipo, total);
-    (p.itens || []).forEach(it => {
+    const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
+    (p.itens || []).forEach((it, i) => {
       const q = it.qtd || 1;
       if (it.tipo === 'pizza') {
         it.sabores.forEach(s => { r.sabores[s] = (r.sabores[s] || 0) + q / it.sabores.length; });   // meio a meio = ½ por sabor
@@ -175,6 +281,15 @@ function calcular(lista, de, ate) {
         const nome = Preco.descricao(it);
         r.produtos[nome] = (r.produtos[nome] || 0) + q;
       }
+      // lucro bruto (só itens com custo cadastrado)
+      const c = custoItem(it);
+      if (!c) return;
+      const gratis = it.gratis != null ? it.gratis : (sc.gratisPorItem[i] || 0);
+      const receita = (it.preco != null ? it.preco : Preco.unitario(it)) * (q - gratis);
+      const nome = it.tipo === 'pizza' ? `🍕 Pizza ${(Preco.tamanho(it.tamanho) || {}).nome || it.tamanho}` : (Preco.ehSache(it) ? '🥫 ' : '') + Preco.descricao(it);
+      const l = r.lucro[nome] = r.lucro[nome] || { qtd: 0, receita: 0, custo: 0, est: false };
+      l.qtd += q; l.receita += receita; l.custo += c.v * q; l.est = l.est || c.est;
+      r.cmv += c.v * q; r.receitaComCusto += receita; r.estimado = r.estimado || c.est;
     });
   });
   r.ticketMedio = r.pedidos ? r.faturamento / r.pedidos : 0;
@@ -191,6 +306,7 @@ function barras(itens, fmt) {   // itens: [[nome, valor, extra]]
     <span class="v">${fmt(v)}${extra ? ` <small>${extra}</small>` : ''}</span></div>`).join('');
 }
 const ordenar = o => Object.entries(o).sort((a, b) => b[1] - a[1]);
+const minTxt = ms => ms == null ? '—' : Math.round(ms / 60000) + ' min';
 
 function render(r) {
   const dias = Object.entries(r.dias);
@@ -199,6 +315,9 @@ function render(r) {
   const kpi = (t, v, s) => `<div class="kpi"><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
   const qv = (o, nomes) => Object.entries(o).sort((a, b) => b[1].valor - a[1].valor)
     .map(([k, x]) => [nomes[k] || k, x.valor, `${x.qtd} ped.`]);
+  const lucro = Object.entries(r.lucro).sort((a, b) => (b[1].receita - b[1].custo) - (a[1].receita - a[1].custo));
+  const lucroBruto = r.receitaComCusto - r.cmv;
+  const ents = Object.entries(r.entregadores).sort((a, b) => b[1].entregues - a[1].entregues);
 
   document.getElementById('resultado').innerHTML = `
     <div class="kpis">
@@ -206,8 +325,10 @@ function render(r) {
       ${kpi('🧾 Pedidos', r.pedidos, `${num(r.pedidos / dias.length)} por dia`)}
       ${kpi('🎯 Ticket médio', dinheiro(r.ticketMedio))}
       ${kpi('🍕 Pizzas', num(r.pizzas))}
-      ${kpi('❌ Cancelados', r.cancelados, r.cancelados ? dinheiro(r.valorCancelado) + ' não faturados' : '')}
+      ${kpi('❌ Cancelados', r.cancelados, (r.cancelados ? dinheiro(r.valorCancelado) + ' não faturados' : '') + (r.naoEntregues ? ` • ${r.naoEntregues} não entregue(s) pendente(s)` : ''))}
       ${kpi('🛵 Taxas de entrega', dinheiro(r.taxas))}
+      ${kpi('📦 CMV', dinheiro(r.cmv), r.receitaComCusto ? `${pct(r.cmv / r.receitaComCusto * 100)} da receita desses itens` : 'cadastre custos em Produtos')}
+      ${kpi('💹 Lucro bruto', dinheiro(lucroBruto), 'itens com custo cadastrado')}
     </div>
 
     <div class="card">
@@ -221,12 +342,33 @@ function render(r) {
       </details>
     </div>
 
+    <div class="card" id="cardLucro">
+      <h2>💹 Lucro bruto por produto</h2>
+      ${lucro.length ? `<div class="rolar"><table>
+        <tr><th>Produto</th><th class="r">Qtd</th><th class="r">Receita</th><th class="r">Custo (CMV)</th><th class="r">Lucro bruto</th><th class="r">Margem</th></tr>
+        ${lucro.map(([n, l]) => `<tr><td>${esc(n)}${l.est ? ' *' : ''}</td><td class="r">${num(l.qtd)}</td><td class="r">${dinheiro(l.receita)}</td><td class="r">${dinheiro(l.custo)}</td>
+          <td class="r ${l.receita - l.custo < 0 ? 'neg' : ''}"><b>${dinheiro(l.receita - l.custo)}</b></td><td class="r">${pct(l.receita ? (l.receita - l.custo) / l.receita * 100 : null)}</td></tr>`).join('')}
+        <tr><td><b>Total</b></td><td></td><td class="r"><b>${dinheiro(r.receitaComCusto)}</b></td><td class="r"><b>${dinheiro(r.cmv)}</b></td><td class="r"><b>${dinheiro(lucroBruto)}</b></td><td class="r">${pct(r.receitaComCusto ? lucroBruto / r.receitaComCusto * 100 : null)}</td></tr>
+      </table></div>
+      <div class="muted" style="margin-top:6px">Receita sem taxa de entrega; sachês de cortesia entram com receita zero. Custo = custo médio + extras gravado no momento da venda.${r.estimado ? ' * custo atual do cadastro (venda sem custo gravado).' : ''}</div>`
+      : '<div class="muted">Nenhuma venda de produto com custo cadastrado no período. Lance as compras em 📦 Produtos & Estoque.</div>'}
+    </div>
+
+    <div class="card" id="cardEntregas">
+      <h2>🛵 Entregas por entregador</h2>
+      ${ents.length ? `<div class="rolar"><table>
+        <tr><th>Entregador</th><th class="r">Entregues</th><th class="r">Não entregues</th><th class="r">Taxas de entrega</th><th class="r">Tempo médio saiu → entregue</th></tr>
+        ${ents.map(([n, e]) => `<tr><td>${esc(n)}</td><td class="r">${e.entregues}</td><td class="r ${e.nao ? 'neg' : ''}">${e.nao}</td><td class="r">${dinheiro(e.taxas)}</td>
+          <td class="r">${minTxt(e.tempos.length ? e.tempos.reduce((a, b) => a + b, 0) / e.tempos.length : null)}</td></tr>`).join('')}
+      </table></div>` : '<div class="muted">Nenhuma entrega feita pela página do entregador no período.</div>'}
+    </div>
+
     <div class="grade">
       <div class="card"><h2>🧾 Pedidos por origem</h2>${barras(qv(r.origem, { site: '🌐 Site', balcao: '🏪 Balcão' }), dinheiro)}</div>
       <div class="card"><h2>💳 Formas de pagamento</h2>${barras(qv(r.formas, FORMAS), dinheiro)}</div>
       <div class="card"><h2>🍕 Pizzas por sabor</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div>${barras(ordenar(r.sabores), num)}</div>
       <div class="card"><h2>📏 Pizzas por tamanho</h2>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, r.tamanhos[t.id] || 0]).filter(x => x[1]), num)}</div>
-      <div class="card"><h2>🥤 Bebidas e outros produtos</h2>${barras(ordenar(r.produtos), num)}</div>
+      <div class="card"><h2>🥤 Bebidas, sachês e outros</h2>${barras(ordenar(r.produtos), num)}</div>
       <div class="card"><h2>🛵 Entrega × Retirada × Balcão</h2>${barras(qv(r.tipos, TIPOS), dinheiro)}
         <div class="linha total"><span>Taxas de entrega arrecadadas</span><span>${dinheiro(r.taxas)}</span></div></div>
     </div>`;
@@ -248,14 +390,15 @@ function exportarCSV() {
   if (!pedidos.length) return toast('Nenhum pedido no período.');
   const n = v => (Number(v) || 0).toFixed(2).replace('.', ',');
   const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago']];
+  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago', 'Entregador']];
   pedidos.forEach(p => linhas.push([
     br(p.data), p.numero, p.criadoEm ? new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5) : '',
     p.origem || 'site', p.status, p.cliente.nome, p.cliente.telefone, p.entrega.tipo,
     p.entrega.consumo === 'local' ? 'comer aqui' : p.entrega.consumo === 'levar' ? 'para levar' : '',
     p.agendadoPara ? Horario.formatar(p.agendadoPara) : '',
     (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}`).join(' | '),
-    n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao'
+    n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao',
+    p.entregador ? p.entregador.nome : ''
   ]));
   const csv = '﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a');
@@ -264,6 +407,291 @@ function exportarCSV() {
   a.download = `pedidos_${de}_a_${ate}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* =========================================================
+   PRODUTOS & ESTOQUE
+   ========================================================= */
+const taxaPadrao = () => Number(CARDAPIO.loja.taxaMaquininha) || 0;
+// números do produto com o preço de venda atual
+function financeiro(d) {
+  const taxa = Catalogo.taxaDe(d), custo = d.custoUnitario || 0, extras = d.custosExtras || 0;
+  return {
+    taxa, custo, extras,
+    sugerido: Margem.sugerido(custo, extras, d.margemDesejada, taxa),
+    real: Margem.real(d.precoVenda || 0, custo, extras, taxa),
+    lucro: Margem.lucro(d.precoVenda || 0, custo, extras, taxa)
+  };
+}
+const fmtEstoque = d => !d.controlaEstoque ? '<span class="muted">não controla</span>'
+  : `<span class="${(d.estoqueAtual || 0) < 0 ? 'neg' : (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) ? 'baixo' : ''}">${num(d.estoqueAtual || 0)} ${esc(d.unidade || 'un')}</span>`;
+
+function renderProdutos() {
+  if (aba !== 'produtos') return;
+  const todos = Catalogo.todos(), vazio = !Catalogo.doBanco();
+  document.getElementById('importar').classList.toggle('hide', !vazio);
+  const cfgC = document.getElementById('cfgCortesia'), cfgT = document.getElementById('cfgTaxa');
+  if (document.activeElement !== cfgC) cfgC.value = CARDAPIO.loja.cortesiaSachesPorPizza || 0;
+  if (document.activeElement !== cfgT) cfgT.value = CARDAPIO.loja.taxaMaquininha;
+
+  const prods = todos.filter(d => d.tipo !== 'sabor');
+  const controlados = prods.filter(d => d.controlaEstoque);
+  const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
+  const negativos = controlados.filter(d => (d.estoqueAtual || 0) < 0);
+  const parado = controlados.reduce((s, d) => s + Math.max(0, d.estoqueAtual || 0) * (d.custoUnitario || 0), 0);
+  document.getElementById('alertas').innerHTML = vazio ? '' : (negativos.length ? `<div class="alerta">🔴 <b>Estoque negativo:</b> ${negativos.map(d => `${esc(d.nome)} (${num(d.estoqueAtual)})`).join(', ')} — lance a compra ou faça a contagem.</div>` : '') +
+    (abaixo.length ? `<div class="alerta" style="background:#fffbeb;border-color:#fde68a;color:#78350f">⚠️ <b>${abaixo.length} item(ns) no mínimo ou abaixo:</b> ${abaixo.map(d => `${esc(d.nome)} (${num(d.estoqueAtual || 0)}/${num(d.estoqueMinimo || 0)})`).join(', ')}</div>` : '');
+  const kpi = (t, v, s) => `<div class="kpi"><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+  document.getElementById('kpisEstoque').innerHTML = vazio ? '' :
+    kpi('💰 Valor parado em estoque', dinheiro(parado), 'pelo custo médio') +
+    kpi('📦 Itens controlados', controlados.length, `${prods.length} produtos cadastrados`) +
+    kpi('⚠️ Abaixo do mínimo', abaixo.length, negativos.length ? `${negativos.length} negativo(s)` : '');
+
+  if (vazio) { document.getElementById('tabelas').innerHTML = ''; return; }
+  const sabores = todos.filter(d => d.tipo === 'sabor');
+  let h = `<div class="card"><h2>🍕 Sabores de pizza</h2><div class="rolar"><table>
+    <tr><th>Sabor</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Custo P/M/G</th><th></th></tr>
+    ${sabores.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+      ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
+      <td class="r muted">${['P', 'M', 'G'].map(t => (d.custos || {})[t] != null && (d.custos || {})[t] !== '' ? dinheiro(d.custos[t]) : '—').join(' / ')}</td>
+      <td class="r"><button class="btn sm sec" onclick="editarSabor('${d.id}')">✏️</button></td></tr>`).join('')}
+  </table></div></div>`;
+  const cats = [];
+  prods.forEach(d => { const c = d.categoria || 'Outros'; if (!cats.includes(c)) cats.push(c); });
+  cats.forEach(c => {
+    h += `<div class="card"><h2>${esc(c)}</h2><div class="rolar"><table>
+      <tr><th>Produto</th><th>Ativo</th><th class="r">Estoque</th><th class="r">Custo + extras</th><th class="r">Preço venda</th><th class="r">Sugerido</th><th class="r">Margem real</th><th class="r">Lucro/un</th><th></th></tr>
+      ${prods.filter(d => (d.categoria || 'Outros') === c).map(d => {
+        const f = financeiro(d);
+        return `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b>${d.precoAutomatico ? ' <span class="muted" title="preço atualiza a cada compra">🔄</span>' : ''}</td>
+          <td>${d.ativo === false ? '⛔' : '✅'}</td><td class="r">${fmtEstoque(d)}</td>
+          <td class="r">${dinheiro(f.custo + f.extras)}</td><td class="r"><b>${dinheiro(d.precoVenda)}</b></td>
+          ${!(f.custo + f.extras) ? '<td class="r muted" colspan="3">sem custo — lance uma compra</td>' : `
+          <td class="r">${f.sugerido == null ? '<span class="neg">margem+taxa ≥ 100%</span>' : dinheiro(f.sugerido)}</td>
+          <td class="r ${f.real != null && f.real < 0 ? 'neg' : ''}">${pct(f.real)}</td><td class="r ${f.lucro < 0 ? 'neg' : ''}">${dinheiro(f.lucro)}</td>`}
+          <td class="r"><button class="btn sm sec" onclick="editarProduto('${d.id}')">✏️</button></td></tr>`;
+      }).join('')}
+    </table></div></div>`;
+  });
+  document.getElementById('tabelas').innerHTML = h;
+
+  const sel = document.getElementById('movProduto'), atual = sel.value;
+  sel.innerHTML = '<option value="">Todos os produtos</option>' + prods.map(d => `<option value="${d.id}">${esc(d.nome)}</option>`).join('');
+  sel.value = atual;
+}
+
+async function importar() {
+  if (!confirm('Importar o cardápio atual (sabores, bebidas e sachês) para o banco de dados?')) return;
+  try { const n = await DB.importarProdutos(Catalogo.listaImportacao()); toast(`✅ ${n} itens importados.`); }
+  catch (e) { console.error(e); toast(e.message || 'Erro ao importar.'); }
+}
+async function salvarCfg() {
+  const c = numero(val('cfgCortesia')), t = numero(val('cfgTaxa'));
+  if (c == null || c < 0 || c % 1) return toast('Cortesia: informe um número inteiro (0 ou mais).');
+  if (t == null || t < 0 || t >= 100) return toast('Taxa da maquininha inválida.');
+  try { await DB.salvarConfig({ cortesiaSachesPorPizza: c, taxaMaquininha: t }); toast('✅ Configurações salvas.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* ---------------- MODAL ---------------- */
+function abrirModal(html) { document.getElementById('modalConteudo').innerHTML = html; document.getElementById('modal').classList.add('on'); }
+function fecharModal() { document.getElementById('modal').classList.remove('on'); }
+const campo = (id, rotulo, valor, extra = '') => `<div><label for="${id}">${rotulo}</label><input id="${id}" value="${esc(valor == null ? '' : valor)}" ${extra}></div>`;
+const caixa = (id, rotulo, on) => `<label class="chk"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}> ${rotulo}</label>`;
+
+let editando = null;   // id do produto em edição (null = novo)
+function editarProduto(id) {
+  editando = id;
+  const d = id ? Catalogo.doc(id) : { tipo: 'produto', ativo: true, controlaEstoque: true, unidade: 'un', estoqueAtual: 0, estoqueMinimo: 0, custoUnitario: 0, custosExtras: 0, taxaMaquininha: null, margemDesejada: 30, precoVenda: 0 };
+  const cats = [...new Set(Catalogo.todos().filter(x => x.tipo !== 'sabor').map(x => x.categoria))];
+  abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo produto'}</h2>
+    <div class="grid2">
+      ${campo('pNome', 'Nome', d.nome)}
+      ${campo('pCat', 'Categoria', d.categoria, 'list="listaCats" placeholder="Ex.: Latas 350ml"')}
+    </div>
+    <datalist id="listaCats">${cats.map(c => `<option value="${esc(c)}">`).join('')}</datalist>
+    ${caixa('pAtivo', 'Ativo (aparece à venda na loja e no balcão)', d.ativo !== false)}
+    ${caixa('pControla', 'Controla estoque (some da loja quando zerar)', !!d.controlaEstoque)}
+    <div class="grid2">
+      ${campo('pUnidade', 'Unidade', d.unidade || 'un')}
+      ${campo('pMin', 'Estoque mínimo (alerta)', d.estoqueMinimo || 0, 'inputmode="decimal"')}
+    </div>
+    <div class="muted" style="margin-top:6px">Estoque atual: <b>${num(d.estoqueAtual || 0)}</b> — muda só por <b>Entrada de compra</b>, <b>Ajuste</b> ou venda.</div>
+    <h3 style="margin-top:14px">💲 Custo e preço</h3>
+    <div class="grid2">
+      ${campo('pCusto', 'Custo unitário (custo médio)', d.custoUnitario || 0, 'inputmode="decimal" oninput="calcProduto()"')}
+      ${campo('pExtras', 'Custos extras por unidade (embalagem, gelo, sacola)', d.custosExtras || 0, 'inputmode="decimal" oninput="calcProduto()"')}
+      ${campo('pTaxa', `Taxa da maquininha % (vazio = padrão ${pct(taxaPadrao())})`, d.taxaMaquininha, 'inputmode="decimal" oninput="calcProduto()"')}
+      ${campo('pMargem', 'Margem desejada %', d.margemDesejada || 0, 'inputmode="decimal" oninput="calcProduto()"')}
+    </div>
+    <div class="grid3">
+      ${campo('pPreco', 'Preço de venda (R$)', d.precoVenda || 0, 'inputmode="decimal" oninput="calcProduto()"')}
+      <div><label>&nbsp;</label><button class="btn sec full" type="button" onclick="usarSugerido()">⬅️ Usar sugerido</button></div>
+    </div>
+    ${caixa('pAuto', 'Atualizar o preço pelo sugerido a cada compra (arredonda para R$ 0,05)', !!d.precoAutomatico)}
+    <div class="calc" id="pCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarProdutoForm()">Salvar</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  calcProduto();
+}
+function lerFinanceiroForm() {
+  const taxaTxt = val('pTaxa');
+  return {
+    custo: numero(val('pCusto')) || 0, extras: numero(val('pExtras')) || 0,
+    taxa: taxaTxt === '' ? null : numero(taxaTxt), margem: numero(val('pMargem')) || 0, preco: numero(val('pPreco')) || 0
+  };
+}
+function calcProduto() {
+  const f = lerFinanceiroForm(), taxa = f.taxa == null ? taxaPadrao() : f.taxa;
+  const sug = Margem.sugerido(f.custo, f.extras, f.margem, taxa), real = Margem.real(f.preco, f.custo, f.extras, taxa), lucro = Margem.lucro(f.preco, f.custo, f.extras, taxa);
+  document.getElementById('pCalc').innerHTML = sug == null
+    ? `<div class="neg">❌ Margem (${pct(f.margem)}) + taxa (${pct(taxa)}) precisa ser menor que 100%.</div>`
+    : `<div class="linha"><span>Preço sugerido = (${dinheiro(f.custo)} + ${dinheiro(f.extras)}) ÷ (1 − ${pct(f.margem)} − ${pct(taxa)})</span><b id="pSug">${dinheiro(sug)}</b></div>
+       <div class="linha"><span>Margem real com ${dinheiro(f.preco)}</span><b class="${real != null && real < 0 ? 'neg' : ''}">${pct(real)}</b></div>
+       <div class="linha"><span>Lucro por unidade (já descontada a taxa)</span><b class="${lucro < 0 ? 'neg' : ''}">${dinheiro(lucro)}</b></div>`;
+}
+function usarSugerido() {
+  const f = lerFinanceiroForm(), sug = Margem.sugerido(f.custo, f.extras, f.margem, f.taxa == null ? taxaPadrao() : f.taxa);
+  if (sug == null) return toast('Ajuste a margem: margem + taxa deve ser menor que 100%.');
+  document.getElementById('pPreco').value = String(sug).replace('.', ',');
+  calcProduto();
+}
+async function salvarProdutoForm() {
+  const nome = val('pNome'), categoria = val('pCat'), f = lerFinanceiroForm();
+  if (nome.length < 2) return toast('Informe o nome.');
+  if (!categoria) return toast('Informe a categoria.');
+  if (f.taxa != null && (f.taxa < 0 || f.taxa >= 100)) return toast('Taxa da maquininha inválida.');
+  if (f.margem < 0 || f.margem + (f.taxa == null ? taxaPadrao() : f.taxa) >= 100) return toast('Margem + taxa deve ser menor que 100%.');
+  if (f.preco < 0) return toast('Preço inválido.');
+  const campos = {
+    tipo: 'produto', nome, categoria, ativo: document.getElementById('pAtivo').checked, controlaEstoque: document.getElementById('pControla').checked,
+    unidade: val('pUnidade') || 'un', estoqueMinimo: numero(val('pMin')) || 0,
+    custoUnitario: f.custo, custosExtras: f.extras, taxaMaquininha: f.taxa, margemDesejada: f.margem, precoVenda: f.preco,
+    precoAutomatico: document.getElementById('pAuto').checked
+  };
+  let id = editando;
+  if (!id) {
+    const base = Catalogo.slug(nome) || 'produto';
+    id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
+    const mesmaCat = Catalogo.todos().filter(x => x.categoria === categoria);
+    Object.assign(campos, { estoqueAtual: 0, ordem: mesmaCat.length ? Math.max(...mesmaCat.map(x => x.ordem || 0)) + 0.5 : Catalogo.todos().length + 1 });
+  }
+  try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Produto salvo.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+function editarSabor(id) {
+  editando = id;
+  const d = Catalogo.doc(id), pr = d.precos || {}, cu = d.custos || {};
+  abrirModal(`<h2>🍕 ${esc(d.nome)}</h2>
+    ${campo('sNome', 'Nome do sabor', d.nome)}
+    ${campo('sDesc', 'Descrição (opcional)', d.desc || '')}
+    ${caixa('sAtivo', 'Ativo (aparece à venda)', d.ativo !== false)}
+    <h3 style="margin-top:14px">Preço de venda</h3>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sP' + t, t, pr[t], 'inputmode="decimal"')).join('')}</div>
+    <h3 style="margin-top:14px">Custo (opcional — para a ficha técnica futura)</h3>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sC' + t, t, cu[t], 'inputmode="decimal" placeholder="—"')).join('')}</div>
+    <div class="muted" style="margin-top:6px">Sabores não controlam estoque. O custo, se preenchido, entra no lucro bruto dos relatórios.</div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarSaborForm()">Salvar</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+}
+async function salvarSaborForm() {
+  const d = Catalogo.doc(editando), nome = val('sNome').toUpperCase();
+  const precos = {}, custos = {};
+  for (const t of ['P', 'M', 'G']) {
+    const p = numero(val('sP' + t)), c = val('sC' + t);
+    if (p == null || p <= 0) return toast(`Informe o preço ${t}.`);
+    precos[t] = p; custos[t] = c === '' ? null : numero(c);
+  }
+  if (nome.length < 2) return toast('Informe o nome.');
+  if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
+  try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* ---------------- MOVIMENTAÇÕES ---------------- */
+let movTipo = 'entrada';
+const AJUSTES = ['Perda', 'Avaria', 'Consumo interno', 'Contagem'];
+function abrirMov(tipo) {
+  if (!Catalogo.doBanco()) return toast('Importe o cardápio primeiro.');
+  movTipo = tipo;
+  const prods = Catalogo.todos().filter(d => d.tipo !== 'sabor');
+  const opts = prods.map(d => `<option value="${d.id}">${esc(d.categoria)} — ${esc(d.nome)}</option>`).join('');
+  abrirModal(tipo === 'entrada' ? `<h2>➕ Entrada de compra</h2>
+    <div class="grid2">${campo('mData', 'Data', hojeISO(), 'type="date"')}${campo('mForn', 'Fornecedor', '', 'placeholder="Ex.: Distribuidora X"')}</div>
+    <label for="mProd">Produto</label><select id="mProd" onchange="calcMov()">${opts}</select>
+    <div class="grid2">${campo('mQtd', 'Quantidade', '', 'inputmode="decimal" oninput="calcMov()"')}${campo('mValor', 'Valor total pago (R$)', '', 'inputmode="decimal" oninput="calcMov()"')}</div>
+    <div id="mLigar"></div>
+    <div class="calc" id="mCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarMov()">Lançar entrada</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`
+    : `<h2>➖ Ajuste de estoque</h2>
+    <label for="mProd">Produto</label><select id="mProd" onchange="calcMov()">${opts}</select>
+    <label for="mMotivo">Motivo</label><select id="mMotivo" onchange="calcMov()">${AJUSTES.map(m => `<option>${m}</option>`).join('')}</select>
+    <div class="grid2">${campo('mQtd', '<span id="mQtdRot">Quantidade a retirar</span>', '', 'inputmode="decimal" oninput="calcMov()"')}${campo('mData', 'Data', hojeISO(), 'type="date"')}</div>
+    ${campo('mObs', 'Observação', '', 'placeholder="Ex.: 2 latas amassadas"')}
+    <div class="calc" id="mCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarMov()">Lançar ajuste</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  calcMov();
+}
+function calcMov() {
+  const d = Catalogo.doc(val('mProd')); if (!d) return;
+  const atual = d.estoqueAtual || 0, q = numero(val('mQtd')) || 0;
+  let h = `<div class="linha"><span>Estoque atual</span><b>${num(atual)} ${esc(d.unidade || 'un')}</b></div>`;
+  if (movTipo === 'entrada') {
+    document.getElementById('mLigar').innerHTML = d.controlaEstoque ? '' : caixa('mLigarChk', 'Ligar o controle de estoque deste produto', true);
+    const v = numero(val('mValor')) || 0;
+    if (q > 0 && v > 0) {
+      const medio = atual > 0 ? (atual * (d.custoUnitario || 0) + v) / (atual + q) : v / q;
+      const taxa = Catalogo.taxaDe(d), sug = Margem.sugerido(medio, d.custosExtras, d.margemDesejada, taxa);
+      h += `<div class="linha"><span>Custo desta compra</span><b>${dinheiro(v / q)} / ${esc(d.unidade || 'un')}</b></div>
+        <div class="linha"><span>Novo custo médio (era ${dinheiro(d.custoUnitario || 0)})</span><b>${dinheiro(medio)}</b></div>
+        <div class="linha"><span>Novo estoque</span><b>${num(atual + q)}</b></div>
+        ${sug != null ? `<div class="linha"><span>Preço sugerido (margem ${pct(d.margemDesejada || 0)})${d.precoAutomatico ? ' — será aplicado' : ''}</span><b>${dinheiro(d.precoAutomatico ? Margem.arredondar(sug) : sug)}</b></div>` : ''}`;
+    }
+  } else {
+    const contagem = val('mMotivo') === 'Contagem';
+    document.getElementById('mQtdRot').textContent = contagem ? 'Quantidade contada (fica igual a ela)' : 'Quantidade a retirar';
+    if (q) h += `<div class="linha"><span>Novo estoque</span><b>${num(contagem ? q : atual - q)}</b></div>`;
+  }
+  document.getElementById('mCalc').innerHTML = h;
+}
+async function salvarMov() {
+  const produtoId = val('mProd'), q = numero(val('mQtd')), data = val('mData') || hojeISO();
+  let m;
+  if (movTipo === 'entrada') {
+    const v = numero(val('mValor'));
+    if (!q || q <= 0) return toast('Informe a quantidade comprada.');
+    if (v == null || v < 0) return toast('Informe o valor total pago.');
+    const lig = document.getElementById('mLigarChk');
+    m = { tipo: 'entrada', produtoId, qtd: q, valorTotal: v, fornecedor: val('mForn'), data, ligarControle: !!(lig && lig.checked) };
+  } else {
+    const motivo = val('mMotivo'), contagem = motivo === 'Contagem';
+    if (q == null || q < 0 || (!contagem && !q)) return toast('Informe a quantidade.');
+    m = { tipo: 'ajuste', produtoId, qtd: contagem ? q : -q, contagem, motivo, obs: val('mObs'), data };
+  }
+  try { await DB.lancarMovimento(m); fecharModal(); toast('✅ Movimentação lançada.'); carregarMov(); }
+  catch (e) { console.error(e); toast(e.message || 'Erro ao lançar.'); }
+}
+const TIPOS_MOV = { entrada: '➕ Compra', ajuste: '➖ Ajuste', venda: '🛒 Venda', estorno: '↩️ Estorno' };
+async function carregarMov() {
+  const elDe = document.getElementById('movDe'), elAte = document.getElementById('movAte');
+  if (!elDe.value) { const d = new Date(); d.setDate(d.getDate() - 30); elDe.value = isoDe(d); }
+  if (!elAte.value) elAte.value = hojeISO();
+  const el = document.getElementById('movs');
+  el.innerHTML = '<div class="muted">Carregando...</div>';
+  try {
+    const prod = val('movProduto');
+    const l = (await DB.listarMovimentos(elDe.value, elAte.value)).filter(m => !prod || m.produtoId === prod);
+    el.innerHTML = l.length ? `<table>
+      <tr><th>Data</th><th>Tipo</th><th>Produto</th><th class="r">Qtd</th><th class="r">Valor</th><th class="r">Estoque após</th><th>Detalhe</th></tr>
+      ${l.map(m => `<tr><td>${br(m.data)} <span class="muted">${new Date(m.em).toLocaleTimeString('pt-BR').slice(0, 5)}</span></td><td>${TIPOS_MOV[m.tipo] || m.tipo}</td><td>${esc(m.produtoNome)}</td>
+        <td class="r ${m.qtd < 0 ? 'neg' : ''}">${m.qtd > 0 ? '+' : ''}${num(m.qtd)}</td>
+        <td class="r">${m.valorTotal != null ? dinheiro(m.valorTotal) : ''}</td><td class="r">${m.estoqueDepois != null ? num(m.estoqueDepois) : ''}</td>
+        <td class="muted">${esc([m.fornecedor, m.motivo, m.obs, m.pedidoNumero ? 'pedido #' + m.pedidoNumero : ''].filter(Boolean).join(' • '))}</td></tr>`).join('')}
+    </table>` : '<div class="muted">Nenhuma movimentação no período.</div>';
+  } catch (e) { console.error(e); el.innerHTML = '<div class="muted">Erro ao carregar (login/regras do Firebase).</div>'; }
 }
 
 function toast(t) {
