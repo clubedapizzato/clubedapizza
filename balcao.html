@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:1400px;padding-bottom:30px}
@@ -47,6 +48,9 @@ main{max-width:1400px;padding-bottom:30px}
 #sucesso .numero{font-size:96px;font-weight:900;line-height:1;margin:10px 0;color:var(--brand)}
 .modal .box{max-width:720px}
 .chips .chip{padding:12px 14px;font-size:15px}
+.sugestao{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px;margin-top:8px;font-size:14px}
+#opConsumo{grid-template-columns:repeat(3,1fr)}
+#opConsumo .opcao{padding:14px 4px;font-size:15px}
 #barraMob{display:none}
 @media(max-width:900px){#barraMob{display:block}main{padding-bottom:100px}.painel{position:static}}
 </style>
@@ -95,14 +99,21 @@ main{max-width:1400px;padding-bottom:30px}
       </div>
 
       <div class="card">
-        <label for="nome" style="margin-top:0">Nome do cliente <span class="muted">(opcional — para chamar)</span></label>
+        <label for="nome" style="margin-top:0">Nome do cliente <span class="muted" id="nomeObs">(opcional — para chamar)</span></label>
         <input id="nome" autocomplete="off" placeholder="Ex.: João">
         <h3 style="margin-top:14px">Consumo</h3>
         <div class="opcoes" id="opConsumo"></div>
+        <!-- Delivery (pedido por WhatsApp/telefone): telefone + endereço com mapa e taxa -->
+        <div id="blocoDelivery" class="hide">
+          <label for="telefone">Telefone / WhatsApp do cliente</label>
+          <input id="telefone" type="tel" inputmode="tel" autocomplete="off" placeholder="(63) 99999-9999">
+          <div id="sugestao"></div>
+          <div id="blocoEndereco"></div>
+        </div>
         <h3 style="margin-top:14px">Pagamento</h3>
         <div class="opcoes" id="opPagamento"></div>
         <div id="blocoDinheiro" class="hide">
-          <label for="recebido">Valor recebido</label>
+          <label for="recebido" id="rotRecebido">Valor recebido</label>
           <input id="recebido" inputmode="decimal" placeholder="Ex.: 100" oninput="renderTotal()">
           <div class="rapidos" id="rapidos"></div>
           <div class="troco" id="troco"></div>
@@ -112,6 +123,7 @@ main{max-width:1400px;padding-bottom:30px}
       </div>
 
       <div class="card">
+        <div class="linha hide" id="linhaTaxa"></div>
         <div class="totalPdv"><span>TOTAL</span><span id="total">R$ 0,00</span></div>
         <button class="btn full grande" id="btnFinalizar" onclick="finalizar()">Finalizar pedido</button>
       </div>
@@ -140,13 +152,16 @@ main{max-width:1400px;padding-bottom:30px}
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
 <script src="js/catalogo.js"></script>
+<script src="js/endereco.js"></script>
 <script src="js/impressora.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const C = CARDAPIO;
 let carrinho = [];
 let categoria = 'pizzas';
-let consumo = null;            // 'local' | 'levar'
-let forma = null;              // 'pix' | 'dinheiro' | 'cartao'
+let consumo = null;            // 'local' | 'levar' | 'delivery'
+let forma = null;              // 'pix' | 'dinheiro' | 'cartao' (delivery: também 'pix_ok' = Pix já recebido)
+let ultimoDoCliente = null;    // último pedido do telefone digitado (delivery)
 let enviando = false, ultimo = null, pararLista = null;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 const val = id => document.getElementById(id).value.trim();
@@ -178,7 +193,7 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 async function assinar() {
   if (pararLista) pararLista();
   pararLista = await DB.observarPedidosDoDia(hojeISO(), lista => {
-    const ativos = lista.filter(p => p.origem === 'balcao' && ['novo', 'producao', 'saiu'].includes(p.status)).sort((a, b) => a.numero - b.numero);
+    const ativos = lista.filter(p => p.origem === 'balcao' && p.entrega.tipo === 'balcao' && ['novo', 'producao', 'saiu'].includes(p.status)).sort((a, b) => a.numero - b.numero);
     document.getElementById('andamento').classList.toggle('hide', !ativos.length);
     document.getElementById('prontos').innerHTML = ativos.map(p =>
       `<span class="pchip ${p.status}">#${p.numero}${p.cliente.nome ? ' ' + esc(p.cliente.nome) : ''} • ${p.status === 'saiu' ? '✅ PRONTO' : esc(STATUS.rotulo(p.status, 'balcao'))}</span>`).join('');
@@ -298,18 +313,35 @@ function renderItens() {
     </div>`).join('') + (sc.qtd ? `<div class="linha" style="font-weight:700"><span>Sachês: ${sc.qtd}${sc.gratis ? ` (${sc.gratis} cortesia)` : ''}</span><span>${dinheiro(sc.valor)}</span></div>` : '')
     : '<div class="muted" style="padding:10px 0">Toque nos produtos para adicionar.</div>';
 }
+const FORMAS = [{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão' }];
+// Delivery: só "Pix já recebido" sai como pago; o resto a cozinha confirma / o entregador cobra
+const FORMAS_DELIVERY = [{ id: 'pix_ok', nome: '✅ Pix já recebido' }, { id: 'pix', nome: '⚡ Pix a confirmar' }, { id: 'dinheiro', nome: '💵 Dinheiro na entrega' }, { id: 'cartao', nome: '💳 Cartão na entrega' }];
+const delivery = () => consumo === 'delivery';
 function renderOpcoes() {
   const opc = (lista, atual, fn) => lista.map(o => `<div class="opcao ${atual === o.id ? 'on' : ''}" onclick="${fn}('${o.id}')">${o.nome}</div>`).join('');
-  document.getElementById('opConsumo').innerHTML = opc([{ id: 'local', nome: '🍽️ Comer aqui' }, { id: 'levar', nome: '🥡 Para levar' }], consumo, 'setConsumo');
-  document.getElementById('opPagamento').innerHTML = opc([{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão' }], forma, 'setForma');
+  document.getElementById('opConsumo').innerHTML = opc([{ id: 'local', nome: '🍽️ Comer aqui' }, { id: 'levar', nome: '🥡 Para levar' }, { id: 'delivery', nome: '🛵 Delivery' }], consumo, 'setConsumo');
+  document.getElementById('opPagamento').innerHTML = opc(delivery() ? FORMAS_DELIVERY : FORMAS, forma, 'setForma');
   document.getElementById('blocoDinheiro').classList.toggle('hide', forma !== 'dinheiro');
+  document.getElementById('blocoDelivery').classList.toggle('hide', !delivery());
+  document.getElementById('nomeObs').textContent = delivery() ? '(obrigatório)' : '(opcional — para chamar)';
+  document.getElementById('rotRecebido').textContent = delivery() ? 'Troco para quanto? (vazio = sem troco)' : 'Valor recebido';
 }
-function setConsumo(c) { consumo = c; renderOpcoes(); }
+function setConsumo(c) {
+  if (delivery() !== (c === 'delivery')) forma = null;   // formas de pagamento diferentes
+  consumo = c; renderOpcoes(); renderTotal();
+  if (c === 'delivery') { Endereco.iniciarMapa(); document.getElementById('telefone').focus(); }
+}
 function setForma(f) { forma = f; renderOpcoes(); renderTotal(); }
 function setRecebido(v) { document.getElementById('recebido').value = v ? String(v).replace('.', ',') : ''; renderTotal(); }
 
+// Delivery: taxa pelo pino (null = a combinar). Outros: 0
+const taxaAtual = () => delivery() ? Endereco.taxa() : 0;
+const totalAtual = () => Preco.subtotal(carrinho) + (taxaAtual() || 0);
 function renderTotal() {
-  const total = Preco.subtotal(carrinho), n = carrinho.reduce((s, x) => s + x.qtd, 0);
+  const total = totalAtual(), n = carrinho.reduce((s, x) => s + x.qtd, 0);
+  const lt = document.getElementById('linhaTaxa');
+  lt.classList.toggle('hide', !delivery());
+  if (delivery()) lt.innerHTML = `<span>🛵 Taxa de entrega${Endereco.km() != null ? ` (${String(Endereco.km()).replace('.', ',')} km)` : ''}</span><b>${Endereco.textoTaxa(taxaAtual())}</b>`;
   document.getElementById('total').textContent = dinheiro(total);
   document.getElementById('btnFinalizar').textContent = `Finalizar pedido • ${dinheiro(total)}`;
   document.getElementById('btnFinalizar').disabled = !n;
@@ -326,30 +358,39 @@ function renderTotal() {
 }
 function atualizar() { renderTiles(); renderItens(); renderSaches(); renderTotal(); }
 
+function foco(id, msg) { const el = document.getElementById(id); el.scrollIntoView({ behavior: 'smooth', block: 'center' }); if (el.focus) el.focus(); toast(msg); }
+
 async function finalizar() {
   if (enviando) return;
   if (!carrinho.length) return toast('Adicione pelo menos um produto.');
-  if (!consumo) return toast('Escolha: Comer aqui ou Para levar.');
+  if (!consumo) return toast('Escolha: Comer aqui, Para levar ou Delivery.');
+  const tel = val('telefone').replace(/\D/g, '');
+  if (delivery()) {
+    if (val('nome').length < 2) return foco('nome', 'Informe o nome do cliente.');
+    if (tel.length < 10) return foco('telefone', 'Informe o telefone com DDD.');
+    const erro = Endereco.validar();
+    if (erro) return foco(erro.id, erro.msg);
+  }
   if (!forma) return toast('Escolha a forma de pagamento.');
   const falta = Catalogo.faltas(carrinho)[0];
   if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}.` : `${falta.nome} sem estoque.`);
-  const total = Preco.subtotal(carrinho);
+  const subtotal = Preco.subtotal(carrinho), taxa = taxaAtual(), total = subtotal + (taxa || 0);
   let trocoPara = null;
   if (forma === 'dinheiro' && val('recebido')) {
     trocoPara = numero(val('recebido'));
-    if (trocoPara < total) return toast('Valor recebido menor que o total.');
+    if (trocoPara < total) return toast(delivery() ? 'O troco deve ser para um valor maior que o total.' : 'Valor recebido menor que o total.');
   }
 
   const pedido = {
     origem: 'balcao',
     data: hojeISO(),
     agendadoPara: null,
-    cliente: { nome: val('nome'), telefone: '' },
-    entrega: { tipo: 'balcao', consumo },
+    cliente: { nome: val('nome'), telefone: delivery() ? tel : '' },
+    entrega: delivery() ? Endereco.dados() : { tipo: 'balcao', consumo },
     itens: Catalogo.itensPedido(carrinho),
     cortesiaPorPizza: C.loja.cortesiaSachesPorPizza || 0,
-    subtotal: total, taxaEntrega: 0, total,
-    pagamento: { forma, trocoPara, confirmado: true },
+    subtotal, taxaEntrega: taxa, total,
+    pagamento: { forma: forma === 'pix_ok' ? 'pix' : forma, trocoPara, confirmado: !delivery() || forma === 'pix_ok' },
     obs: val('obs')
   };
 
@@ -368,24 +409,83 @@ async function finalizar() {
   } finally { enviando = false; }
 }
 
+// Forma de pagamento por extenso (delivery: na entrega / Pix recebido ou a confirmar)
+function textoPagamento(p) {
+  const pg = p.pagamento;
+  if (p.entrega.tipo !== 'entrega') return ({ pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' })[pg.forma];
+  if (pg.forma === 'pix') return pg.confirmado ? '✅ Pix já recebido' : '⚡ Pix a confirmar';
+  return pg.forma === 'dinheiro' ? `💵 Dinheiro na entrega${pg.trocoPara ? ` (troco para ${dinheiro(pg.trocoPara)})` : ''}` : '💳 Cartão na entrega';
+}
+// Resumo para o cliente confirmar pelo WhatsApp
+function mensagemConfirmacao(p) {
+  const e = p.entrega, pg = p.pagamento;
+  const linhas = p.itens.filter(it => !Preco.ehSache(it)).map(it => `• ${it.qtd}x ${Preco.descricao(it)}${it.obs ? ` (${it.obs})` : ''}`);
+  const sc = Preco.listaSaches(p.itens);
+  if (sc) linhas.push(`• Sachês: ${sc}`);
+  let pagto = textoPagamento(p).replace(/^\S+ /, '');
+  if (pg.forma === 'pix' && !pg.confirmado && CONFIG.pix.chave) pagto += ` — chave Pix: ${CONFIG.pix.chave} (mande o comprovante aqui)`;
+  return `Olá ${(p.cliente.nome || '').split(' ')[0]}! 🍕 Seu pedido *#${p.numero}* no ${CONFIG.loja.nome} foi registrado:\n\n${linhas.join('\n')}\n\n` +
+    `🛵 Entrega: ${e.rua}, ${e.numero} - ${e.bairro}${e.complemento ? ' (' + e.complemento + ')' : ''}\n` +
+    `Taxa de entrega: ${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'grátis'}\n*Total: ${dinheiro(p.total)}*\nPagamento: ${pagto}\n\nAvisamos quando sair para entrega!`;
+}
+
 function mostrarSucesso() {
-  const p = ultimo, pg = p.pagamento;
+  const p = ultimo, pg = p.pagamento, del = p.entrega.tipo === 'entrega';
   document.getElementById('sucessoConteudo').innerHTML = `
     <div class="muted" style="font-size:16px">✅ Pedido enviado para a cozinha</div>
     <div class="numero">#${p.numero}</div>
     ${p.cliente.nome ? `<div style="font-size:20px;font-weight:800">${esc(p.cliente.nome)}</div>` : ''}
-    <div style="font-size:16px;margin:6px 0">${p.entrega.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'} • ${({ pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' })[pg.forma]}</div>
+    <div style="font-size:16px;margin:6px 0">${del ? '🛵 Delivery' : p.entrega.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'} • ${textoPagamento(p)}</div>
+    ${del ? `<div class="muted">📍 ${esc(p.entrega.rua)}, ${esc(p.entrega.numero)} - ${esc(p.entrega.bairro)} • taxa ${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'grátis'}</div>` : ''}
     <div class="totalPdv" style="justify-content:center;gap:12px"><span>Total</span><span>${dinheiro(p.total)}</span></div>
-    ${pg.forma === 'dinheiro' && pg.trocoPara ? `<div class="troco" style="font-size:26px">Recebido ${dinheiro(pg.trocoPara)} → Troco ${dinheiro(pg.trocoPara - p.total)}</div>` : ''}
+    ${!del && pg.forma === 'dinheiro' && pg.trocoPara ? `<div class="troco" style="font-size:26px">Recebido ${dinheiro(pg.trocoPara)} → Troco ${dinheiro(pg.trocoPara - p.total)}</div>` : ''}
+    ${del && pg.forma === 'dinheiro' && pg.trocoPara ? `<div class="troco" style="font-size:20px">Entregador leva troco de ${dinheiro(pg.trocoPara - p.total)}</div>` : ''}
+    ${del ? `<a class="btn wa full grande" style="display:block;text-decoration:none;margin-top:12px" target="_blank" id="btnConfirmacao" href="${linkWhats(p.cliente.telefone, mensagemConfirmacao(p))}">💬 Enviar confirmação no WhatsApp</a>` : ''}
     <button class="btn full grande" style="margin-top:16px" onclick="novoPedido()">➕ Novo pedido</button>
     <button class="btn sec full" style="margin-top:8px" onclick="Impressora.imprimir(ultimo)">🖨️ Imprimir cópia aqui</button>`;
   document.getElementById('sucesso').classList.add('on');
 }
 
 function limpar() {
-  carrinho = []; consumo = null; forma = null;
-  ['nome', 'obs', 'recebido'].forEach(id => document.getElementById(id).value = '');
+  carrinho = []; consumo = null; forma = null; ultimoDoCliente = null;
+  ['nome', 'obs', 'recebido', 'telefone'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('sugestao').innerHTML = '';
+  Endereco.limpar();
   renderOpcoes(); atualizar();
+}
+
+/* ---------------- DELIVERY: endereço e último pedido do cliente ---------------- */
+Endereco.montar(document.getElementById('blocoEndereco'), { minhaLocalizacao: false, toast, onChange: () => renderTotal() });
+document.getElementById('telefone').addEventListener('input', e => {
+  let d = e.target.value.replace(/\D/g, '').slice(0, 11);
+  const tel = d;
+  if (d.length > 6) d = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
+  else if (d.length > 2) d = `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  e.target.value = d;
+  clearTimeout(buscarCliente.t);
+  if (tel.length >= 10) buscarCliente.t = setTimeout(() => buscarCliente(tel), 400);
+  else { ultimoDoCliente = null; document.getElementById('sugestao').innerHTML = ''; }
+});
+async function buscarCliente(tel) {
+  const el = document.getElementById('sugestao');
+  try {
+    const p = await DB.ultimoPedidoPorTelefone(tel);
+    if (tel !== val('telefone').replace(/\D/g, '')) return;   // telefone mudou enquanto buscava
+    ultimoDoCliente = p;
+    if (!p) { el.innerHTML = '<div class="muted" style="margin-top:6px">Cliente novo — preencha o endereço.</div>'; return; }
+    const e = p.entrega;
+    el.innerHTML = e && e.tipo === 'entrega' && e.rua
+      ? `<div class="sugestao">👤 <b>${esc(p.cliente.nome)}</b> já pediu em ${p.data.split('-').reverse().join('/')}.
+          <button class="btn sm dark full" style="margin-top:8px" onclick="usarUltimo()">📍 Usar endereço do último pedido (${esc(e.rua)}, ${esc(e.numero)} – ${esc(e.bairro)})</button></div>`
+      : `<div class="sugestao">👤 <b>${esc(p.cliente.nome)}</b> já pediu antes (sem endereço salvo). <button class="btn sm sec" onclick="usarUltimo()">Usar nome</button></div>`;
+  } catch (err) { console.error(err); }
+}
+function usarUltimo() {
+  const p = ultimoDoCliente; if (!p) return;
+  if (p.cliente.nome) document.getElementById('nome').value = p.cliente.nome;
+  if (p.entrega && p.entrega.tipo === 'entrega') { Endereco.preencher(p.entrega); toast('Endereço preenchido — confira o pino no mapa.'); }
+  document.getElementById('sugestao').innerHTML = '';
+  renderTotal();
 }
 function novoPedido() {
   document.getElementById('sucesso').classList.remove('on');

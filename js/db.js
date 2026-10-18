@@ -223,6 +223,18 @@ window.DB = (function () {
     return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
   }
 
+  // Último pedido (mais recente) com este telefone — só dígitos; delivery do balcão (logado)
+  async function ultimoPedidoPorTelefone(tel) {
+    await init();
+    let l;
+    if (modo() === 'demo') l = Object.values(lerTodos()).filter(p => p.cliente && p.cliente.telefone === tel);
+    else {
+      const q = fs.query(fs.collection(db, 'pedidos'), fs.where('cliente.telefone', '==', tel));
+      l = (await fs.getDocs(q)).docs.map(d => Object.assign({ id: d.id }, d.data()));
+    }
+    return l.sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0))[0] || null;
+  }
+
   // Pedidos de dias FUTUROS (agendamentos), em tempo real
   async function observarPedidosFuturos(data, cb, erro) {
     await init();
@@ -340,7 +352,7 @@ window.DB = (function () {
   }
 
   return {
-    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, atualizarPedido,
+    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, atualizarPedido,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario
   };

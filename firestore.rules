@@ -17,7 +17,8 @@ service cloud.firestore {
       allow list: if request.auth != null;
 
       // Pedido do SITE: qualquer cliente cria, sempre "novo", não impresso e com pagamento NÃO confirmado.
-      // Pedido do BALCÃO: só usuário logado (atendente), já pago.
+      // Pedido do BALCÃO: só usuário logado (atendente). Comer aqui/levar (tipo 'balcao') ou
+      // delivery por WhatsApp/telefone (tipo 'entrega'), pago ou a cobrar na entrega.
       allow create: if request.resource.data.status == 'novo'
                     && request.resource.data.impresso == false
                     && request.resource.data.itens is list
@@ -33,8 +34,8 @@ service cloud.firestore {
                          && request.resource.data.cliente.telefone is string)
                      || (request.auth != null
                          && request.resource.data.origem == 'balcao'
-                         && request.resource.data.entrega.tipo == 'balcao'
-                         && request.resource.data.pagamento.confirmado == true));
+                         && request.resource.data.entrega.tipo in ['balcao', 'entrega']
+                         && request.resource.data.pagamento.confirmado is bool));
 
       // Mudar status / confirmar Pix / marcar impresso / entregador: só usuário logado.
       allow update: if request.auth != null;

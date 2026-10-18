@@ -27,7 +27,7 @@ window.Impressora = (function () {
     s += centro(`PEDIDO #${p.numero}`);
     const tipo = p.entrega.tipo;
     s += centro(tipo === 'balcao' ? `*** BALCAO - ${p.entrega.consumo === 'local' ? 'COMER AQUI' : 'PARA LEVAR'} ***`
-      : tipo === 'retirada' ? '*** RETIRADA ***' : '*** ENTREGA ***');
+      : tipo === 'retirada' ? '*** RETIRADA ***' : p.origem === 'balcao' ? '*** BALCAO/DELIVERY ***' : '*** ENTREGA ***');
     s += `${dt.toLocaleDateString('pt-BR')} ${dt.toLocaleTimeString('pt-BR').slice(0, 5)}\n`;
     if (p.agendadoPara) s += linha('*') + centro(`AGENDADO PARA: ${Horario.formatar(p.agendadoPara)}`) + linha('*');
     s += linha('-');
