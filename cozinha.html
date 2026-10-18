@@ -257,7 +257,8 @@ function cartao(p) {
     ${p.cliente.nome || p.cliente.telefone ? `<div><b>${esc(p.cliente.nome)}</b>${p.cliente.telefone ? ` • <a class="lnk" href="tel:${esc(p.cliente.telefone)}">${esc(fone(p.cliente.telefone))}</a>` : ''}</div>` : ''}
     ${balcao ? `<span class="tag info" style="font-size:13px">🏪 BALCÃO • ${e.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'}</span>`
     : e.tipo === 'entrega'
-      ? `<div>📍 ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' • ' + esc(e.complemento) : ''}</div>
+      ? `${p.origem === 'balcao' ? '<span class="tag info" style="font-size:13px">🏪 BALCÃO • 🛵 Delivery</span>' : ''}
+         <div>📍 ${esc(e.rua)}, ${esc(e.numero)} - ${esc(e.bairro)}${e.complemento ? ' • ' + esc(e.complemento) : ''}</div>
          ${e.referencia ? `<div class="muted">Ref.: ${esc(e.referencia)}</div>` : ''}
          <div class="muted">📏 ${e.distanciaKm != null ? String(e.distanciaKm).replace('.', ',') + ' km' : 'distância não informada'} • entrega ${taxaCalc == null ? '<span class="tag pend">TAXA A COMBINAR</span>' : taxaCalc ? dinheiro(taxaCalc) : 'grátis'}</div>
          ${e.lat ? `<a class="lnk" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}">🗺️ Abrir no mapa</a>` : ''}`

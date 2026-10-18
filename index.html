@@ -51,26 +51,7 @@
       <h2>📍 Entrega</h2>
       <div class="opcoes" id="opcoesEntrega"></div>
 
-      <div id="blocoEndereco">
-        <div class="muted" style="margin-top:12px"><b>Arraste o pino</b> (ou toque no mapa) até a sua casa. Isso ajuda o entregador a chegar certinho.</div>
-        <div id="mapa"></div>
-        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-          <button class="btn sm dark" type="button" onclick="minhaLocalizacao()">📡 Usar minha localização</button>
-          <button class="btn sm sec" type="button" onclick="buscarEndereco()">🔎 Localizar endereço digitado</button>
-        </div>
-        <div id="statusPino" class="muted" style="margin-top:6px"></div>
-
-        <div class="grid3">
-          <div><label for="rua">Rua / Avenida</label><input id="rua" autocomplete="address-line1"></div>
-          <div><label for="numero">Número</label><input id="numero" placeholder="S/N se não houver"></div>
-        </div>
-        <div class="grid2">
-          <div><label for="bairro">Bairro</label><input id="bairro"></div>
-          <div><label for="complemento">Complemento</label><input id="complemento" placeholder="Casa, apto, bloco..."></div>
-        </div>
-        <label for="referencia">Ponto de referência</label>
-        <input id="referencia" placeholder="Ex.: próximo à praça, portão azul">
-      </div>
+      <div id="blocoEndereco"></div>
     </div>
 
     <div class="card">
@@ -122,6 +103,7 @@
 <script src="js/pix.js"></script>
 <script src="js/db.js"></script>
 <script src="js/catalogo.js"></script>
+<script src="js/endereco.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -132,7 +114,6 @@ let tipoEntrega = 'entrega';
 let formaPagamento = 'pix';
 let quando = 'agora';           // 'agora' | 'agendar'
 let horaAgendada = null;        // ms do horário escolhido
-let mapa = null, pino = null, pinoAjustado = false, ruaAuto = true, bairroAuto = true;
 let pararObservar = null;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
@@ -248,19 +229,14 @@ function adicionarPizza() {
 /* ---------------- CARRINHO / CHECKOUT ---------------- */
 // Ponto de entrega atual (só conta depois que o cliente marcou no mapa)
 function localEntrega() {
-  const e = { tipo: tipoEntrega };
-  if (tipoEntrega === 'entrega' && pino && pinoAjustado) { const ll = pino.getLatLng(); e.lat = +ll.lat.toFixed(6); e.lng = +ll.lng.toFixed(6); }
-  return e;
+  return tipoEntrega === 'entrega' ? Object.assign({ tipo: tipoEntrega }, Endereco.local()) : { tipo: tipoEntrega };
 }
 function totais() {
   const subtotal = Preco.subtotal(carrinho);
   const taxa = Preco.taxa(localEntrega());   // null = ainda sem localização
   return { subtotal, taxa, total: subtotal + (taxa || 0) };
 }
-function textoTaxa(taxa) {
-  if (taxa == null) return pino ? 'marque no mapa' : 'a combinar';
-  return taxa === 0 ? 'Grátis' : dinheiro(taxa);
-}
+const textoTaxa = taxa => Endereco.textoTaxa(taxa);
 
 function renderCarrinho() {
   const el = document.getElementById('carrinho');
@@ -357,7 +333,7 @@ function setQuando(q) { quando = q; renderQuando(); atualizar(); }
 function setHora(ms) { horaAgendada = ms; renderQuando(); atualizar(); }
 setInterval(() => { renderHorario(); if (tela === 'checkout') { renderQuando(); atualizar(); } }, 60000);
 
-function setEntrega(t) { tipoEntrega = t; renderOpcoes(); atualizar(); if (t === 'entrega') iniciarMapa(); }
+function setEntrega(t) { tipoEntrega = t; renderOpcoes(); atualizar(); if (t === 'entrega') Endereco.iniciarMapa(); }
 function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
 
 function atualizar() {
@@ -383,92 +359,23 @@ function mostrar(t) {
   ['cardapio', 'checkout', 'acompanhar'].forEach(x => document.getElementById('tela-' + x).classList.toggle('hide', x !== t));
   document.getElementById('btnVoltar').classList.toggle('hide', t !== 'checkout');
   window.scrollTo(0, 0);
-  if (t === 'checkout') { renderOpcoes(); renderQuando(); if (tipoEntrega === 'entrega') iniciarMapa(); }
+  if (t === 'checkout') { renderOpcoes(); renderQuando(); if (tipoEntrega === 'entrega') Endereco.iniciarMapa(); }
   atualizar();
 }
 
-/* ---------------- MAPA ---------------- */
-function iniciarMapa() {
-  setTimeout(() => {
-    if (mapa) { mapa.invalidateSize(); return; }
-    if (typeof L === 'undefined') {   // mapa não carregou (internet fraca): segue só com o endereço digitado
-      document.getElementById('mapa').classList.add('hide');
-      document.getElementById('statusPino').textContent = 'Mapa indisponível no momento — capriche no endereço e no ponto de referência.';
-      return;
-    }
-    const salvo = lerCliente();
-    const inicio = (salvo.lat && salvo.lng) ? [salvo.lat, salvo.lng] : CONFIG.entrega.localLoja;
-    mapa = L.map('mapa').setView(inicio, CONFIG.entrega.zoom || 15);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, attribution: '© OpenStreetMap'
-    }).addTo(mapa);
-    L.circleMarker(CONFIG.entrega.localLoja, { radius: 8, color: '#b91c1c', fillColor: '#ef4444', fillOpacity: .9 })
-      .addTo(mapa).bindTooltip('🍕 ' + CONFIG.loja.nome);
-    pino = L.marker(inicio, { draggable: true }).addTo(mapa);
-    if (salvo.lat) { pinoAjustado = true; msgPino(); }
-    pino.on('dragend', () => pinoMovido(false));
-    mapa.on('click', e => { pino.setLatLng(e.latlng); pinoMovido(false); });
-    msgPino();
-  }, 50);
-}
-function msgPino() {
-  let h = '⚠️ Marque sua casa no mapa antes de confirmar — a taxa é calculada pela distância.';
-  if (pinoAjustado) {
-    const e = localEntrega(), km = Preco.distanciaKm(e.lat, e.lng), taxa = Preco.taxa(e);
-    const kmTxt = km.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    h = `✅ Localização marcada • 📏 ${kmTxt} km da pizzaria • entrega <b>${textoTaxa(taxa)}</b>`;
-    if (CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) h = `❌ Fora da área de entrega (${kmTxt} km). Escolha "Retirar" ou fale conosco no WhatsApp.`;
-  }
-  document.getElementById('statusPino').innerHTML = h;
-  if (tela === 'checkout') { renderResumo(); atualizar(); }
-}
-async function pinoMovido(veioDeBusca) {
-  pinoAjustado = true; msgPino();
-  if (veioDeBusca) return;
-  const { lat, lng } = pino.getLatLng();
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&accept-language=pt-BR&lat=${lat}&lon=${lng}`);
-    const j = await r.json(), a = j.address || {};
-    const rua = a.road || a.pedestrian || '';
-    const bairro = a.suburb || a.neighbourhood || a.quarter || a.village || '';
-    const elR = document.getElementById('rua'), elB = document.getElementById('bairro');
-    if (rua && (ruaAuto || !elR.value.trim())) { elR.value = rua; ruaAuto = true; }
-    if (bairro && (bairroAuto || !elB.value.trim())) { elB.value = bairro; bairroAuto = true; }
-  } catch (e) { /* sem internet ou limite do serviço: o cliente digita manualmente */ }
-}
-function minhaLocalizacao() {
-  if (!pino) return toast('Mapa indisponível.');
-  if (!navigator.geolocation) { toast('Seu aparelho não permite localização.'); return; }
-  toast('Buscando sua localização...');
-  navigator.geolocation.getCurrentPosition(p => {
-    const ll = [p.coords.latitude, p.coords.longitude];
-    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(false);
-  }, () => toast('Não foi possível obter a localização. Arraste o pino manualmente.'), { enableHighAccuracy: true, timeout: 15000 });
-}
-async function buscarEndereco() {
-  if (!pino) return toast('Mapa indisponível.');
-  const rua = val('rua'), num = val('numero'), bairro = val('bairro');
-  if (!rua) { toast('Digite a rua primeiro.'); return; }
-  const q = [rua + (num && !/s\/?n/i.test(num) ? ' ' + num : ''), bairro, CONFIG.loja.cidade, 'Brasil'].filter(Boolean).join(', ');
-  try {
-    const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&countrycodes=br&q=${encodeURIComponent(q)}`);
-    const j = await r.json();
-    if (!j.length) { toast('Endereço não encontrado. Arraste o pino até sua casa.'); return; }
-    const ll = [parseFloat(j[0].lat), parseFloat(j[0].lon)];
-    pino.setLatLng(ll); mapa.setView(ll, 18); pinoMovido(true);
-    toast('Confira se o pino está na sua casa.');
-  } catch (e) { toast('Falha na busca. Arraste o pino manualmente.'); }
-}
-['rua', 'bairro'].forEach(id => document.getElementById(id).addEventListener('input', () => { if (id === 'rua') ruaAuto = false; else bairroAuto = false; }));
+/* ---------------- ENDEREÇO (mapa, pino e taxa: js/endereco.js) ---------------- */
+Endereco.montar(document.getElementById('blocoEndereco'), {
+  minhaLocalizacao: true, toast,
+  onChange: () => { if (tela === 'checkout') { renderResumo(); atualizar(); } }
+});
 
 /* ---------------- DADOS DO CLIENTE (lembrar no aparelho) ---------------- */
 const val = id => document.getElementById(id).value.trim();
 function lerCliente() { try { return JSON.parse(localStorage.getItem('cdp_cliente') || '{}'); } catch { return {}; } }
 function preencherCliente() {
   const c = lerCliente();
-  ['nome', 'telefone', 'rua', 'numero', 'bairro', 'complemento', 'referencia'].forEach(k => { if (c[k]) document.getElementById(k).value = c[k]; });
-  if (c.rua) ruaAuto = false;
-  if (c.bairro) bairroAuto = false;
+  ['nome', 'telefone'].forEach(k => { if (c[k]) document.getElementById(k).value = c[k]; });
+  Endereco.preencher(c);
 }
 document.getElementById('telefone').addEventListener('input', e => {
   let d = e.target.value.replace(/\D/g, '').slice(0, 11);
@@ -491,18 +398,10 @@ async function enviarPedido() {
 
   let entrega = { tipo: tipoEntrega };
   if (tipoEntrega === 'entrega') {
-    if (!val('rua')) return foco('rua', 'Informe a rua.');
-    if (!val('numero')) return foco('numero', 'Informe o número (ou S/N).');
-    if (!val('bairro')) return foco('bairro', 'Informe o bairro.');
-    if (pino && !pinoAjustado) { document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' }); return toast('Marque sua casa no mapa (arraste o pino).'); }
-    const loc = localEntrega();
-    const km = Preco.distanciaKm(loc.lat, loc.lng);
-    if (km != null && CONFIG.entrega.raioMaximoKm && km > CONFIG.entrega.raioMaximoKm) return toast('Endereço fora da área de entrega.');
-    entrega = Object.assign(entrega, {
-      rua: val('rua'), numero: val('numero'), bairro: val('bairro'),
-      complemento: val('complemento'), referencia: val('referencia'),
-      lat: loc.lat ?? null, lng: loc.lng ?? null, distanciaKm: km
-    });
+    const erro = Endereco.validar();
+    if (erro && erro.id === 'mapa') { document.getElementById('mapa').scrollIntoView({ behavior: 'smooth', block: 'center' }); return toast(erro.msg); }
+    if (erro) return foco(erro.id, erro.msg);
+    entrega = Endereco.dados();
   }
 
   // Horário: fora do expediente só agendado
