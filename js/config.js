@@ -46,6 +46,13 @@ window.CONFIG = {
     colunas: 32   // 32 = papel 58 mm | 48 = papel 80 mm
   },
 
+  /* Equipe: e-mail de login (Firebase → Authentication → Usuários) → nome e papel.
+     papel: 'entregador' (página entregador.html) | 'cozinha' | 'admin'.
+     Quem NÃO estiver aqui continua entrando normalmente como cozinha. */
+  equipe: {
+    'entregador.henrique@clubedapizzato.com.br': { nome: 'Henrique de Almeida', papel: 'entregador' }
+  },
+
   /* Banco de dados em tempo real (Firebase).
      null  => MODO DEMONSTRAÇÃO: loja e cozinha só se comunicam
               no MESMO navegador/computador (bom para testar).

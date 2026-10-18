@@ -28,6 +28,7 @@ service cloud.firestore {
                     && (request.resource.data.get('agendadoPara', null) == null
                         || request.resource.data.agendadoPara is number)
                     && ((request.resource.data.origem == 'site'
+                         && request.resource.data.get('estoqueBaixado', false) == false
                          && request.resource.data.pagamento.confirmado == false
                          && request.resource.data.cliente.telefone is string)
                      || (request.auth != null
@@ -35,9 +36,26 @@ service cloud.firestore {
                          && request.resource.data.entrega.tipo == 'balcao'
                          && request.resource.data.pagamento.confirmado == true));
 
-      // Mudar status / confirmar Pix / marcar impresso: só a cozinha.
+      // Mudar status / confirmar Pix / marcar impresso / entregador: só usuário logado.
       allow update: if request.auth != null;
       allow delete: if false;
+    }
+
+    // Catálogo (preços, ativo, estoque disponível): a loja lê; só a gestão (logado) altera.
+    match /produtos/{id} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Configuração da loja (cortesia de sachês, taxa da maquininha): leitura pública.
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Entradas de compra, ajustes, baixas de venda e estornos: só logado.
+    match /movimentos/{id} {
+      allow read, write: if request.auth != null;
     }
   }
 }
