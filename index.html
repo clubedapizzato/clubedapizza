@@ -33,6 +33,11 @@
       <div id="carrinho"></div>
     </div>
 
+    <div class="card hide" id="cardSaches">
+      <h2>Quer sachês? 🥫</h2>
+      <div id="saches"></div>
+    </div>
+
     <div class="card">
       <h2>👤 Seus dados</h2>
       <label for="nome">Nome</label>
@@ -116,6 +121,7 @@
 <script src="js/cardapio.js"></script>
 <script src="js/pix.js"></script>
 <script src="js/db.js"></script>
+<script src="js/catalogo.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -136,13 +142,14 @@ if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove(
 
 /* ---------------- CARDÁPIO ---------------- */
 function renderCardapio() {
-  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(C.categorias.map(c => ({ id: c.id, nome: c.nome })));
+  const vitrine = Catalogo.categoriasVenda();
+  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(vitrine.map(c => ({ id: c.id, nome: c.nome })));
   document.getElementById('tabs').innerHTML = cats.map(c =>
     `<button class="tab" data-cat="${c.id}" onclick="irPara('${c.id}')">${esc(c.nome)}</button>`).join('');
 
   let h = `<div class="card" id="cat-pizzas"><h2>🍕 Pizzas</h2>
     <div class="muted" style="margin-bottom:6px">P: 1 sabor • M e G: até 2 sabores (meio a meio)</div>`;
-  C.sabores.forEach((s, i) => {
+  Catalogo.saboresAtivos().forEach(({ s, i }) => {
     h += `<div class="prod">
       <div><div class="nome">${esc(s.nome)}</div>
         ${s.desc ? `<div class="muted">${esc(s.desc)}</div>` : ''}
@@ -152,12 +159,12 @@ function renderCardapio() {
   });
   h += `</div>`;
 
-  C.categorias.forEach(cat => {
+  vitrine.forEach(cat => {
     h += `<div class="card" id="cat-${cat.id}"><h2>${esc(cat.nome)}</h2>`;
     cat.produtos.forEach(p => {
       const q = qtdProduto(p.id);
       h += `<div class="prod">
-        <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}</div></div>
+        <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}${restam(p.id)}</div></div>
         <div class="qty"><button onclick="alterarProduto('${p.id}',-1)">−</button><b>${q}</b><button onclick="alterarProduto('${p.id}',1)">+</button></div>
       </div>`;
     });
@@ -173,7 +180,10 @@ function irPara(id) {
 }
 
 function qtdProduto(id) { const it = carrinho.find(x => x.tipo === 'produto' && x.id === id); return it ? it.qtd : 0; }
+// "• Só restam 3" quando o estoque está baixo
+function restam(id) { const n = Catalogo.disponivel(id); return n <= 5 ? ` <b style="color:var(--warn)">• Só restam ${n}</b>` : ''; }
 function alterarProduto(id, d) {
+  if (d > 0 && qtdProduto(id) + d > Catalogo.disponivel(id)) return toast(`Só restam ${Catalogo.disponivel(id)} de ${Preco.descricao({ tipo: 'produto', id })}.`);
   let it = carrinho.find(x => x.tipo === 'produto' && x.id === id);
   if (!it && d > 0) { it = { uid: uid(), tipo: 'produto', id, qtd: 0 }; carrinho.push(it); }
   if (!it) return;
@@ -199,7 +209,7 @@ function renderModal() {
     <h3>Tamanho</h3>
     <div class="opcoes">${C.tamanhos.map(x => `<div class="opcao ${x.id === m.tamanho ? 'on' : ''}" onclick="mTamanho('${x.id}')">${x.nome} (${x.id})<small>${x.maxSabores === 1 ? '1 sabor' : 'até ' + x.maxSabores + ' sabores'}</small></div>`).join('')}</div>
     <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
-    <div class="chips">${C.sabores.map(s => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
+    <div class="chips">${Catalogo.saboresAtivos().map(({ s }) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
     ${t.maxSabores > 1 ? `<div class="muted" style="margin-top:6px">Meio a meio: preço pela ${CONFIG.meioAMeio === 'maior' ? 'pizza de maior valor' : 'média dos sabores'}.</div>` : ''}
     <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600">
       <input type="checkbox" style="width:auto" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
@@ -255,7 +265,7 @@ function textoTaxa(taxa) {
 function renderCarrinho() {
   const el = document.getElementById('carrinho');
   if (!carrinho.length) { el.innerHTML = '<div class="muted">Seu carrinho está vazio.</div>'; return; }
-  el.innerHTML = carrinho.map(it => `
+  el.innerHTML = carrinho.filter(it => !Preco.ehSache(it)).map(it => `
     <div class="prod">
       <div><div class="nome">${esc(Preco.descricao(it))}</div>
         ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
@@ -266,14 +276,36 @@ function renderCarrinho() {
 function alterarItem(u, d) {
   const it = carrinho.find(x => x.uid === u);
   if (!it) return;
+  if (d > 0 && it.tipo === 'produto' && it.qtd + d > Catalogo.disponivel(it.id)) return toast(`Só restam ${Catalogo.disponivel(it.id)} de ${Preco.descricao(it)}.`);
   it.qtd += d;
   if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
   atualizar();
 }
 
+/* ---------------- SACHÊS ---------------- */
+function textoSaches(sc) { return `Sachês: ${sc.qtd}${sc.gratis ? ` (${sc.gratis} cortesia)` : ''}`; }
+function renderSaches() {
+  const lista = Catalogo.sachesVenda(), card = document.getElementById('cardSaches');
+  const temNoCarrinho = carrinho.some(it => Preco.ehSache(it));
+  card.classList.toggle('hide', !lista.length && !temNoCarrinho);
+  const porPizza = C.loja.cortesiaSachesPorPizza || 0;
+  const pizzas = carrinho.filter(it => it.tipo === 'pizza').reduce((s, it) => s + it.qtd, 0);
+  const sc = Preco.saches(carrinho);
+  let h = porPizza ? `<div class="okbox">🎁 ${porPizza} sachê${porPizza > 1 ? 's' : ''} grátis por pizza${pizzas ? ` — você tem <b>${porPizza * pizzas} grátis</b>` : ''}.</div>` : '';
+  const ids = new Set(lista.map(p => p.id));
+  carrinho.filter(it => Preco.ehSache(it) && !ids.has(it.id)).forEach(it => lista.push(Preco.produto(it.id) || { id: it.id, nome: it.id, preco: 0 }));
+  h += lista.map(p => `<div class="prod">
+      <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}${restam(p.id)}</div></div>
+      <div class="qty"><button onclick="alterarProduto('${p.id}',-1)">−</button><b>${qtdProduto(p.id)}</b><button onclick="alterarProduto('${p.id}',1)">+</button></div>
+    </div>`).join('');
+  if (sc.qtd) h += `<div class="linha" style="font-weight:700"><span>${textoSaches(sc)}</span><span>${sc.valor ? dinheiro(sc.valor) : 'Grátis'}</span></div>`;
+  document.getElementById('saches').innerHTML = h;
+}
+
 function renderResumo() {
-  const t = totais();
+  const t = totais(), sc = Preco.saches(carrinho);
   document.getElementById('resumo').innerHTML = `
+    ${sc.qtd ? `<div class="linha"><span>${textoSaches(sc)}</span><span>${sc.valor ? dinheiro(sc.valor) : 'Grátis'}</span></div>` : ''}
     <div class="linha"><span>Subtotal</span><span>${dinheiro(t.subtotal)}</span></div>
     ${tipoEntrega === 'entrega' ? `<div class="linha"><span>Taxa de entrega</span><span>${textoTaxa(t.taxa)}</span></div>` : ''}
     <div class="linha"><span>${tipoEntrega === 'entrega' ? 'Entrega' : 'Retirada'}</span><span>${quando === 'agendar'
@@ -330,7 +362,7 @@ function setPagamento(p) { formaPagamento = p; renderOpcoes(); }
 
 function atualizar() {
   if (tela === 'cardapio') renderCardapio();
-  if (tela === 'checkout') { renderCarrinho(); renderResumo(); }
+  if (tela === 'checkout') { renderCarrinho(); renderSaches(); renderResumo(); }
   const n = carrinho.reduce((s, x) => s + x.qtd, 0);
   const b = document.getElementById('btnBarra');
   const barra = document.getElementById('barra');
@@ -451,6 +483,9 @@ async function enviarPedido() {
   if (enviando) return;
   const nome = val('nome'), tel = val('telefone').replace(/\D/g, '');
   if (!carrinho.length) return toast('Seu carrinho está vazio.');
+  const falta = Catalogo.faltas(carrinho)[0];
+  if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}. Ajuste a quantidade.` : `${falta.nome} acabou. Retire do pedido.`);
+  if (!carrinho.some(it => !Preco.ehSache(it))) return toast('Adicione pelo menos uma pizza ou bebida.');
   if (nome.length < 2) return foco('nome', 'Informe seu nome.');
   if (tel.length < 10) return foco('telefone', 'Informe um telefone com DDD.');
 
@@ -489,7 +524,8 @@ async function enviarPedido() {
     agendadoPara,
     cliente: { nome, telefone: tel },
     entrega,
-    itens: carrinho.map(({ uid, ...it }) => it),
+    itens: Catalogo.itensPedido(carrinho),
+    cortesiaPorPizza: C.loja.cortesiaSachesPorPizza || 0,
     subtotal: t.subtotal, taxaEntrega: t.taxa, total: t.total,
     pagamento: { forma: formaPagamento, trocoPara, confirmado: false },
     obs: val('obs')
@@ -539,15 +575,18 @@ function payloadPix(p) {
 }
 
 function htmlAcompanhar(p) {
-  const cancel = p.status === 'cancelado';
-  const idx = STATUS.ordem.indexOf(p.status);
+  const cancel = p.status === 'cancelado', fases = STATUS.fases(p.entrega.tipo);
+  const idx = p.status === 'nao_entregue' ? fases.indexOf('saiu') : fases.indexOf(p.status);
   let h = `<h2>Pedido #${p.numero} ${cancel ? '— ❌ Cancelado' : ''}</h2>
     <div class="muted">Obrigado, ${esc(p.cliente.nome.split(' ')[0])}! Acompanhe aqui em tempo real.</div>`;
   if (p.agendadoPara && !cancel) h += `<div class="okbox" style="font-size:15px">📅 <b>Agendado para ${Horario.textoAgendado(p.agendadoPara)}</b> (${p.entrega.tipo === 'entrega' ? 'entrega' : 'retirada'})</div>`;
   if (!cancel) {
-    h += `<div class="passos">${STATUS.ordem.map((s, i) =>
+    h += `<div class="passos">${fases.map((s, i) =>
       `<div class="passo ${i <= idx ? 'feito' : ''}"><i></i>${STATUS.rotulo(s, p.entrega.tipo)}</div>`).join('')}</div>`;
   }
+  if (p.status === 'nao_entregue') h += `<div class="aviso" style="background:#fef2f2;border-color:#fecaca;color:#7f1d1d">❌ <b>Não conseguimos entregar seu pedido</b>${p.naoEntregue && p.naoEntregue.motivo ? ` (${esc(p.naoEntregue.motivo.toLowerCase())})` : ''}. Fale com a gente no WhatsApp para combinarmos.
+    <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank" href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Sobre o meu pedido #${p.numero} (${p.cliente.nome}), que não foi entregue.`)}">💬 Falar com a loja</a></div>`;
+  if (p.status === 'saiu' && p.entrega.tipo === 'entrega' && p.entregador && p.entregador.nome) h += `<div class="okbox">🛵 Saiu com <b>${esc(p.entregador.nome.split(' ')[0])}</b>${p.rota && p.rota.ordem ? ` • você é a parada nº ${p.rota.ordem}` : ''}.</div>`;
 
   if (p.pagamento.forma === 'pix' && !cancel) {
     if (p.pagamento.confirmado) h += `<div class="okbox">✅ Pagamento Pix confirmado.</div>`;
@@ -565,9 +604,11 @@ function htmlAcompanhar(p) {
   }
 
   h += `<h3 style="margin-top:16px">Itens</h3>`;
-  p.itens.forEach(it => {
+  p.itens.filter(it => !Preco.ehSache(it)).forEach(it => {
     h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
   });
+  const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
+  if (sc.qtd) h += `<div class="linha"><span>${textoSaches(sc)}<br><span class="muted">${esc(Preco.listaSaches(p.itens))}</span></span><span>${sc.valor ? dinheiro(sc.valor) : 'Grátis'}</span></div>`;
   if (p.entrega.tipo === 'entrega') h += `<div class="linha"><span>Taxa de entrega${p.entrega.distanciaKm != null ? ` (${String(p.entrega.distanciaKm).replace('.', ',')} km)` : ''}</span><span>${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'Grátis'}</span></div>`;
   h += `<div class="linha total"><span>Total</span><span>${dinheiro(p.total)}</span></div>`;
   h += `<div class="muted" style="margin-top:8px">Pagamento: ${({ pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão na entrega' })[p.pagamento.forma]}
@@ -607,6 +648,8 @@ function toast(t) {
 }
 
 /* ---------------- INÍCIO ---------------- */
+// Catálogo e estoque em tempo real (Firestore); sem ele vale o cardápio fixo
+Catalogo.iniciar(() => { if (tela !== 'acompanhar') atualizar(); if (document.getElementById('modalPizza').classList.contains('on')) renderModal(); });
 preencherCliente();
 renderHorario();
 const idUrl = new URLSearchParams(location.search).get('pedido');
