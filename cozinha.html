@@ -14,7 +14,7 @@ main{max-width:1400px;padding-bottom:30px}
 .ferramentas .btn{padding:7px 10px;font-size:13px}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;background:#ffffff14;border-radius:9px;padding:6px 10px;cursor:pointer;user-select:none}
 .toggle input{width:auto;margin:0}
-.colunas{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;align-items:start}
+.colunas{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
 @media(max-width:1100px){.colunas{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.colunas{grid-template-columns:1fr}}
 .coluna h2{display:flex;justify-content:space-between;align-items:center;font-size:15px;background:var(--dark);color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}
@@ -22,7 +22,14 @@ main{max-width:1400px;padding-bottom:30px}
 .ped{background:#fff;border:1px solid var(--line);border-left:6px solid var(--muted);border-radius:12px;padding:12px;margin-bottom:10px;font-size:14px}
 .ped.novo{border-left-color:#dc2626;animation:pisca 1.2s ease-in-out 6}
 .ped.producao{border-left-color:#d97706}
+.ped.pronto{border-left-color:#7c3aed}
 .ped.saiu{border-left-color:#2563eb}
+.ped.nao_entregue{border-left-color:#dc2626;background:#fef2f2}
+.saches{background:#fef3c7;border-radius:8px;padding:4px 8px;font-weight:800;font-size:13px;margin:4px 0}
+.naoEntregues{background:#fee2e2;border:2px solid #dc2626;border-radius:14px;padding:10px 12px;margin-bottom:12px;animation:pisca 1.2s ease-in-out 4}
+.naoEntregues h2{color:#991b1b;font-size:16px;margin:0 0 8px}
+.naoEntregues .lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.naoEntregues .ped{margin:0}
 .ped.entregue{border-left-color:var(--ok);opacity:.75}
 .ped.cancelado{border-left-color:#525252;opacity:.6}
 @keyframes pisca{50%{background:#fee2e2}}
@@ -61,7 +68,8 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
       <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
       <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
       <a class="btn sm sec" style="text-decoration:none" href="balcao.html" target="_blank">🏪 Balcão</a>
-      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html" target="_blank">📊 Relatórios</a>
+      <a class="btn sm sec" style="text-decoration:none" href="entregador.html" target="_blank">🛵 Entregador</a>
+      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html" target="_blank">📊 Gestão</a>
       <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
     </div>
   </div>
@@ -80,6 +88,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 
   <div id="painel" class="hide">
     <div id="futuros" class="aviso hide"></div>
+    <div id="naoEntregues" class="naoEntregues hide"></div>
     <div id="agendados" class="agendados hide"></div>
     <div class="colunas" id="colunas"></div>
   </div>
@@ -91,6 +100,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <script src="js/config.js"></script>
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
+<script src="js/catalogo.js"></script>
 <script src="js/impressora.js"></script>
 <script>
 let pedidos = [];
@@ -99,8 +109,15 @@ let fila = [], imprimindo = false, naFila = new Set();
 let pararLista = null, pararFuturos = null;
 let emEspera = new Set();       // agendados ainda fora da fila (faltam > alertaAntesMin)
 let audioCtx = null;
-const PROX = { novo: 'producao', producao: 'saiu', saiu: 'entregue' };
-const BOTAO = { novo: '▶️ Iniciar produção', producao: '🛵 Saiu para entrega', saiu: '✅ Marcar entregue' };
+const BOTAO = { producao: '▶️ Iniciar produção', pronto: '📦 Pronto p/ entrega', saiu: '🛵 Saiu para entrega', entregue: '✅ Marcar entregue' };
+// Texto do botão principal para ir de p.status à próxima fase
+function botaoAvancar(p) {
+  const prox = STATUS.proximo(p.status, p.entrega.tipo);
+  if (prox === 'saiu' && p.entrega.tipo === 'retirada') return '✅ Pronto p/ retirada';
+  if (prox === 'saiu' && p.entrega.tipo === 'balcao') return '✅ Pronto';
+  if (prox === 'saiu' && p.status === 'pronto') return '🛵 Saiu (sem rota do entregador)';
+  return BOTAO[prox];
+}
 const ANTES = (CONFIG.horario && CONFIG.horario.alertaAntesMin) || 40;
 
 const pref = (k, padrao) => { const v = localStorage.getItem('cdp_coz_' + k); return v == null ? padrao : v === '1'; };
@@ -125,6 +142,7 @@ document.getElementById('relogio').textContent = new Date().toLocaleTimeString('
 
 /* ---------------- LOGIN ---------------- */
 DB.observarUsuario(u => {
+  if (u && Equipe.de(u.email).papel === 'entregador') return location.replace('entregador.html');
   const logado = !!u;
   document.getElementById('login').classList.toggle('hide', logado);
   document.getElementById('painel').classList.toggle('hide', !logado);
@@ -193,18 +211,24 @@ function verDia(d) { elData.value = d; assinar(); }
 function minutos(p) { return Math.floor((Date.now() - p.criadoEm) / 60000); }
 
 function render() {
+  // Prontos = entrega aguardando entregador + retirada/balcão prontos; Em rota = entrega com o entregador
   const cols = [
-    { id: 'novo', nome: '🆕 Novos' },
-    { id: 'producao', nome: '🔥 Em produção' },
-    { id: 'saiu', nome: '🛵 Saiu / Pronto' },
-    { id: 'entregue', nome: '✅ Entregues' }
+    { id: 'novo', nome: '🆕 Novos', f: p => p.status === 'novo' },
+    { id: 'producao', nome: '🔥 Em produção', f: p => p.status === 'producao' },
+    { id: 'pronto', nome: '📦 Prontos', f: p => p.status === 'pronto' || (p.status === 'saiu' && p.entrega.tipo !== 'entrega') },
+    { id: 'saiu', nome: '🛵 Em rota', f: p => p.status === 'saiu' && p.entrega.tipo === 'entrega' },
+    { id: 'entregue', nome: '✅ Entregues', f: p => p.status === 'entregue' || p.status === 'cancelado' }
   ];
+  const nao = pedidos.filter(p => p.status === 'nao_entregue');
+  const elNao = document.getElementById('naoEntregues');
+  elNao.classList.toggle('hide', !nao.length);
+  elNao.innerHTML = `<h2>🚨 ${nao.length} pedido${nao.length > 1 ? 's' : ''} NÃO ENTREGUE${nao.length > 1 ? 'S' : ''} — resolver agora</h2><div class="lista">${nao.map(cartao).join('')}</div>`;
   const agend = pedidos.filter(p => Horario.emEspera(p)).sort((a, b) => a.agendadoPara - b.agendadoPara);
   const elAg = document.getElementById('agendados');
   elAg.classList.toggle('hide', !agend.length);
   elAg.innerHTML = `<h2>📅 Agendados <span class="tag info">entram em Novos ${ANTES} min antes</span></h2><div class="lista">${agend.map(cartao).join('')}</div>`;
   document.getElementById('colunas').innerHTML = cols.map(c => {
-    let lista = pedidos.filter(p => (p.status === c.id && !Horario.emEspera(p)) || (c.id === 'entregue' && p.status === 'cancelado'));
+    let lista = pedidos.filter(p => c.f(p) && !Horario.emEspera(p));
     if (c.id === 'entregue') lista = lista.slice().reverse();
     return `<div class="coluna"><h2>${c.nome}<span>${lista.length}</span></h2>
       ${lista.map(cartao).join('') || '<div class="muted" style="text-align:center;padding:10px">—</div>'}</div>`;
@@ -214,7 +238,8 @@ function render() {
 function cartao(p) {
   const e = p.entrega, pg = p.pagamento, min = minutos(p);
   const taxaCalc = Preco.taxa(e);
-  const conferido = Math.abs(Preco.subtotal(p.itens) + (taxaCalc || 0) - p.total) < 0.01;
+  const conferido = Math.abs(Preco.subtotal(p.itens, p.cortesiaPorPizza || 0) + (taxaCalc || 0) - p.total) < 0.01;
+  const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
   const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
   const ativo = !['entregue', 'cancelado'].includes(p.status);
 
@@ -237,14 +262,18 @@ function cartao(p) {
          <div class="muted">📏 ${e.distanciaKm != null ? String(e.distanciaKm).replace('.', ',') + ' km' : 'distância não informada'} • entrega ${taxaCalc == null ? '<span class="tag pend">TAXA A COMBINAR</span>' : taxaCalc ? dinheiro(taxaCalc) : 'grátis'}</div>
          ${e.lat ? `<a class="lnk" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}">🗺️ Abrir no mapa</a>` : ''}`
       : '<span class="tag info">🏪 RETIRADA NO BALCÃO</span>'}
-    <ul>${p.itens.map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>
+    <ul>${p.itens.filter(it => !Preco.ehSache(it)).map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>
+    ${sc.qtd ? `<div class="saches">🥫 SACHÊS (sacola): ${esc(Preco.listaSaches(p.itens))}${sc.gratis ? ` • ${sc.gratis} cortesia` : ''}</div>` : ''}
+    ${p.entregador && ['saiu', 'entregue', 'nao_entregue'].includes(p.status) && e.tipo === 'entrega' ? `<div class="muted">🛵 ${esc(p.entregador.nome)}${p.rota && p.rota.ordem ? ` • parada ${p.rota.ordem}` : ''}</div>` : ''}
+    ${p.status === 'nao_entregue' && p.naoEntregue ? `<div class="tag erro" style="font-size:13px;display:block;margin:6px 0">❌ NÃO ENTREGUE: ${esc(p.naoEntregue.motivo)}${p.naoEntregue.obs ? ' — ' + esc(p.naoEntregue.obs) : ''}${p.naoEntregue.em ? ' • ' + new Date(p.naoEntregue.em).toLocaleTimeString('pt-BR').slice(0, 5) : ''}</div>` : ''}
     ${p.obs ? `<div class="aviso" style="margin:4px 0">📝 ${esc(p.obs)}</div>` : ''}
     <div><b>Total ${dinheiro(p.total)}</b> ${pgTag}
       ${conferido ? '' : '<span class="tag erro" title="O total enviado não bate com os preços do cardápio">⚠️ CONFERIR VALOR</span>'}
       ${p.impresso ? '' : '<span class="tag pend">NÃO IMPRESSO</span>'}
       ${p.status === 'cancelado' ? '<span class="tag erro">CANCELADO</span>' : ''}</div>
     <div class="acoes">
-      ${PROX[p.status] ? `<button class="btn avancar" onclick="mudarStatus('${p.id}','${PROX[p.status]}')">${p.status === 'producao' && e.tipo === 'retirada' ? '✅ Pronto p/ retirada' : p.status === 'producao' && balcao ? '✅ Pronto' : BOTAO[p.status]}</button>` : ''}
+      ${p.status === 'nao_entregue' ? `<button class="btn avancar" onclick="reenviar('${p.id}')">🔁 Reenviar para entrega</button>`
+        : STATUS.proximo(p.status, e.tipo) ? `<button class="btn avancar ${p.status === 'pronto' ? 'sec' : ''}" onclick="mudarStatus('${p.id}','${STATUS.proximo(p.status, e.tipo)}')">${botaoAvancar(p)}</button>` : ''}
       ${pg.forma === 'pix' && ativo && !balcao ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
       <button class="btn sm sec" onclick="imprimirManual('${p.id}')">🖨️ Imprimir</button>
       ${p.cliente.telefone ? `<a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>` : ''}
@@ -259,12 +288,27 @@ function faltam(p) {
 function fone(t) { const d = String(t).replace(/\D/g, ''); return d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : t; }
 const achar = id => pedidos.find(p => p.id === id);
 
-async function mudarStatus(id, status) {
+// Produtos do pedido com estoque insuficiente (avisa, mas deixa continuar — o estoque fica negativo)
+function faltasEstoque(p) {
+  const qtd = {};
+  p.itens.forEach(it => { if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + it.qtd; });
+  return Object.keys(qtd).filter(id => { const d = Catalogo.doc(id); return d && d.controlaEstoque && (d.estoqueAtual || 0) < qtd[id]; })
+    .map(id => `${Catalogo.doc(id).nome}: pedido ${qtd[id]}, estoque ${Catalogo.doc(id).estoqueAtual || 0}`);
+}
+
+async function mudarStatus(id, status, extra) {
   const p = achar(id); if (!p) return;
-  // abre a janela já no clique (navegadores bloqueiam pop-up depois de um await)
-  const jan = elWa.checked && p.cliente.telefone ? window.open('', '_blank') : null;
+  if (status === 'producao' && !p.estoqueBaixado) {
+    const f = faltasEstoque(p);
+    if (f.length && !confirm(`⚠️ Falta estoque no pedido #${p.numero}:\n\n${f.join('\n')}\n\nIniciar produção mesmo assim? (o estoque ficará negativo)`)) return;
+  }
+  // abre a janela já no clique (navegadores bloqueiam pop-up depois de um await); "pronto" não avisa sozinho
+  const jan = elWa.checked && p.cliente.telefone && status !== 'pronto' ? window.open('', '_blank') : null;
   try {
-    await DB.atualizarPedido(id, { status }, status);
+    // pedido do site baixa o estoque ao iniciar a produção (uma única vez); cancelado devolve
+    if (status === 'producao') await DB.baixarEstoque(id);
+    await DB.atualizarPedido(id, Object.assign({ status }, extra || {}), status);
+    if (status === 'cancelado') await DB.estornarEstoque(id);
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
   } catch (e) {
     if (jan) jan.close();
@@ -281,6 +325,15 @@ async function cancelar(id) {
   if (!confirm(`Cancelar o pedido #${p.numero}${p.cliente.nome ? ' de ' + p.cliente.nome : ''}?`)) return;
   await mudarStatus(id, 'cancelado');
 }
+// Não entregue → volta para "Pronto" e aparece de novo para o entregador
+async function reenviar(id) {
+  const p = achar(id); if (!p) return;
+  await DB.atualizarPedido(id, { status: 'pronto', entregador: null, rota: null, saiuEm: null }, 'pronto');
+  toast(`Pedido #${p.numero} voltou para 📦 Prontos.`);
+}
+
+// estoque e sachês em tempo real (aviso de falta ao iniciar produção)
+Catalogo.iniciar(() => { if (pedidos.length) render(); });
 
 /* ---------------- IMPRESSÃO ---------------- */
 function verificarImpressao() {
