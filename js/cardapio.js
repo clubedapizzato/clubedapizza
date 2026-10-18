@@ -41,8 +41,17 @@ window.CARDAPIO = {
         { id: 'lata-kuat',      nome: 'Lata Guaraná Kuat',   preco: 6 }
       ]
     }
-  ]
+  ],
+
+  /* Configuração da loja (no Firestore: config/loja — editável na Gestão).
+     Estes valores valem até a configuração carregar. */
+  loja: {
+    cortesiaSachesPorPizza: 0,   // sachês grátis por pizza (aplicados nos mais baratos)
+    taxaMaquininha: 2.5          // % padrão da maquininha usada no preço sugerido
+  }
 };
+/* O catálogo do Firestore (js/catalogo.js) substitui sabores/categorias acima.
+   Itens com ativo === false continuam no catálogo (pedidos antigos), mas não aparecem à venda. */
 
 /* ---------- regras de preço ---------- */
 window.Preco = (function () {
@@ -56,6 +65,9 @@ window.Preco = (function () {
     }
     return null;
   };
+  const categoriaDe = id => C.categorias.find(c => c.produtos.some(x => x.id === id)) || null;
+  // Sachê = produto da categoria "Sachês" (o item do pedido também guarda sache: true)
+  const ehSache = it => it.tipo === 'produto' && (it.sache || ((categoriaDe(it.id) || {}).id === 'saches'));
 
   function pizza(tam, sabores, adicional) {
     const t = tamanho(tam);
@@ -68,11 +80,11 @@ window.Preco = (function () {
     return Math.round((base + (adicional ? t.adicional : 0)) * 100) / 100;
   }
 
-  // Preço unitário de um item do carrinho
+  // Preço unitário de um item do carrinho (produto que saiu do catálogo usa o preço gravado no pedido)
   function unitario(item) {
     if (item.tipo === 'pizza') return pizza(item.tamanho, item.sabores, item.adicional);
     const p = produto(item.id);
-    return p ? p.preco : 0;
+    return p ? p.preco : (item.preco || 0);
   }
 
   function descricao(item) {
@@ -83,11 +95,32 @@ window.Preco = (function () {
       return s;
     }
     const p = produto(item.id);
-    return p ? p.nome : item.id;
+    return p ? p.nome : (item.nome || item.id);
   }
 
-  function subtotal(itens) {
-    return (itens || []).reduce((s, it) => s + unitario(it) * (it.qtd || 1), 0);
+  /* Sachês com cortesia: porPizza grátis por pizza, aplicados nos sachês MAIS BARATOS.
+     Retorna { qtd, gratis, valor (cobrado), desconto, gratisPorItem[i] }. */
+  function saches(itens, porPizza) {
+    itens = itens || [];
+    if (porPizza == null) porPizza = (C.loja && C.loja.cortesiaSachesPorPizza) || 0;
+    const pizzas = itens.filter(it => it.tipo === 'pizza').reduce((s, it) => s + (it.qtd || 1), 0);
+    const unidades = [];
+    itens.forEach((it, i) => { if (ehSache(it)) for (let k = 0; k < (it.qtd || 1); k++) unidades.push({ i, preco: unitario(it) }); });
+    unidades.sort((a, b) => a.preco - b.preco || a.i - b.i);
+    const gratis = Math.min(unidades.length, Math.max(0, porPizza) * pizzas);
+    const gratisPorItem = itens.map(() => 0);
+    let desconto = 0;
+    unidades.slice(0, gratis).forEach(u => { gratisPorItem[u.i]++; desconto += u.preco; });
+    const bruto = unidades.reduce((s, u) => s + u.preco, 0);
+    const r2 = v => Math.round(v * 100) / 100;
+    return { qtd: unidades.length, gratis, valor: r2(bruto - desconto), desconto: r2(desconto), gratisPorItem };
+  }
+  // "2 Maionese, 1 Ketchup"
+  const listaSaches = itens => (itens || []).filter(ehSache).map(it => `${it.qtd} ${descricao(it)}`).join(', ');
+
+  function subtotal(itens, porPizza) {
+    const bruto = (itens || []).reduce((s, it) => s + unitario(it) * (it.qtd || 1), 0);
+    return Math.round((bruto - saches(itens, porPizza).desconto) * 100) / 100;
   }
 
   // Distância (km) da pizzaria até o ponto marcado no mapa
@@ -111,21 +144,51 @@ window.Preco = (function () {
     return Math.max(0, Math.ceil(excedente - 1e-9)) * (E.valorPorKm || 0);
   }
 
-  return { tamanho, sabor, produto, pizza, unitario, descricao, subtotal, taxa, distanciaKm };
+  return { tamanho, sabor, produto, categoriaDe, ehSache, pizza, unitario, descricao, saches, listaSaches, subtotal, taxa, distanciaKm };
 })();
+
+/* ---------- margem / preço sugerido (percentuais em %, ex.: 30 = 30%) ---------- */
+window.Margem = {
+  // precoSugerido = (custo + extras) ÷ (1 − margem − taxa). null se margem + taxa >= 100%
+  sugerido(custo, extras, margem, taxa) {
+    const div = 1 - (Number(margem) || 0) / 100 - (Number(taxa) || 0) / 100;
+    if (div <= 0) return null;
+    return Math.round(((Number(custo) || 0) + (Number(extras) || 0)) / div * 100) / 100;
+  },
+  // Lucro por unidade e margem real (%) com o preço de venda atual
+  lucro: (preco, custo, extras, taxa) => (Number(preco) || 0) * (1 - (Number(taxa) || 0) / 100) - (Number(custo) || 0) - (Number(extras) || 0),
+  real(preco, custo, extras, taxa) { return preco > 0 ? this.lucro(preco, custo, extras, taxa) / preco * 100 : null; },
+  arredondar: (v, passo = 0.05) => Math.ceil(v / passo - 1e-9) * passo
+};
+
+/* ---------- equipe (CONFIG.equipe): e-mail → { nome, papel } ---------- */
+window.Equipe = {
+  de(email) {
+    const e = String(email || '').toLowerCase();
+    const k = Object.keys(CONFIG.equipe || {}).find(x => x.toLowerCase() === e);
+    return k ? Object.assign({ email: k }, CONFIG.equipe[k]) : { email, nome: email, papel: 'cozinha' };
+  },
+  entregadores: () => Object.keys(CONFIG.equipe || {}).map(k => Object.assign({ email: k }, CONFIG.equipe[k])).filter(x => x.papel === 'entregador')
+};
 
 window.dinheiro = v => (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 window.esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* ---------- status do pedido ---------- */
 window.STATUS = {
-  ordem: ['novo', 'producao', 'saiu', 'entregue'],
+  // Entrega: novo → producao → pronto → saiu (entregador) → entregue | nao_entregue
+  // Retirada / balcão: novo → producao → saiu ("Pronto") → entregue
+  fases: tipo => tipo === 'entrega' ? ['novo', 'producao', 'pronto', 'saiu', 'entregue'] : ['novo', 'producao', 'saiu', 'entregue'],
+  // Próxima fase pelo botão principal da cozinha
+  proximo(status, tipo) { const f = this.fases(tipo), i = f.indexOf(status); return i >= 0 && i < f.length - 1 ? f[i + 1] : null; },
   rotulo(status, tipo) {
     return ({
       novo: 'Recebido',
       producao: 'Em produção',
+      pronto: 'Pronto p/ entrega',
       saiu: tipo === 'retirada' ? 'Pronto p/ retirada' : tipo === 'balcao' ? 'Pronto' : 'Saiu para entrega',
       entregue: 'Entregue',
+      nao_entregue: 'Não entregue',
       cancelado: 'Cancelado'
     })[status] || status;
   },
@@ -138,14 +201,24 @@ window.STATUS = {
     return ({
       novo: `Olá ${nome}! 🍕 Recebemos seu pedido *#${n}* no ${loja}. Total: ${dinheiro(p.total)}.${ag}`,
       producao: `Olá ${nome}! 👨‍🍳 Seu pedido *#${n}* já está em produção no ${loja}.`,
+      pronto: `Olá ${nome}! 📦 Seu pedido *#${n}* está pronto e já vai sair para entrega.`,
       saiu: p.entrega.tipo === 'retirada'
         ? `Olá ${nome}! ✅ Seu pedido *#${n}* está pronto para retirada no ${loja}.`
-        : `Olá ${nome}! 🛵 Seu pedido *#${n}* saiu para entrega. Já já chega aí!`,
+        : `Olá ${nome}! 🛵 Seu pedido *#${n}* saiu para entrega${p.entregador && p.entregador.nome ? ' com ' + p.entregador.nome.split(' ')[0] : ''}. Já já chega aí!${cobrar(p)}`,
       entregue: `Pedido *#${n}* entregue. Obrigado pela preferência, ${nome}! ❤️ ${loja}`,
+      nao_entregue: `Olá ${nome}. Tentamos entregar seu pedido *#${n}*, mas não conseguimos${p.naoEntregue && p.naoEntregue.motivo ? ' (' + p.naoEntregue.motivo.toLowerCase() + ')' : ''}. Por favor, responda esta mensagem para combinarmos. ${loja}`,
       cancelado: `Olá ${nome}. Seu pedido *#${n}* foi cancelado. Qualquer dúvida, fale conosco.`
     })[status];
   }
 };
+
+// Lembrete de pagamento na mensagem de "saiu para entrega"
+function cobrar(p) {
+  const pg = p.pagamento || {};
+  if (pg.forma === 'dinheiro') return ` Valor: ${dinheiro(p.total)} em dinheiro${pg.trocoPara ? ` (troco para ${dinheiro(pg.trocoPara)})` : ''}.`;
+  if (pg.forma === 'cartao') return ` Valor: ${dinheiro(p.total)} no cartão (levamos a maquininha).`;
+  return '';
+}
 
 window.linkWhats = function (telefone, texto) {
   let d = String(telefone || '').replace(/\D/g, '');

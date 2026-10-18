@@ -41,10 +41,15 @@ window.Impressora = (function () {
       if (e.referencia) s += `REF: ${e.referencia}\n`;
     }
     s += linha('-');
-    p.itens.forEach(it => {
+    p.itens.filter(it => !Preco.ehSache(it)).forEach(it => {
       s += `${it.qtd}x ${Preco.descricao(it).toUpperCase()}\n`;
       if (it.obs) s += `   OBS: ${it.obs}\n`;
     });
+    const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
+    if (sc.qtd) {
+      s += linha('-') + `SACHES: ${Preco.listaSaches(p.itens).toUpperCase()}\n`;
+      s += duasColunas(`${sc.qtd} SACHES${sc.gratis ? ` (${sc.gratis} GRATIS)` : ''}`, dinheiro(sc.valor));
+    }
     if (p.obs) s += linha('-') + `OBS: ${p.obs}\n`;
     s += linha('-');
     s += duasColunas('SUBTOTAL', dinheiro(p.subtotal));

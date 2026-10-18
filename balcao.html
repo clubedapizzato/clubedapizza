@@ -22,6 +22,10 @@ main{max-width:1400px;padding-bottom:30px}
 .tile:active{transform:scale(.97);background:#fef2f2}
 .tile b{font-size:15px;line-height:1.2}
 .tile .pr{font-size:13px;color:var(--muted)}
+.tile .pouco{font-size:12px;font-weight:800;color:var(--warn)}
+.tile.esgotado{opacity:.45;cursor:not-allowed}
+.sachesRap{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
+.sachesRap .chip{padding:9px 11px;font-size:14px}
 .tile .badge{position:absolute;top:-8px;right:-6px;background:var(--brand);color:#fff;border-radius:999px;min-width:26px;height:26px;padding:0 7px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
 .painel{position:sticky;top:64px}
 .painel .card{margin-bottom:10px}
@@ -87,6 +91,7 @@ main{max-width:1400px;padding-bottom:30px}
           <button class="btn sm sec" onclick="limpar()">Limpar</button>
         </div>
         <div id="itens"></div>
+        <div class="sachesRap hide" id="sachesRap"></div>
       </div>
 
       <div class="card">
@@ -134,6 +139,7 @@ main{max-width:1400px;padding-bottom:30px}
 <script src="js/config.js"></script>
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
+<script src="js/catalogo.js"></script>
 <script src="js/impressora.js"></script>
 <script>
 const C = CARDAPIO;
@@ -152,6 +158,7 @@ relogio(); setInterval(relogio, 30000);
 
 /* ---------------- LOGIN (mesmo da cozinha) ---------------- */
 DB.observarUsuario(u => {
+  if (u && Equipe.de(u.email).papel === 'entregador') return location.replace('entregador.html');
   const logado = !!u;
   document.getElementById('login').classList.toggle('hide', logado);
   document.getElementById('pdv').classList.toggle('hide', !logado);
@@ -180,29 +187,41 @@ async function assinar() {
 
 /* ---------------- PRODUTOS ---------------- */
 function renderCats() {
-  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(C.categorias.map(c => ({ id: c.id, nome: c.nome })));
+  const vitrine = Catalogo.categoriasVenda();
+  if (categoria !== 'pizzas' && !vitrine.some(c => c.id === categoria)) categoria = 'pizzas';
+  const cats = [{ id: 'pizzas', nome: '🍕 Pizzas' }].concat(vitrine.map(c => ({ id: c.id, nome: c.nome })));
   document.getElementById('cats').innerHTML = cats.map(c =>
     `<button class="cat ${c.id === categoria ? 'on' : ''}" onclick="categoria='${c.id}';renderCats();renderTiles()">${esc(c.nome)}</button>`).join('');
 }
 function renderTiles() {
   let h = '';
   if (categoria === 'pizzas') {
-    C.sabores.forEach((s, i) => {
+    Catalogo.saboresAtivos().forEach(({ s, i }) => {
       const q = carrinho.filter(x => x.tipo === 'pizza' && x.sabores.includes(s.nome)).reduce((a, x) => a + x.qtd, 0);
       h += `<button class="tile" onclick="abrirPizza(${i})">${q ? `<span class="badge">${q}</span>` : ''}
         <b>${esc(s.nome)}</b><span class="pr">${C.tamanhos.map(t => `${t.id} ${dinheiro(s[t.id])}`).join(' • ')}</span></button>`;
     });
   } else {
-    const cat = C.categorias.find(c => c.id === categoria);
-    cat.produtos.forEach(p => {
-      const it = carrinho.find(x => x.tipo === 'produto' && x.id === p.id);
+    const cat = Catalogo.categoriasVenda().find(c => c.id === categoria);
+    (cat ? cat.produtos : []).forEach(p => {
+      const it = carrinho.find(x => x.tipo === 'produto' && x.id === p.id), n = Catalogo.disponivel(p.id);
       h += `<button class="tile" onclick="alterarProduto('${p.id}',1)">${it ? `<span class="badge">${it.qtd}</span>` : ''}
-        <b>${esc(p.nome)}</b><span class="pr">${dinheiro(p.preco)}</span></button>`;
+        <b>${esc(p.nome)}</b><span class="pr">${dinheiro(p.preco)}</span>${n <= 5 ? `<span class="pouco">Só restam ${n}</span>` : ''}</button>`;
     });
   }
   document.getElementById('tiles').innerHTML = h;
 }
+const qtdProduto = id => { const it = carrinho.find(x => x.tipo === 'produto' && x.id === id); return it ? it.qtd : 0; };
+// Botões rápidos de sachês no pedido
+function renderSaches() {
+  const lista = Catalogo.sachesVenda(), el = document.getElementById('sachesRap');
+  el.classList.toggle('hide', !lista.length);
+  const porPizza = C.loja.cortesiaSachesPorPizza || 0;
+  el.innerHTML = `<span class="muted" style="width:100%">🥫 Sachês${porPizza ? ` • ${porPizza} grátis por pizza` : ''}</span>` +
+    lista.map(p => `<span class="chip" onclick="alterarProduto('${p.id}',1)">+ ${esc(p.nome)} <span class="muted">${dinheiro(p.preco)}</span></span>`).join('');
+}
 function alterarProduto(id, d) {
+  if (d > 0 && qtdProduto(id) + d > Catalogo.disponivel(id)) return toast(`Só restam ${Catalogo.disponivel(id)} de ${Preco.descricao({ tipo: 'produto', id })}.`);
   let it = carrinho.find(x => x.tipo === 'produto' && x.id === id);
   if (!it && d > 0) { it = { uid: uid(), tipo: 'produto', id, qtd: 0 }; carrinho.push(it); }
   if (!it) return;
@@ -226,7 +245,7 @@ function renderModal() {
     <h2>🍕 Montar pizza</h2>
     <div class="opcoes">${C.tamanhos.map(x => `<div class="opcao ${x.id === m.tamanho ? 'on' : ''}" onclick="mTamanho('${x.id}')">${x.nome} (${x.id})<small>${x.maxSabores === 1 ? '1 sabor' : 'até ' + x.maxSabores + ' sabores'}</small></div>`).join('')}</div>
     <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
-    <div class="chips">${C.sabores.map((s, i) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor(${i})">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
+    <div class="chips">${Catalogo.saboresAtivos().map(({ s, i }) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor(${i})">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
     <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:700;font-size:15px">
       <input type="checkbox" style="width:22px;height:22px" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
       Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
@@ -263,18 +282,21 @@ function adicionarPizza() {
 function alterarItem(u, d) {
   const it = carrinho.find(x => x.uid === u);
   if (!it) return;
+  if (d > 0 && it.tipo === 'produto' && it.qtd + d > Catalogo.disponivel(it.id)) return toast(`Só restam ${Catalogo.disponivel(it.id)} de ${Preco.descricao(it)}.`);
   it.qtd += d;
   if (it.qtd <= 0) carrinho = carrinho.filter(x => x !== it);
   atualizar();
 }
 function renderItens() {
-  document.getElementById('itens').innerHTML = carrinho.length ? carrinho.map(it => `
+  const sc = Preco.saches(carrinho);
+  document.getElementById('itens').innerHTML = carrinho.length ? carrinho.map((it, i) => `
     <div class="item">
-      <div><div class="d">${esc(Preco.descricao(it))}</div>
+      <div><div class="d">${Preco.ehSache(it) ? '🥫 Sachê ' : ''}${esc(Preco.descricao(it))}</div>
         ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
-        <div class="muted">${dinheiro(Preco.unitario(it) * it.qtd)}</div></div>
+        <div class="muted">${dinheiro(Preco.unitario(it) * (it.qtd - (sc.gratisPorItem[i] || 0)))}${sc.gratisPorItem[i] ? ` • ${sc.gratisPorItem[i]} cortesia` : ''}</div></div>
       <div class="qty"><button onclick="alterarItem('${it.uid}',-1)">−</button><b>${it.qtd}</b><button onclick="alterarItem('${it.uid}',1)">+</button></div>
-    </div>`).join('') : '<div class="muted" style="padding:10px 0">Toque nos produtos para adicionar.</div>';
+    </div>`).join('') + (sc.qtd ? `<div class="linha" style="font-weight:700"><span>Sachês: ${sc.qtd}${sc.gratis ? ` (${sc.gratis} cortesia)` : ''}</span><span>${dinheiro(sc.valor)}</span></div>` : '')
+    : '<div class="muted" style="padding:10px 0">Toque nos produtos para adicionar.</div>';
 }
 function renderOpcoes() {
   const opc = (lista, atual, fn) => lista.map(o => `<div class="opcao ${atual === o.id ? 'on' : ''}" onclick="${fn}('${o.id}')">${o.nome}</div>`).join('');
@@ -302,13 +324,15 @@ function renderTotal() {
       ? `<span style="color:var(--brand)">Faltam ${dinheiro(total - rec)}</span>` : `Troco: ${dinheiro(rec - total)}`;
   }
 }
-function atualizar() { renderTiles(); renderItens(); renderTotal(); }
+function atualizar() { renderTiles(); renderItens(); renderSaches(); renderTotal(); }
 
 async function finalizar() {
   if (enviando) return;
   if (!carrinho.length) return toast('Adicione pelo menos um produto.');
   if (!consumo) return toast('Escolha: Comer aqui ou Para levar.');
   if (!forma) return toast('Escolha a forma de pagamento.');
+  const falta = Catalogo.faltas(carrinho)[0];
+  if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}.` : `${falta.nome} sem estoque.`);
   const total = Preco.subtotal(carrinho);
   let trocoPara = null;
   if (forma === 'dinheiro' && val('recebido')) {
@@ -322,7 +346,8 @@ async function finalizar() {
     agendadoPara: null,
     cliente: { nome: val('nome'), telefone: '' },
     entrega: { tipo: 'balcao', consumo },
-    itens: carrinho.map(({ uid, ...it }) => it),
+    itens: Catalogo.itensPedido(carrinho),
+    cortesiaPorPizza: C.loja.cortesiaSachesPorPizza || 0,
     subtotal: total, taxaEntrega: 0, total,
     pagamento: { forma, trocoPara, confirmado: true },
     obs: val('obs')
@@ -332,7 +357,8 @@ async function finalizar() {
   const b = document.getElementById('btnFinalizar');
   b.disabled = true; b.textContent = 'Enviando...';
   try {
-    const { numero: n } = await DB.criarPedido(pedido);
+    // balcão: baixa o estoque na hora, junto com a criação do pedido
+    const { numero: n } = await DB.criarPedido(pedido, { baixarEstoque: true });
     ultimo = Object.assign({}, pedido, { numero: n, criadoEm: Date.now() });
     mostrarSucesso();
   } catch (e) {
@@ -374,6 +400,7 @@ function toast(t) {
 }
 
 renderCats(); renderOpcoes(); atualizar();
+Catalogo.iniciar(() => { renderCats(); atualizar(); if (document.getElementById('modalPizza').classList.contains('on')) renderModal(); });
 </script>
 </body>
 </html>
