@@ -26,7 +26,7 @@ window.DB = (function () {
   }
 
   /* ---------------- modo demonstração ---------------- */
-  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config';
+  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config', LS_RAS = 'cdp_rastreio', LS_FILA = 'cdp_fila';
   const lerLS = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) || padrao; } catch { return padrao; } };
   const gravarLS = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); window.dispatchEvent(new CustomEvent('cdp-local', { detail: k })); };
   const lerTodos = () => lerLS(LS, {});
@@ -103,6 +103,9 @@ window.DB = (function () {
   }
 
   /* ---------------- API ---------------- */
+  // Pedido do site e delivery do balcão ganham código de acompanhamento (rastreio/{codigo})
+  const precisaCodigo = p => p.origem === 'site' || (p.entrega && p.entrega.tipo === 'entrega');
+
   // opcoes.baixarEstoque: baixa o estoque na mesma operação (balcão)
   async function criarPedido(pedido, opcoes = {}) {
     await init();
@@ -119,6 +122,13 @@ window.DB = (function () {
       localStorage.setItem(kc, numero);
       const id = 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
       Object.assign(pedido, { id, numero });
+      if (precisaCodigo(pedido)) {
+        const ras = lerLS(LS_RAS, {});
+        let c; do { c = Rastreio.gerar(); } while (ras[c]);
+        ras[c] = { pedidoId: id, criadoEm: Date.now() };
+        pedido.codigo = c;
+        gravarLS(LS_RAS, ras);
+      }
       let faltas = [];
       if (opcoes.baixarEstoque) {
         const prods = lerLS(LS_PROD, {}), movs = lerLS(LS_MOV, []);
@@ -132,16 +142,26 @@ window.DB = (function () {
       const todos = lerTodos();
       todos[id] = pedido;
       gravarTodos(todos);
-      return { id, numero, faltas };
+      return { id, numero, faltas, codigo: pedido.codigo || null };
     }
 
     const contRef = fs.doc(db, 'contadores', data);
     const pedRef = fs.doc(fs.collection(db, 'pedidos'));
-    let faltas = [];
+    let faltas = [], codigo = null;
     const numero = await fs.runTransaction(db, async tx => {
       const snap = await tx.get(contRef);
       const n = snap.exists() ? snap.data().n + 1 : 1;
       let doc = Object.assign({}, pedido, { numero: n, criadoEmServidor: fs.serverTimestamp() });
+      // código livre (colisão: gera outro)
+      let rasRef = null;
+      if (precisaCodigo(pedido)) {
+        for (let i = 0; i < 6; i++) {
+          codigo = Rastreio.gerar(); rasRef = fs.doc(db, 'rastreio', codigo);
+          if (!(await tx.get(rasRef)).exists()) break;
+          if (i === 5) throw new Error('Não foi possível gerar o código do pedido.');
+        }
+        doc.codigo = codigo;
+      }
       const prods = {};
       if (opcoes.baixarEstoque) {
         for (const pid of idsProdutos(pedido.itens)) { const s = await tx.get(fs.doc(db, 'produtos', pid)); if (s.exists()) prods[pid] = s.data(); }
@@ -157,9 +177,10 @@ window.DB = (function () {
         doc = Object.assign(doc, { itens: itensComCusto(doc.itens, prods), estoqueBaixado: true });
       }
       tx.set(pedRef, doc);
+      if (rasRef) tx.set(rasRef, { pedidoId: pedRef.id, criadoEm: Date.now() });
       return n;
     });
-    return { id: pedRef.id, numero, faltas };
+    return { id: pedRef.id, numero, faltas, codigo };
   }
 
   /* Baixa (sinal -1) ou estorno (+1) do estoque de um pedido, uma única vez.
@@ -221,6 +242,26 @@ window.DB = (function () {
     const q = fs.query(fs.collection(db, 'pedidos'), fs.where('data', '>=', de), fs.where('data', '<=', ate));
     const s = await fs.getDocs(q);
     return s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+  }
+
+  // Código de acompanhamento → id do pedido (null se não existe)
+  async function buscarCodigo(codigo) {
+    await init();
+    if (modo() === 'demo') { const r = lerLS(LS_RAS, {})[codigo]; return r ? r.pedidoId : null; }
+    const s = await fs.getDoc(fs.doc(db, 'rastreio', codigo));
+    return s.exists() ? s.data().pedidoId : null;
+  }
+
+  // Fila pública sem dados pessoais (config/fila), mantida pela cozinha
+  async function observarFila(cb) {
+    await init();
+    if (modo() === 'demo') return ouvirLocal(() => cb(lerLS(LS_FILA, null)), LS_FILA);
+    return fs.onSnapshot(fs.doc(db, 'config', 'fila'), s => cb(s.exists() ? s.data() : null), e => { console.error(e); cb(null); });
+  }
+  async function salvarFila(campos) {
+    await init();
+    if (modo() === 'demo') { gravarLS(LS_FILA, Object.assign(lerLS(LS_FILA, {}), campos)); return; }
+    await fs.setDoc(fs.doc(db, 'config', 'fila'), campos, { merge: true });
   }
 
   // Último pedido (mais recente) com este telefone — só dígitos; delivery do balcão (logado)
@@ -352,7 +393,7 @@ window.DB = (function () {
   }
 
   return {
-    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, atualizarPedido,
+    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, atualizarPedido,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario
   };

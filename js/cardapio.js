@@ -47,7 +47,12 @@ window.CARDAPIO = {
      Estes valores valem até a configuração carregar. */
   loja: {
     cortesiaSachesPorPizza: 0,   // sachês grátis por pizza (aplicados nos mais baratos)
-    taxaMaquininha: 2.5          // % padrão da maquininha usada no preço sugerido
+    taxaMaquininha: 2.5,         // % padrão da maquininha usada no preço sugerido
+    // Previsão mostrada ao cliente (minutos)
+    preparoBaseMin: 25,          // preparo de um pedido
+    porPedidoMin: 5,             // + por pedido na frente
+    entregaBaseMin: 10,          // deslocamento fixo da entrega
+    porKmMin: 2                  // + por km de distância
   }
 };
 /* O catálogo do Firestore (js/catalogo.js) substitui sabores/categorias acima.
@@ -198,7 +203,7 @@ window.STATUS = {
     const n = p.numero;
     const nome = (p.cliente.nome || '').split(' ')[0];
     const ag = p.agendadoPara ? ` 📅 Agendado para *${Horario.formatar(p.agendadoPara)}*.` : '';
-    return ({
+    const txt = ({
       novo: `Olá ${nome}! 🍕 Recebemos seu pedido *#${n}* no ${loja}. Total: ${dinheiro(p.total)}.${ag}`,
       producao: `Olá ${nome}! 👨‍🍳 Seu pedido *#${n}* já está em produção no ${loja}.`,
       pronto: `Olá ${nome}! 📦 Seu pedido *#${n}* está pronto e já vai sair para entrega.`,
@@ -209,6 +214,50 @@ window.STATUS = {
       nao_entregue: `Olá ${nome}. Tentamos entregar seu pedido *#${n}*, mas não conseguimos${p.naoEntregue && p.naoEntregue.motivo ? ' (' + p.naoEntregue.motivo.toLowerCase() + ')' : ''}. Por favor, responda esta mensagem para combinarmos. ${loja}`,
       cancelado: `Olá ${nome}. Seu pedido *#${n}* foi cancelado. Qualquer dúvida, fale conosco.`
     })[status];
+    // código + link de acompanhamento ficam no histórico do WhatsApp do cliente
+    return txt && p.codigo && !['entregue', 'cancelado'].includes(status) ? txt + Rastreio.rodape(p) : txt;
+  }
+};
+
+/* ---------- código de acompanhamento (ex.: K7P3QX) ---------- */
+window.Rastreio = {
+  ALFABETO: '23456789ABCDEFGHJKMNPQRSTUVWXYZ',   // sem 0/O, 1/I/L
+  gerar() {
+    const a = this.ALFABETO, r = new Uint32Array(6);
+    (window.crypto || {}).getRandomValues ? crypto.getRandomValues(r) : r.forEach((_, i) => { r[i] = Math.random() * 1e9; });
+    return Array.from(r, x => a[x % a.length]).join('');
+  },
+  // aceita minúsculas, espaços e hífen: "k7p 3-qx" → "K7P3QX"
+  normalizar: t => String(t || '').toUpperCase().replace(/[^0-9A-Z]/g, ''),
+  valido(c) { return c.length === 6 && [...c].every(x => this.ALFABETO.includes(x)); },
+  link: codigo => `${(CONFIG.loja.site || location.origin).replace(/\/$/, '')}/?codigo=${codigo}`,
+  rodape(p) { return `\n\n📦 Acompanhe seu pedido: ${this.link(p.codigo)}\nCódigo: *${p.codigo}*`; }
+};
+
+/* ---------- previsão de pronto/entrega mostrada ao cliente ----------
+   fila = config/fila { atualizadoEm, ajusteMin, pedidos:[{numero,data,status,criadoEm}] } (publicada pela cozinha)
+   Retorna null (esconder) | { agendado } | { aFrente, ini, fim } (entrega) | { aFrente, hora } (retirada) */
+window.Previsao = {
+  ATIVOS: ['novo', 'producao'],
+  calcular(p, fila, agora = Date.now()) {
+    if (!p || ['entregue', 'cancelado', 'nao_entregue'].includes(p.status)) return null;
+    if (p.agendadoPara && p.status === 'novo') return { agendado: p.agendadoPara };
+    if (!fila || !fila.atualizadoEm || agora - fila.atualizadoEm > 10 * 60000) return null;   // cozinha fechada/offline
+    const L = Object.assign({ preparoBaseMin: 25, porPedidoMin: 5, entregaBaseMin: 10, porKmMin: 2 }, CARDAPIO.loja);
+    const entrega = p.entrega.tipo === 'entrega', min = 60000, ajuste = Number(fila.ajusteMin) || 0;
+    const viagem = entrega ? (L.entregaBaseMin + L.porKmMin * (p.entrega.distanciaKm || 0)) * min : 0;
+    const aFrente = p.status === 'novo' ? (fila.pedidos || []).filter(x => x.data === p.data && x.numero !== p.numero &&
+      x.criadoEm < p.criadoEm && this.ATIVOS.includes(x.status)).length : 0;
+    let centro;
+    if (p.status === 'novo') centro = agora + (L.preparoBaseMin + L.porPedidoMin * aFrente + ajuste) * min + viagem;
+    else if (p.status === 'producao') {   // só o que falta do preparo
+      const ini = ((p.historico || []).filter(h => h.status === 'producao').pop() || {}).em || agora;
+      centro = agora + Math.max(0, ini + (L.preparoBaseMin + ajuste) * min - agora) + viagem;
+    } else if (!entrega) return null;   // retirada já pronta
+    else if (p.status === 'pronto') centro = agora + viagem;
+    else centro = Math.max(agora, (p.saiuEm || agora) + viagem);   // saiu
+    const r5 = t => Math.round(t / (5 * min)) * 5 * min;
+    return entrega ? { aFrente, ini: r5(centro - 7 * min), fim: r5(centro + 7 * min) } : { aFrente, hora: r5(centro) };
   }
 };
 

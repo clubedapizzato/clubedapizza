@@ -75,3 +75,9 @@ Configurável em `CONFIG.horario` (`js/config.js`): quinta a terça, 18:30–23:
 - **Baixa automática**: balcão baixa ao criar o pedido; site baixa quando a cozinha clica *Iniciar produção* (transação + `estoqueBaixado: true`, nunca duas vezes). Cancelar devolve (movimento `estorno`). Falta de estoque na produção só avisa (o estoque fica negativo, em vermelho na gestão).
 - **Sachês**: categoria "Sachês" com preço automático pela margem a cada compra. Cortesia "X grátis por pizza" em `config/loja`, aplicada aos mais baratos.
 - O item vendido guarda `custoUnitario` do momento → relatório de lucro bruto/CMV fiel.
+
+## Acompanhamento por código, fila e previsão
+- Pedido do site e delivery do balcão ganham um **código de 6 caracteres** (sem 0/O, 1/I/L), ex.: `K7P3QX`, gravado em `rastreio/{codigo}` → `{ pedidoId }` na mesma transação do pedido (o cliente abre pelo código, mas não lista nada).
+- Código + link `https://clubedapizzato.com.br/?codigo=...` vão em todas as mensagens de WhatsApp (comprovante Pix, confirmação do balcão, cada fase da cozinha/entregador).
+- Loja: botão **📦 Acompanhar pedido** (aceita minúsculas, espaço e hífen), `?codigo=` na URL e **"Seus pedidos de hoje"** (últimos 5 pedidos guardados no aparelho).
+- **Fila e previsão:** a cozinha (aberta e logada) publica `config/fila` sem dados pessoais (número, data, status, hora) a cada mudança e um "sinal de vida" a cada 4 min. O cliente vê "Há N pedidos na sua frente" e a faixa de previsão (preparo + 5 min por pedido à frente + ajuste de movimento + entrega + min/km, ±7 min). Tempos em **Gestão → ⚙️ Configurações**; ajuste rápido na cozinha: **⏱️ Movimento Normal / +15 / +30**. Sem atualização há mais de 10 min, a fila some e fica só o status.
