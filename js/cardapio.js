@@ -246,8 +246,8 @@ window.Previsao = {
     const L = Object.assign({ preparoBaseMin: 25, porPedidoMin: 5, entregaBaseMin: 10, porKmMin: 2 }, CARDAPIO.loja);
     const entrega = p.entrega.tipo === 'entrega', min = 60000, ajuste = Number(fila.ajusteMin) || 0;
     const viagem = entrega ? (L.entregaBaseMin + L.porKmMin * (p.entrega.distanciaKm || 0)) * min : 0;
-    const aFrente = p.status === 'novo' ? (fila.pedidos || []).filter(x => x.data === p.data && x.numero !== p.numero &&
-      x.criadoEm < p.criadoEm && this.ATIVOS.includes(x.status)).length : 0;
+    const aFrente = p.status === 'novo' ? (fila.pedidos || []).filter(x => x.data === p.data && x.numero < p.numero &&   // número é sequencial no dia
+      this.ATIVOS.includes(x.status)).length : 0;
     let centro;
     if (p.status === 'novo') centro = agora + (L.preparoBaseMin + L.porPedidoMin * aFrente + ajuste) * min + viagem;
     else if (p.status === 'producao') {   // só o que falta do preparo
@@ -278,36 +278,82 @@ window.linkWhats = function (telefone, texto) {
 window.isoDe = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 window.hojeISO = () => isoDe(new Date());
 
-/* ---------- horário de atendimento / agendamento ---------- */
+/* ---------- horário de atendimento / agendamento ----------
+   Editável na Gestão (config/loja.horario, em tempo real); CONFIG.horario é só o padrão/fallback.
+   horario = { semana: [{ aberto, abre, fecha }] (0 = domingo), excecoes: [{ data, aberto, abre, fecha, motivo }],
+               fechadoAgora: { data } | null, primeiroAgendamento: '19:00', intervaloAgendamentoMin, alertaAntesMin }
+   Fechar depois da meia-noite (ex.: 18:30–00:30): o turno é do dia em que abriu. */
 window.Horario = (function () {
-  const H = () => CONFIG.horario || { dias: [0, 1, 2, 3, 4, 5, 6], abre: '00:00', fecha: '23:59', intervaloAgendamentoMin: 30, alertaAntesMin: 40 };
-  const min = hhmm => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
   const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
-  const em = (dia, hhmm) => { const d = new Date(dia); d.setHours(0, min(hhmm), 0, 0); return d; };
+  const min = hhmm => { const [h, m] = String(hhmm || '0:0').split(':').map(Number); return h * 60 + m; };
+  const em = (dia, minutos) => { const d = new Date(dia); d.setHours(0, minutos, 0, 0); return d; };
+  const diaDe = (agora, i) => new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + i);
 
+  // Configuração atual (Firestore se carregou; senão CONFIG.horario)
+  function config() {
+    const b = CONFIG.horario || { dias: [0, 1, 2, 3, 4, 5, 6], abre: '00:00', fecha: '23:59' };
+    const h = (window.CARDAPIO && CARDAPIO.loja && CARDAPIO.loja.horario) || {};
+    return {
+      semana: h.semana && h.semana.length === 7 ? h.semana : DIAS.map((_, d) => ({ aberto: b.dias.includes(d), abre: b.abre, fecha: b.fecha })),
+      excecoes: h.excecoes || [],
+      fechadoAgora: h.fechadoAgora || null,
+      primeiroAgendamento: h.primeiroAgendamento || b.primeiroAgendamento || '19:00',
+      intervaloAgendamentoMin: h.intervaloAgendamentoMin || b.intervaloAgendamentoMin || 30,
+      alertaAntesMin: h.alertaAntesMin || b.alertaAntesMin || 40
+    };
+  }
+
+  // Turno de um dia (exceção da data vale mais que a semana): { data, inicio, fim, motivo } ou null
+  function turnoDoDia(dia, H = config()) {
+    const data = isoDe(dia), ex = H.excecoes.find(e => e.data === data);
+    const r = ex || H.semana[dia.getDay()];
+    if (!r || !r.aberto || !r.abre || !r.fecha) return null;
+    const a = min(r.abre), f = min(r.fecha);
+    return { data, inicio: em(dia, a), fim: em(dia, f <= a ? f + 1440 : f), motivo: ex ? ex.motivo || '' : '' };
+  }
+  // Turno em andamento agora (inclusive o de ontem que passou da meia-noite)
+  function turnoAtual(agora = new Date(), H = config()) {
+    for (const i of [0, -1]) { const t = turnoDoDia(diaDe(agora, i), H); if (t && agora >= t.inicio && agora < t.fim) return t; }
+    return null;
+  }
+  // Dia de atendimento de um horário (pedido das 00:15 de um turno que abriu ontem é de ontem)
+  const dataTurno = (ms = Date.now()) => { const t = turnoAtual(new Date(ms)); return t ? t.data : isoDe(new Date(ms)); };
+
+  // 🔴 "Fechar a loja agora": vale só para o dia de atendimento em que foi ligado
+  function emergencia(agora = new Date(), H = config()) {
+    return !!(H.fechadoAgora && H.fechadoAgora.data === dataTurno(agora.getTime()));
+  }
   function aberto(agora = new Date()) {
-    const h = H(), m = agora.getHours() * 60 + agora.getMinutes();
-    return h.dias.includes(agora.getDay()) && m >= min(h.abre) && m < min(h.fecha);
+    const H = config();
+    return !!turnoAtual(agora, H) && !emergencia(agora, H);
   }
 
   // Turno atual (se aberto) ou o próximo: { data, inicio, fim, aberto }
   function proximoTurno(agora = new Date()) {
-    const h = H();
-    for (let i = 0; i < 8; i++) {
-      const dia = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + i);
-      if (!h.dias.includes(dia.getDay())) continue;
-      const inicio = em(dia, h.abre), fim = em(dia, h.fecha);
-      if (agora < fim) return { data: isoDe(dia), inicio, fim, aberto: agora >= inicio };
+    const H = config(), fechado = emergencia(agora, H);
+    for (let i = -1; i < 15; i++) {
+      const t = turnoDoDia(diaDe(agora, i), H);
+      if (!t || agora >= t.fim) continue;
+      if (fechado && t.data === H.fechadoAgora.data) continue;   // turno fechado na emergência: só o próximo
+      return Object.assign(t, { aberto: agora >= t.inicio });
     }
     return null;
   }
 
-  // Horários (ms) para agendar: de 30 em 30 min, do turno atual (só futuros) ou do próximo
+  /* Horários (ms) para agendar, de 30 em 30 min até fecha − 30:
+     - loja aberta: os próximos do turno atual;
+     - turno que ainda não abriu: a partir do "primeiro horário de agendamento" (19:00);
+       se a loja abre depois disso, abertura + 30 min. */
   function horariosAgendamento(agora = new Date()) {
     const t = proximoTurno(agora);
     if (!t) return [];
-    const passo = (H().intervaloAgendamentoMin || 30) * 60000, lista = [];
-    for (let x = t.inicio.getTime(); x + passo <= t.fim.getTime(); x += passo) if (x > agora.getTime()) lista.push(x);
+    const H = config(), passo = H.intervaloAgendamentoMin * 60000, lista = [];
+    let x = t.inicio.getTime();
+    if (!t.aberto) {
+      const prim = em(t.inicio, min(H.primeiroAgendamento)).getTime();
+      x = t.inicio.getTime() > prim ? t.inicio.getTime() + passo : prim;
+    }
+    for (; x + passo <= t.fim.getTime(); x += passo) if (x > agora.getTime()) lista.push(x);
     return lista;
   }
 
@@ -322,15 +368,38 @@ window.Horario = (function () {
   // "Abrimos hoje às 18:30" / "Abrimos quinta às 18:30"
   function textoAbertura(agora = new Date()) {
     const t = proximoTurno(agora);
-    return t ? `Abrimos ${quando(t.inicio, agora)} às ${H().abre}` : '';
+    return t ? `Abrimos ${quando(t.inicio, agora)} às ${hora(t.inicio)}` : '';
+  }
+  // "Agende para hoje a partir das 19:00"
+  function textoAgendar(agora = new Date()) {
+    const s = horariosAgendamento(agora);
+    return s.length ? `Agende para ${quando(s[0], agora)} a partir das ${hora(s[0])}` : '';
   }
   // "hoje às 20:00" / "sexta (18/10) às 20:00"
   function textoAgendado(ms, agora = new Date()) {
     const q = quando(ms, agora);
     return (q === 'hoje' || q === 'amanhã' ? q : `${q} (${new Date(ms).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })})`) + ` às ${hora(ms)}`;
   }
+  // "Aberto de quinta a terça, das 18:30 às 23:00" (dias com horários diferentes em grupos)
+  function resumo(semana = config().semana) {
+    const grupos = {};
+    semana.forEach((d, i) => { if (d.aberto) (grupos[`${d.abre}|${d.fecha}`] = grupos[`${d.abre}|${d.fecha}`] || []).push(i); });
+    const nomes = dias => {
+      if (dias.length === 7) return 'todos os dias';
+      // sequência circular: começa depois de um dia fora do grupo
+      const ini = dias.find(d => !dias.includes((d + 6) % 7));
+      const seq = []; for (let d = ini, k = 0; k < dias.length && dias.includes(d); d = (d + 1) % 7, k++) seq.push(d);
+      if (seq.length === dias.length && dias.length >= 3) return `de ${DIAS[seq[0]]} a ${DIAS[seq[seq.length - 1]]}`;
+      const n = seq.length === dias.length ? seq : dias;
+      return n.length === 1 ? DIAS[n[0]] : n.slice(0, -1).map(d => DIAS[d]).join(', ') + ' e ' + DIAS[n[n.length - 1]];
+    };
+    const partes = Object.entries(grupos).map(([k, dias]) => { const [a, f] = k.split('|'); return `${nomes(dias)}, das ${a} às ${f}`; });
+    if (!partes.length) return 'Fechado todos os dias';
+    const fechados = semana.map((d, i) => d.aberto ? null : DIAS[i]).filter(Boolean);
+    return 'Aberto ' + partes.join('; ') + (fechados.length ? ` (fechado: ${fechados.join(', ')})` : '');
+  }
   // Pedido agendado que ainda não deve ir para produção
-  const emEspera = (p, agora = Date.now()) => !!p.agendadoPara && p.status === 'novo' && p.agendadoPara - agora > (H().alertaAntesMin || 40) * 60000;
+  const emEspera = (p, agora = Date.now()) => !!p.agendadoPara && p.status === 'novo' && p.agendadoPara - agora > config().alertaAntesMin * 60000;
 
-  return { aberto, proximoTurno, horariosAgendamento, hora, formatar, quando, textoAbertura, textoAgendado, emEspera };
+  return { DIAS, config, turnoDoDia, turnoAtual, dataTurno, emergencia, aberto, proximoTurno, horariosAgendamento, hora, formatar, quando, textoAbertura, textoAgendar, textoAgendado, resumo, emEspera };
 })();

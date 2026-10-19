@@ -192,7 +192,7 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 // Pedidos do balcão de hoje que ainda não foram entregues (para chamar o cliente)
 async function assinar() {
   if (pararLista) pararLista();
-  pararLista = await DB.observarPedidosDoDia(hojeISO(), lista => {
+  pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => {
     const ativos = lista.filter(p => p.origem === 'balcao' && p.entrega.tipo === 'balcao' && ['novo', 'producao', 'saiu'].includes(p.status)).sort((a, b) => a.numero - b.numero);
     document.getElementById('andamento').classList.toggle('hide', !ativos.length);
     document.getElementById('prontos').innerHTML = ativos.map(p =>
@@ -383,7 +383,7 @@ async function finalizar() {
 
   const pedido = {
     origem: 'balcao',
-    data: hojeISO(),
+    data: Horario.dataTurno(),
     agendadoPara: null,
     cliente: { nome: val('nome'), telefone: delivery() ? tel : '' },
     entrega: delivery() ? Endereco.dados() : { tipo: 'balcao', consumo },

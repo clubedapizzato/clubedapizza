@@ -335,7 +335,10 @@ function renderHorario() {
   const el = document.getElementById('avisoHorario');
   const aberto = Horario.aberto();
   el.classList.toggle('hide', aberto);
-  if (!aberto) el.innerHTML = `🔒 <b>Estamos fechados.</b> ${Horario.textoAbertura()} — você já pode <b>agendar</b> seu pedido.`;
+  const ag = Horario.textoAgendar();
+  if (!aberto) el.innerHTML = Horario.emergencia()
+    ? `🔴 <b>Fechado no momento.</b> ${ag ? ag + '.' : Horario.textoAbertura() + '.'}`
+    : `🔒 <b>Estamos fechados.</b> ${Horario.textoAbertura()} — ${ag ? ag.replace('Agende', 'você já pode <b>agendar</b>') : 'você já pode <b>agendar</b> seu pedido'}.`;
 }
 function renderQuando() {
   const aberto = Horario.aberto(), slots = Horario.horariosAgendamento();
@@ -346,7 +349,7 @@ function renderQuando() {
   if (aberto) op.push({ id: 'agora', nome: '⚡ O quanto antes' });
   if (slots.length) op.push({ id: 'agendar', nome: '📅 Agendar', sub: aberto ? 'mais tarde' : Horario.quando(slots[0]) });
   let h = '';
-  if (!aberto) h += `<div class="aviso">🔒 Estamos fechados agora. ${Horario.textoAbertura()}. Escolha um horário para agendar:</div>`;
+  if (!aberto) h += `<div class="aviso">${Horario.emergencia() ? '🔴 Fechado no momento' : '🔒 Estamos fechados agora'}. ${Horario.textoAbertura()}. ${slots.length ? Horario.textoAgendar() + ':' : ''}</div>`;
   h += `<div class="opcoes">${op.map(o => `<div class="opcao ${quando === o.id ? 'on' : ''}" onclick="setQuando('${o.id}')">${o.nome}${o.sub ? `<small>${o.sub}</small>` : ''}</div>`).join('')}</div>`;
   if (quando === 'agendar') {
     h += slots.length
@@ -449,7 +452,7 @@ async function enviarPedido() {
 
   const pedido = {
     origem: 'site',
-    data: agendadoPara ? isoDe(new Date(agendadoPara)) : hojeISO(),
+    data: Horario.dataTurno(agendadoPara || Date.now()),   // dia do turno (após a meia-noite conta o dia em que abriu)
     agendadoPara,
     cliente: { nome, telefone: tel },
     entrega,
@@ -661,7 +664,10 @@ function toast(t) {
 
 /* ---------------- INÍCIO ---------------- */
 // Catálogo e estoque em tempo real (Firestore); sem ele vale o cardápio fixo
-Catalogo.iniciar(() => { if (tela !== 'acompanhar') atualizar(); if (document.getElementById('modalPizza').classList.contains('on')) renderModal(); });
+Catalogo.iniciar(() => {
+  renderHorario();   // horário editável na Gestão: vale na hora, sem recarregar
+  if (tela === 'checkout') renderQuando();
+  if (tela !== 'acompanhar') atualizar(); if (document.getElementById('modalPizza').classList.contains('on')) renderModal(); });
 preencherCliente();
 renderHorario();
 const qs = new URLSearchParams(location.search), idUrl = qs.get('pedido'), codUrl = qs.get('codigo');
