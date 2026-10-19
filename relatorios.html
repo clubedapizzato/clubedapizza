@@ -58,6 +58,16 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 .cfg{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
 @media(max-width:640px){.cfg{grid-template-columns:1fr}}
 .modal .box{max-width:640px}
+.semana td{padding:5px 6px}
+.semana input[type=time]{width:auto;padding:7px}
+.semana input[type=checkbox]{width:22px;height:22px}
+.semana tr.fechado td:not(:first-child):not(:nth-child(2)){opacity:.35}
+.excForm{display:grid;grid-template-columns:150px 130px 110px 110px 1fr auto;gap:8px;align-items:end}
+@media(max-width:760px){.excForm{grid-template-columns:1fr 1fr}}
+.emerg{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-radius:12px;padding:12px;margin-bottom:12px}
+.emerg.on{background:#7f1d1d;color:#fff}
+.emerg.off{background:#f0fdf4;border:1px solid #bbf7d0}
+.resumoHor{background:#f5f5f4;border-radius:10px;padding:10px;margin-top:10px;font-weight:700}
 </style>
 </head>
 <body>
@@ -128,6 +138,30 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
           <div><label for="cfgPorKm">+ por km</label><input id="cfgPorKm" type="number" min="0" step="0.5"></div>
         </div>
         <div class="muted" style="margin-top:6px">Previsão = preparo + pedidos na frente + ajuste de movimento da cozinha (+15/+30) + entrega + km. O cliente vê uma faixa de ±7 min. Salva junto com o botão Salvar acima.</div>
+      </div>
+
+      <div class="card" id="cardHorario">
+        <h2>🕒 Horário de funcionamento</h2>
+        <div id="emerg"></div>
+        <div class="rolar"><table class="semana" id="tabSemana"></table></div>
+        <div class="grid2" style="margin-top:6px">
+          <div><label for="hPrimeiro">Primeiro horário de agendamento (com a loja ainda fechada)</label><input id="hPrimeiro" type="time" oninput="previaHorario()"></div>
+          <div class="muted" style="align-self:end;padding-bottom:8px">Antes de abrir, o cliente agenda a partir deste horário (ou abertura + 30 min, se abrir depois dele). Depois de 30 em 30 min até fecha − 30.</div>
+        </div>
+        <div class="resumoHor" id="hResumo"></div>
+        <button class="btn dark" style="margin-top:10px" onclick="salvarHorario()">💾 Salvar horário</button>
+
+        <h3 style="margin-top:18px">📅 Exceções (feriados, folgas, horário especial)</h3>
+        <div class="excForm">
+          <div><label for="exData">Data</label><input id="exData" type="date"></div>
+          <div><label for="exAberto">Situação</label><select id="exAberto" onchange="document.getElementById('exHoras').classList.toggle('hide',this.value!=='1');document.getElementById('exHoras2').classList.toggle('hide',this.value!=='1')"><option value="0">Fechado</option><option value="1">Horário especial</option></select></div>
+          <div id="exHoras" class="hide"><label for="exAbre">Abre</label><input id="exAbre" type="time" value="18:30"></div>
+          <div id="exHoras2" class="hide"><label for="exFecha">Fecha</label><input id="exFecha" type="time" value="23:00"></div>
+          <div><label for="exMotivo">Motivo (opcional)</label><input id="exMotivo" placeholder="Ex.: Natal"></div>
+          <button class="btn sm" onclick="addExcecao()">➕ Adicionar</button>
+        </div>
+        <div id="exLista" style="margin-top:10px"></div>
+        <label class="chk"><input type="checkbox" id="exPassadas" onchange="renderHorario()"> Mostrar datas passadas</label>
       </div>
 
       <div class="acoesTopo">
@@ -444,6 +478,8 @@ function renderProdutos() {
   [['cfgPreparo', 'preparoBaseMin'], ['cfgPorPedido', 'porPedidoMin'], ['cfgEntrega', 'entregaBaseMin'], ['cfgPorKm', 'porKmMin']]
     .forEach(([id, k]) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = CARDAPIO.loja[k]; });
 
+  renderHorario();
+
   const prods = todos.filter(d => d.tipo !== 'sabor');
   const controlados = prods.filter(d => d.controlaEstoque);
   const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
@@ -507,6 +543,67 @@ async function salvarCfg() {
   }
   try { await DB.salvarConfig(Object.assign({ cortesiaSachesPorPizza: c, taxaMaquininha: t }, tempos)); toast('✅ Configurações salvas.'); }
   catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* ---------------- HORÁRIO (config/loja.horario) ---------------- */
+const DIAS_NOME = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+let horarioEditando = false;   // não sobrescreve o que o dono está digitando
+function renderHorario() {
+  const H = Horario.config();
+  const em = Horario.emergencia();
+  document.getElementById('emerg').innerHTML = em
+    ? `<div class="emerg on"><span>🔴 <b>Loja online FECHADA agora</b> (emergência) — clientes só agendam. Volta sozinha no próximo dia de atendimento.</span><button class="btn sec" onclick="emergencia(false)">🟢 Reabrir agora</button></div>`
+    : `<div class="emerg off"><span>${Horario.aberto() ? '🟢 Loja aberta agora' : '⚪ Loja fora do horário agora'} • ${esc(Horario.textoAbertura() || '')}</span><button class="btn" onclick="emergencia(true)">🔴 Fechar a loja agora</button></div>`;
+  if (!horarioEditando) {
+    document.getElementById('tabSemana').innerHTML = '<tr><th>Dia</th><th>Aberto</th><th>Abre</th><th>Fecha</th><th></th></tr>' +
+      H.semana.map((d, i) => `<tr class="${d.aberto ? '' : 'fechado'}" id="hDia${i}"><td><b>${DIAS_NOME[i]}</b></td>
+        <td><input type="checkbox" id="hAb${i}" ${d.aberto ? 'checked' : ''} onchange="horarioEditando=true;this.closest('tr').classList.toggle('fechado',!this.checked);previaHorario()"></td>
+        <td><input type="time" id="hA${i}" value="${d.abre || '18:30'}" oninput="horarioEditando=true;previaHorario()"></td>
+        <td><input type="time" id="hF${i}" value="${d.fecha || '23:00'}" oninput="horarioEditando=true;previaHorario()"></td>
+        <td class="muted" id="hObs${i}"></td></tr>`).join('');
+    document.getElementById('hPrimeiro').value = H.primeiroAgendamento;
+  }
+  previaHorario();
+  const passadas = document.getElementById('exPassadas').checked;
+  const ex = H.excecoes.slice().sort((a, b) => a.data.localeCompare(b.data)).filter(e => passadas || e.data >= hojeISO());
+  document.getElementById('exLista').innerHTML = ex.length ? `<table><tr><th>Data</th><th>Situação</th><th>Motivo</th><th></th></tr>${ex.map(e => `<tr>
+      <td>${e.data.split('-').reverse().join('/')} <span class="muted">${Horario.DIAS[new Date(e.data + 'T12:00').getDay()]}</span></td>
+      <td>${e.aberto ? `🕒 ${e.abre}–${e.fecha}` : '⛔ Fechado'}</td><td>${esc(e.motivo || '')}</td>
+      <td class="r"><button class="btn sm sec" onclick="removerExcecao('${e.data}')">Remover</button></td></tr>`).join('')}</table>`
+    : '<div class="muted">Nenhuma exceção cadastrada.</div>';
+}
+function lerSemana() {
+  return DIAS_NOME.map((_, i) => ({ aberto: document.getElementById('hAb' + i).checked, abre: document.getElementById('hA' + i).value, fecha: document.getElementById('hF' + i).value }));
+}
+function previaHorario() {
+  const sem = lerSemana();
+  sem.forEach((d, i) => { document.getElementById('hObs' + i).textContent = d.aberto && d.fecha && d.abre && d.fecha <= d.abre ? '↪ fecha no dia seguinte' : ''; });
+  document.getElementById('hResumo').textContent = Horario.resumo(sem);
+}
+async function gravarHorario(mudancas, msg) {
+  try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), mudancas) }); toast(msg); return true; }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); return false; }
+}
+async function salvarHorario() {
+  const semana = lerSemana(), prim = val('hPrimeiro');
+  const ruim = semana.findIndex(d => d.aberto && (!d.abre || !d.fecha || d.abre === d.fecha));
+  if (ruim >= 0) return toast(`${DIAS_NOME[ruim]}: informe abre e fecha (diferentes).`);
+  if (!prim) return toast('Informe o primeiro horário de agendamento.');
+  if (await gravarHorario({ semana, primeiroAgendamento: prim }, '✅ Horário salvo — já vale na loja.')) { horarioEditando = false; renderHorario(); }
+}
+async function addExcecao() {
+  const data = val('exData'), aberto = val('exAberto') === '1', abre = val('exAbre'), fecha = val('exFecha');
+  if (!data) return toast('Escolha a data.');
+  if (aberto && (!abre || !fecha || abre === fecha)) return toast('Informe abre e fecha do horário especial.');
+  const ex = Horario.config().excecoes.filter(e => e.data !== data).concat([{ data, aberto, abre: aberto ? abre : '', fecha: aberto ? fecha : '', motivo: val('exMotivo') }]);
+  if (await gravarHorario({ excecoes: ex }, '✅ Exceção salva.')) { document.getElementById('exMotivo').value = ''; renderHorario(); }
+}
+async function removerExcecao(data) {
+  if (await gravarHorario({ excecoes: Horario.config().excecoes.filter(e => e.data !== data) }, 'Exceção removida.')) renderHorario();
+}
+async function emergencia(fechar) {
+  if (fechar && !confirm('Fechar a loja online AGORA? Os clientes só vão conseguir agendar. Volta sozinha no próximo dia de atendimento.')) return;
+  if (await gravarHorario({ fechadoAgora: fechar ? { data: Horario.dataTurno(), em: Date.now() } : null }, fechar ? '🔴 Loja fechada agora.' : '🟢 Loja reaberta.')) renderHorario();
 }
 
 /* ---------------- MODAL ---------------- */

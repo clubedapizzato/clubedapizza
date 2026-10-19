@@ -89,6 +89,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
   </div>
 
   <div id="painel" class="hide">
+    <div id="emergencia" class="hide" style="background:#7f1d1d;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"></div>
     <div id="futuros" class="aviso hide"></div>
     <div id="naoEntregues" class="naoEntregues hide"></div>
     <div id="agendados" class="agendados hide"></div>
@@ -131,8 +132,16 @@ elAuto.onchange = () => { setPref('autoPrint', elAuto.checked); if (elAuto.check
 elWa.onchange = () => setPref('autoWhats', elWa.checked);
 
 const elData = document.getElementById('dataFiltro');
-elData.value = hojeISO();
-elData.onchange = () => assinar();
+elData.value = Horario.dataTurno();   // após a meia-noite continua no dia em que o turno abriu
+let dataAuto = true;   // segue o dia do turno até alguém escolher outra data
+elData.onchange = () => { dataAuto = elData.value === Horario.dataTurno(); assinar(); };
+// Dia do turno muda (horário carregou do Firebase, virada do turno): troca a data sozinha
+function seguirDiaDoTurno() {
+  const d = Horario.dataTurno();
+  if (!dataAuto || elData.value === d) return;
+  elData.value = d;
+  if (logadoCoz) { assinar(); assinarFuturos(); }
+}
 
 if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
 
@@ -140,6 +149,8 @@ setInterval(() => {
   document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
   if (pedidos.length) { liberarAgendados(); render(); verificarImpressao(); }   // atualiza "há X min" e agendados
   publicarFila();   // mantém a fila "viva" para o acompanhamento do cliente
+  renderEmergencia();   // "fechar agora" desliga sozinho no dia seguinte
+  seguirDiaDoTurno();
 }, 30000);
 document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
 
@@ -199,7 +210,7 @@ function liberarAgendados() {
 /* Agendamentos de dias futuros: aviso para a cozinha saber que existem */
 async function assinarFuturos() {
   if (pararFuturos) pararFuturos();
-  pararFuturos = await DB.observarPedidosFuturos(hojeISO(), lista => {
+  pararFuturos = await DB.observarPedidosFuturos(Horario.dataTurno(), lista => {
     const porDia = {};
     lista.filter(p => p.status !== 'cancelado').forEach(p => { porDia[p.data] = (porDia[p.data] || 0) + 1; });
     const dias = Object.keys(porDia).sort();
@@ -211,7 +222,7 @@ async function assinarFuturos() {
       ` <span class="muted">— toque na data para ver</span>`;
   });
 }
-function verDia(d) { elData.value = d; assinar(); }
+function verDia(d) { elData.value = d; dataAuto = d === Horario.dataTurno(); assinar(); }
 
 function minutos(p) { return Math.floor((Date.now() - p.criadoEm) / 60000); }
 
@@ -345,7 +356,7 @@ let logadoCoz = false, filaPublicada = null, filaEm = 0, ajusteMin = 0;
 function publicarFila() {
   clearTimeout(publicarFila.t);
   publicarFila.t = setTimeout(async () => {
-    if (!logadoCoz || elData.value !== hojeISO()) return;
+    if (!logadoCoz || elData.value !== Horario.dataTurno()) return;
     const lista = pedidos.filter(p => ['novo', 'producao', 'pronto', 'saiu'].includes(p.status) && !Horario.emEspera(p))
       .map(p => ({ numero: p.numero, data: p.data, status: p.status, criadoEm: p.criadoEm })).sort((a, b) => a.numero - b.numero);
     const j = JSON.stringify(lista);
@@ -366,7 +377,20 @@ async function setMovimento(m) {
 DB.observarFila(f => { ajusteMin = (f && Number(f.ajusteMin)) || 0; renderMovimento(); });
 
 // estoque e sachês em tempo real (aviso de falta ao iniciar produção)
-Catalogo.iniciar(() => { if (pedidos.length) render(); });
+Catalogo.iniciar(() => { renderEmergencia(); seguirDiaDoTurno(); if (pedidos.length) render(); });
+
+/* ---------------- 🔴 LOJA FECHADA AGORA (ligado na Gestão) ---------------- */
+function renderEmergencia() {
+  const el = document.getElementById('emergencia'), on = Horario.emergencia();
+  el.classList.toggle('hide', !on);
+  if (on) el.innerHTML = `<span style="font-size:16px">🔴 <b>Loja online FECHADA agora</b> — clientes só conseguem agendar. ${esc(Horario.textoAgendar())}</span>
+    <button class="btn sm sec" onclick="reabrirLoja()">🟢 Reabrir a loja</button>`;
+}
+async function reabrirLoja() {
+  if (!confirm('Reabrir a loja online agora?')) return;
+  try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), { fechadoAgora: null }) }); toast('🟢 Loja reaberta.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
 
 /* ---------------- IMPRESSÃO ---------------- */
 function verificarImpressao() {

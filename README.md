@@ -39,12 +39,12 @@ Links: cliente → **https://clubedapizzato.com.br** • cozinha → `https://cl
 O domínio próprio é definido no arquivo `CNAME` (GitHub Pages). O endereço antigo `henriquesilva-tjto.github.io/clubedapizza` redireciona para ele.
 
 ## Horário e agendamento
-Configurável em `CONFIG.horario` (`js/config.js`): quinta a terça, 18:30–23:00 (fechado às quartas).
-- Loja aberta: pedido "o quanto antes" ou agendado para mais tarde no mesmo turno.
-- Loja fechada: aviso "🔒 Estamos fechados" e o pedido só pode ser **agendado** (horários de 30 em 30 min do próximo dia de funcionamento).
-- O campo `data` do pedido é o dia do turno de entrega (numeração e relatórios por dia de atendimento).
-- Cozinha: agendados ficam em **📅 Agendados** e entram em *Novos* (com alarme e auto-impressão) 40 min antes do horário. Agendamentos de dias futuros aparecem num aviso no topo.
-- O balcão não tem restrição de horário.
+Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funcionamento** (salvo em `config/loja.horario`, vale na hora, sem atualizar o site). `CONFIG.horario` no `js/config.js` é só o padrão se o Firebase não responder.
+- Uma linha por dia: aberto/fechado, abre e fecha (horários diferentes por dia). Fechar depois da meia-noite (ex.: 18:30–00:30) conta como turno do dia em que abriu — pedidos das 00:15 entram no dia anterior e a cozinha continua nele.
+- **📅 Exceções:** datas fechadas (feriado/folga) ou com horário especial, com motivo.
+- **🔴 Fechar a loja agora:** emergência (gás, energia). A loja mostra "Fechado no momento" e só aceita agendamento para o próximo turno; volta sozinha no próximo dia de atendimento, ou pelo botão "Reabrir" na Gestão/cozinha.
+- **Agendamento:** com a loja aberta, os próximos horários de 30 em 30 min do turno; antes de abrir, a partir do **primeiro horário de agendamento** (padrão 19:00; se abrir depois dele, abertura + 30 min) até fecha − 30 min.
+- Cozinha: agendados ficam em **📅 Agendados** e entram em *Novos* (com alarme e auto-impressão) 40 min antes do horário. O balcão não tem restrição de horário.
 
 ## Impressão na cozinha
 - Marque **🖨️ Auto-imprimir** em **apenas um** aparelho (o que está ligado à impressora).

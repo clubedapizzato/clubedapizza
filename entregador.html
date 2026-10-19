@@ -141,11 +141,11 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 
 async function assinar() {
   if (pararLista) pararLista();
-  pararLista = await DB.observarPedidosDoDia(hojeISO(), lista => { pedidos = lista; render(); },
+  pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => { pedidos = lista; render(); },
     () => toast('Sem permissão para ler pedidos. Verifique o login.'));
 }
-setInterval(() => { if (eu && hojeISO() !== assinar.dia) { assinar.dia = hojeISO(); assinar(); } }, 60000);
-assinar.dia = hojeISO();
+setInterval(() => { if (eu && Horario.dataTurno() !== assinar.dia) { assinar.dia = Horario.dataTurno(); assinar(); } }, 60000);
+assinar.dia = Horario.dataTurno();
 
 /* ---------------- LISTAS ---------------- */
 const meu = p => p.entregador && p.entregador.email === eu.email;
