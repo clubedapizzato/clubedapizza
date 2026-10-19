@@ -399,8 +399,8 @@ async function finalizar() {
   b.disabled = true; b.textContent = 'Enviando...';
   try {
     // balcão: baixa o estoque na hora, junto com a criação do pedido
-    const { numero: n } = await DB.criarPedido(pedido, { baixarEstoque: true });
-    ultimo = Object.assign({}, pedido, { numero: n, criadoEm: Date.now() });
+    const { numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true });
+    ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now() });
     mostrarSucesso();
   } catch (e) {
     console.error(e);
@@ -426,7 +426,7 @@ function mensagemConfirmacao(p) {
   if (pg.forma === 'pix' && !pg.confirmado && CONFIG.pix.chave) pagto += ` — chave Pix: ${CONFIG.pix.chave} (mande o comprovante aqui)`;
   return `Olá ${(p.cliente.nome || '').split(' ')[0]}! 🍕 Seu pedido *#${p.numero}* no ${CONFIG.loja.nome} foi registrado:\n\n${linhas.join('\n')}\n\n` +
     `🛵 Entrega: ${e.rua}, ${e.numero} - ${e.bairro}${e.complemento ? ' (' + e.complemento + ')' : ''}\n` +
-    `Taxa de entrega: ${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'grátis'}\n*Total: ${dinheiro(p.total)}*\nPagamento: ${pagto}\n\nAvisamos quando sair para entrega!`;
+    `Taxa de entrega: ${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'grátis'}\n*Total: ${dinheiro(p.total)}*\nPagamento: ${pagto}\n\nAvisamos quando sair para entrega!` + (p.codigo ? Rastreio.rodape(p) : '');
 }
 
 function mostrarSucesso() {
@@ -436,6 +436,7 @@ function mostrarSucesso() {
     <div class="numero">#${p.numero}</div>
     ${p.cliente.nome ? `<div style="font-size:20px;font-weight:800">${esc(p.cliente.nome)}</div>` : ''}
     <div style="font-size:16px;margin:6px 0">${del ? '🛵 Delivery' : p.entrega.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'} • ${textoPagamento(p)}</div>
+    ${p.codigo ? `<div style="font-size:16px;margin:4px 0">Código de acompanhamento: <b style="font-size:22px;letter-spacing:.12em">${p.codigo}</b></div>` : ''}
     ${del ? `<div class="muted">📍 ${esc(p.entrega.rua)}, ${esc(p.entrega.numero)} - ${esc(p.entrega.bairro)} • taxa ${p.taxaEntrega == null ? 'a combinar' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'grátis'}</div>` : ''}
     <div class="totalPdv" style="justify-content:center;gap:12px"><span>Total</span><span>${dinheiro(p.total)}</span></div>
     ${!del && pg.forma === 'dinheiro' && pg.trocoPara ? `<div class="troco" style="font-size:26px">Recebido ${dinheiro(pg.trocoPara)} → Troco ${dinheiro(pg.trocoPara - p.total)}</div>` : ''}

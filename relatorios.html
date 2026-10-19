@@ -120,6 +120,14 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
           <button class="btn dark" onclick="salvarCfg()">Salvar</button>
         </div>
         <div class="muted" style="margin-top:6px">A cortesia vale para os sachês mais baratos; o restante é cobrado. A taxa entra no preço sugerido (cada produto pode ter a sua).</div>
+        <h3 style="margin-top:14px">⏱️ Previsão para o cliente (minutos)</h3>
+        <div class="grid2" style="grid-template-columns:repeat(4,1fr)">
+          <div><label for="cfgPreparo">Preparo base</label><input id="cfgPreparo" type="number" min="0" step="1"></div>
+          <div><label for="cfgPorPedido">+ por pedido na frente</label><input id="cfgPorPedido" type="number" min="0" step="1"></div>
+          <div><label for="cfgEntrega">+ entrega (fixo)</label><input id="cfgEntrega" type="number" min="0" step="1"></div>
+          <div><label for="cfgPorKm">+ por km</label><input id="cfgPorKm" type="number" min="0" step="0.5"></div>
+        </div>
+        <div class="muted" style="margin-top:6px">Previsão = preparo + pedidos na frente + ajuste de movimento da cozinha (+15/+30) + entrega + km. O cliente vê uma faixa de ±7 min. Salva junto com o botão Salvar acima.</div>
       </div>
 
       <div class="acoesTopo">
@@ -433,6 +441,8 @@ function renderProdutos() {
   const cfgC = document.getElementById('cfgCortesia'), cfgT = document.getElementById('cfgTaxa');
   if (document.activeElement !== cfgC) cfgC.value = CARDAPIO.loja.cortesiaSachesPorPizza || 0;
   if (document.activeElement !== cfgT) cfgT.value = CARDAPIO.loja.taxaMaquininha;
+  [['cfgPreparo', 'preparoBaseMin'], ['cfgPorPedido', 'porPedidoMin'], ['cfgEntrega', 'entregaBaseMin'], ['cfgPorKm', 'porKmMin']]
+    .forEach(([id, k]) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = CARDAPIO.loja[k]; });
 
   const prods = todos.filter(d => d.tipo !== 'sabor');
   const controlados = prods.filter(d => d.controlaEstoque);
@@ -489,7 +499,13 @@ async function salvarCfg() {
   const c = numero(val('cfgCortesia')), t = numero(val('cfgTaxa'));
   if (c == null || c < 0 || c % 1) return toast('Cortesia: informe um número inteiro (0 ou mais).');
   if (t == null || t < 0 || t >= 100) return toast('Taxa da maquininha inválida.');
-  try { await DB.salvarConfig({ cortesiaSachesPorPizza: c, taxaMaquininha: t }); toast('✅ Configurações salvas.'); }
+  const tempos = {};
+  for (const [id, k] of [['cfgPreparo', 'preparoBaseMin'], ['cfgPorPedido', 'porPedidoMin'], ['cfgEntrega', 'entregaBaseMin'], ['cfgPorKm', 'porKmMin']]) {
+    const v = numero(val(id));
+    if (v == null || v < 0 || v > 240) return toast('Tempos da previsão: informe minutos entre 0 e 240.');
+    tempos[k] = v;
+  }
+  try { await DB.salvarConfig(Object.assign({ cortesiaSachesPorPizza: c, taxaMaquininha: t }, tempos)); toast('✅ Configurações salvas.'); }
   catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
 }
 

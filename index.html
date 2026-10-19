@@ -7,18 +7,31 @@
 <title>Clube da Pizza • Peça online</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="css/app.css">
+<style>
+.codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
+.codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
+.codigo small{display:block;opacity:.8;font-size:12px}
+.fila{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:12px;padding:10px 12px;margin:8px 0;font-size:15px}
+.fila b{font-size:17px}
+#meusPedidos a{font-weight:800;color:#14532d}
+@media(max-width:420px){#btnAcompanhar{padding:7px 8px;font-size:12px}.topo h1{font-size:16px}}
+</style>
 </head>
 <body>
 <header class="topo">
   <div class="in">
     <h1 id="nomeLoja">🍕 Clube da Pizza</h1>
-    <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
+    <div style="display:flex;gap:6px">
+      <button class="btn sm sec" id="btnAcompanhar" onclick="abrirCodigo()">📦 Acompanhar pedido</button>
+      <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
+    </div>
   </div>
 </header>
 
 <main>
   <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> os pedidos só aparecem na cozinha aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code> para uso real.</div>
   <div id="avisoHorario" class="aviso hide" style="font-size:15px"></div>
+  <div id="meusPedidos" class="okbox hide"></div>
 
   <!-- ================= TELA 1: CARDÁPIO ================= -->
   <section id="tela-cardapio">
@@ -96,6 +109,19 @@
   <div class="box" id="modalConteudo"></div>
 </div>
 
+<!-- Acompanhar pelo código -->
+<div class="modal" id="modalCodigo" onclick="if(event.target===this)fecharCodigo()">
+  <div class="box">
+    <h2>📦 Acompanhar pedido</h2>
+    <div class="muted">Digite o código de 6 letras/números que aparece no seu pedido e nas mensagens do WhatsApp.</div>
+    <input id="inputCodigo" autocomplete="off" autocapitalize="characters" placeholder="Ex.: K7P3QX" maxlength="12"
+      style="font-size:24px;font-weight:900;letter-spacing:.15em;text-align:center;text-transform:uppercase;margin-top:12px">
+    <div id="erroCodigo" class="muted" style="color:#b91c1c;margin-top:6px"></div>
+    <button class="btn full" style="margin-top:12px" onclick="irCodigo()">Ver meu pedido</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharCodigo()">Cancelar</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script src="js/config.js"></script>
@@ -114,7 +140,8 @@ let tipoEntrega = 'entrega';
 let formaPagamento = 'pix';
 let quando = 'agora';           // 'agora' | 'agendar'
 let horaAgendada = null;        // ms do horário escolhido
-let pararObservar = null;
+let pararObservar = null, pararFila = null;
+let fila = null, pedidoAberto = null;   // fila pública (config/fila) e pedido em acompanhamento
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
 document.getElementById('nomeLoja').textContent = '🍕 ' + CONFIG.loja.nome;
@@ -358,6 +385,9 @@ function mostrar(t) {
   tela = t;
   ['cardapio', 'checkout', 'acompanhar'].forEach(x => document.getElementById('tela-' + x).classList.toggle('hide', x !== t));
   document.getElementById('btnVoltar').classList.toggle('hide', t !== 'checkout');
+  document.getElementById('btnAcompanhar').classList.toggle('hide', t === 'checkout');
+  const mp = document.getElementById('meusPedidos');
+  mp.classList.toggle('hide', t !== 'cardapio' || !mp.innerHTML);
   window.scrollTo(0, 0);
   if (t === 'checkout') { renderOpcoes(); renderQuando(); if (tipoEntrega === 'entrega') Endereco.iniciarMapa(); }
   atualizar();
@@ -439,8 +469,8 @@ async function enviarPedido() {
   const b = document.getElementById('btnBarra');
   b.disabled = true; b.textContent = 'Enviando pedido...';
   try {
-    const { id } = await DB.criarPedido(pedido);
-    localStorage.setItem('cdp_ultimo_pedido', id);
+    const { id, numero, codigo } = await DB.criarPedido(pedido);
+    guardarMeuPedido({ id, numero, data: pedido.data, codigo });
     carrinho = []; horaAgendada = null; quando = 'agora';
     history.replaceState(null, '', '?pedido=' + id);
     acompanhar(id);
@@ -457,12 +487,91 @@ async function acompanhar(id) {
   mostrar('acompanhar');
   const el = document.getElementById('acompanhar');
   el.innerHTML = '<div class="muted">Carregando pedido...</div>';
+  renderAcompanhar.ultimo = null;
   if (pararObservar) pararObservar();
+  if (!pararFila) pararFila = await DB.observarFila(f => { fila = f; renderAcompanhar(); });
   pararObservar = await DB.observarPedido(id, p => {
+    pedidoAberto = p;
     if (!p) { el.innerHTML = '<div class="muted">Pedido não encontrado.</div><button class="btn full" style="margin-top:12px" onclick="novoPedido()">Fazer um pedido</button>'; return; }
-    el.innerHTML = htmlAcompanhar(p);
-    if (p.pagamento.forma === 'pix' && !p.pagamento.confirmado && p.status !== 'cancelado') desenharQR(p);
+    if (p.codigo) guardarMeuPedido({ id: p.id || id, numero: p.numero, data: p.data, codigo: p.codigo });
+    renderAcompanhar();
   });
+}
+function renderAcompanhar() {
+  const p = pedidoAberto;
+  if (!p || tela !== 'acompanhar') return;
+  const el = document.getElementById('acompanhar');
+  // não redesenha o QR à toa (o cliente pode estar copiando)
+  const h = htmlAcompanhar(p);
+  if (h === renderAcompanhar.ultimo) return;
+  renderAcompanhar.ultimo = h;
+  el.innerHTML = h;
+  if (p.pagamento.forma === 'pix' && !p.pagamento.confirmado && p.status !== 'cancelado') desenharQR(p);
+}
+setInterval(renderAcompanhar, 30000);   // previsão anda com o relógio
+
+/* Fila e previsão (publicadas pela cozinha em config/fila) */
+function htmlPrevisao(p) {
+  const r = Previsao.calcular(p, fila);
+  if (!r) return '';
+  if (r.agendado) return '';   // o horário agendado já aparece em destaque
+  let h = '<div class="fila" id="previsao">';
+  if (p.status === 'novo') h += r.aFrente ? `🍕 Há <b>${r.aFrente} pedido${r.aFrente > 1 ? 's' : ''}</b> na sua frente<br>` : '🍕 Seu pedido é o <b>próximo</b> da fila<br>';
+  h += r.hora ? `⏱️ Pronto para retirada por volta de <b>${Horario.hora(r.hora)}</b>` : `⏱️ Previsão de entrega: entre <b>${Horario.hora(r.ini)}</b> e <b>${Horario.hora(r.fim)}</b>`;
+  return h + '</div>';
+}
+
+/* ---------------- CÓDIGO DE ACOMPANHAMENTO ---------------- */
+function abrirCodigo() {
+  document.getElementById('erroCodigo').textContent = '';
+  document.getElementById('modalCodigo').classList.add('on');
+  setTimeout(() => document.getElementById('inputCodigo').focus(), 50);
+}
+function fecharCodigo() { document.getElementById('modalCodigo').classList.remove('on'); }
+async function irCodigo(texto) {
+  const c = Rastreio.normalizar(texto != null ? texto : document.getElementById('inputCodigo').value);
+  const erro = m => { document.getElementById('erroCodigo').textContent = m; if (texto != null) { abrirCodigo(); document.getElementById('inputCodigo').value = c; document.getElementById('erroCodigo').textContent = m; } };
+  if (!Rastreio.valido(c)) return erro('O código tem 6 letras/números (ex.: K7P3QX). Confira e tente de novo.');
+  try {
+    const id = await DB.buscarCodigo(c);
+    if (!id) return erro(`Não encontramos o pedido com o código ${c}. Confira o código ou fale conosco no WhatsApp.`);
+    fecharCodigo();
+    history.replaceState(null, '', '?codigo=' + c);
+    acompanhar(id);
+  } catch (e) { console.error(e); erro('Sem conexão. Verifique a internet e tente de novo.'); }
+}
+document.getElementById('inputCodigo').addEventListener('keydown', e => { if (e.key === 'Enter') irCodigo(); });
+async function copiarCodigo(c) {
+  try { await navigator.clipboard.writeText(c); toast('Código copiado!'); } catch { toast('Anote o código: ' + c); }
+}
+
+/* Últimos pedidos deste aparelho (até 5): { id, numero, data, codigo } */
+function meusPedidos() { try { return JSON.parse(localStorage.getItem('cdp_meus_pedidos') || '[]'); } catch { return []; } }
+function guardarMeuPedido(x) {
+  const l = meusPedidos().filter(p => p.id !== x.id);
+  l.unshift(x);
+  localStorage.setItem('cdp_meus_pedidos', JSON.stringify(l.slice(0, 5)));
+}
+// "Seus pedidos de hoje" com atalho para os que ainda não foram entregues
+async function renderMeusPedidos() {
+  const hoje = meusPedidos().filter(x => x.data >= hojeISO());
+  const ult = localStorage.getItem('cdp_ultimo_pedido');   // versão anterior guardava só o último
+  if (ult && !meusPedidos().some(x => x.id === ult)) hoje.push({ id: ult });
+  const ativos = [];
+  await Promise.all(hoje.map(x => new Promise(res => {
+    let parar = null, feito = false;
+    const fim = () => { if (!feito) { feito = true; res(); } if (parar) parar(); };
+    DB.observarPedido(x.id, p => {
+      if (p && p.data >= hojeISO() && !['entregue', 'cancelado'].includes(p.status)) ativos.push(Object.assign({ id: x.id }, p));
+      fim();
+    }).then(s => { parar = s; if (feito) s(); });
+    setTimeout(fim, 4000);
+  })));
+  const el = document.getElementById('meusPedidos');
+  el.classList.toggle('hide', !ativos.length || tela !== 'cardapio');
+  ativos.sort((a, b) => a.numero - b.numero);
+  el.innerHTML = !ativos.length ? '' : `📦 <b>Seus pedidos de hoje:</b> ` + ativos.map(p =>
+    `<a href="?${p.codigo ? 'codigo=' + p.codigo : 'pedido=' + encodeURIComponent(p.id)}">#${p.numero} • ${esc(STATUS.rotulo(p.status, p.entrega.tipo))} → acompanhar</a>`).join(' &nbsp;•&nbsp; ');
 }
 
 function payloadPix(p) {
@@ -479,7 +588,10 @@ function htmlAcompanhar(p) {
   let h = `<h2>Pedido #${p.numero} ${cancel ? '— ❌ Cancelado' : ''}</h2>
     <div class="muted">Obrigado, ${esc(p.cliente.nome.split(' ')[0])}! Acompanhe aqui em tempo real.</div>`;
   if (p.agendadoPara && !cancel) h += `<div class="okbox" style="font-size:15px">📅 <b>Agendado para ${Horario.textoAgendado(p.agendadoPara)}</b> (${p.entrega.tipo === 'entrega' ? 'entrega' : 'retirada'})</div>`;
+  if (p.codigo) h += `<div class="codigo"><div><small>Seu código para acompanhar</small><b>${p.codigo}</b><small>Guarde: abra a loja → 📦 Acompanhar pedido</small></div>
+    <button class="btn sm sec" onclick="copiarCodigo('${p.codigo}')">📋 Copiar</button></div>`;
   if (!cancel) {
+    h += htmlPrevisao(p);
     h += `<div class="passos">${fases.map((s, i) =>
       `<div class="passo ${i <= idx ? 'feito' : ''}"><i></i>${STATUS.rotulo(s, p.entrega.tipo)}</div>`).join('')}</div>`;
   }
@@ -498,7 +610,7 @@ function htmlAcompanhar(p) {
         <div class="pixcode" id="pixCode">${esc(code)}</div>
         <button class="btn dark full" style="margin-top:8px" onclick="copiarPix()">📋 Copiar código Pix</button>
         <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank"
-           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.${p.agendadoPara ? ' Agendado para ' + Horario.formatar(p.agendadoPara) + '.' : ''}`)}">📎 Enviar comprovante no WhatsApp</a>`;
+           href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Segue o comprovante do Pix do pedido #${p.numero} (${dinheiro(p.total)}) - ${p.cliente.nome}.${p.agendadoPara ? ' Agendado para ' + Horario.formatar(p.agendadoPara) + '.' : ''}${p.codigo ? Rastreio.rodape(p) : ''}`)}">📎 Enviar comprovante no WhatsApp</a>`;
     }
   }
 
@@ -537,6 +649,7 @@ async function copiarPix() {
 }
 function novoPedido() {
   if (pararObservar) { pararObservar(); pararObservar = null; }
+  pedidoAberto = null; renderAcompanhar.ultimo = null;
   history.replaceState(null, '', location.pathname);
   mostrar('cardapio');
 }
@@ -551,20 +664,10 @@ function toast(t) {
 Catalogo.iniciar(() => { if (tela !== 'acompanhar') atualizar(); if (document.getElementById('modalPizza').classList.contains('on')) renderModal(); });
 preencherCliente();
 renderHorario();
-const idUrl = new URLSearchParams(location.search).get('pedido');
+const qs = new URLSearchParams(location.search), idUrl = qs.get('pedido'), codUrl = qs.get('codigo');
 if (idUrl) acompanhar(idUrl);
-else {
-  mostrar('cardapio');
-  const ult = localStorage.getItem('cdp_ultimo_pedido');
-  if (ult) DB.observarPedido(ult, p => {
-    if (p && p.data >= hojeISO() && !['entregue', 'cancelado'].includes(p.status) && tela === 'cardapio' && !document.getElementById('avisoUltimo')) {
-      const d = document.createElement('div');
-      d.id = 'avisoUltimo'; d.className = 'okbox';
-      d.innerHTML = `Você tem o pedido <b>#${p.numero}</b> em andamento. <a href="?pedido=${encodeURIComponent(p.id)}">Acompanhar →</a>`;
-      document.querySelector('main').prepend(d);
-    }
-  }).then(stop => setTimeout(stop, 4000));
-}
+else if (codUrl) { mostrar('cardapio'); irCodigo(codUrl); }
+else { mostrar('cardapio'); renderMeusPedidos(); }
 </script>
 </body>
 </html>

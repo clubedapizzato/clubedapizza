@@ -6,7 +6,8 @@ window.CONFIG = {
     nome: 'Clube da Pizza',
     // WhatsApp da loja (DDI + DDD + número, só dígitos) — recebe comprovantes Pix
     whatsapp: '5563991332966',
-    cidade: 'Novo Acordo - TO'
+    cidade: 'Novo Acordo - TO',
+    site: 'https://clubedapizzato.com.br'   // endereço da loja nos links de acompanhamento
   },
 
   entrega: {

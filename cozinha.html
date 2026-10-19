@@ -55,6 +55,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 .agendados .ped{margin:0;border-left-color:#2563eb}
 .hora-ag{display:block;background:#1d4ed8;color:#fff;border-radius:8px;padding:5px 8px;margin:6px 0;font-weight:900;font-size:16px;text-align:center}
 #futuros{cursor:pointer}
+#movimento .btn{padding:4px 8px;font-size:12px;border-radius:7px}
 </style>
 </head>
 <body>
@@ -65,6 +66,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
       <input type="date" id="dataFiltro" style="width:auto;padding:6px;border-radius:8px">
       <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
       <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
+      <span class="toggle" id="movimento" title="Tempo extra na previsão que o cliente vê no acompanhamento"></span>
       <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
       <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
       <a class="btn sm sec" style="text-decoration:none" href="balcao.html" target="_blank">🏪 Balcão</a>
@@ -137,6 +139,7 @@ if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove(
 setInterval(() => {
   document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
   if (pedidos.length) { liberarAgendados(); render(); verificarImpressao(); }   // atualiza "há X min" e agendados
+  publicarFila();   // mantém a fila "viva" para o acompanhamento do cliente
 }, 30000);
 document.getElementById('relogio').textContent = new Date().toLocaleTimeString('pt-BR').slice(0, 5);
 
@@ -148,6 +151,7 @@ DB.observarUsuario(u => {
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
+  logadoCoz = logado;
   if (logado) { assinar(); assinarFuturos(); }
   else {
     if (pararLista) { pararLista(); pararLista = null; }
@@ -179,6 +183,7 @@ async function assinar() {
     liberarAgendados();
     render();
     verificarImpressao();
+    publicarFila();
   }, () => toast('Sem permissão para ler pedidos. Verifique o login/regras do Firebase.'));
 }
 
@@ -332,6 +337,33 @@ async function reenviar(id) {
   await DB.atualizarPedido(id, { status: 'pronto', entregador: null, rota: null, saiuEm: null }, 'pronto');
   toast(`Pedido #${p.numero} voltou para 📦 Prontos.`);
 }
+
+/* ---------------- FILA PÚBLICA + MOVIMENTO (config/fila) ----------------
+   Sem dados pessoais: só número, data, status e hora. O acompanhamento do cliente usa para
+   "Há N pedidos na sua frente" e a previsão. Se ficar > 10 min sem atualizar, o cliente não vê a fila. */
+let logadoCoz = false, filaPublicada = null, filaEm = 0, ajusteMin = 0;
+function publicarFila() {
+  clearTimeout(publicarFila.t);
+  publicarFila.t = setTimeout(async () => {
+    if (!logadoCoz || elData.value !== hojeISO()) return;
+    const lista = pedidos.filter(p => ['novo', 'producao', 'pronto', 'saiu'].includes(p.status) && !Horario.emEspera(p))
+      .map(p => ({ numero: p.numero, data: p.data, status: p.status, criadoEm: p.criadoEm })).sort((a, b) => a.numero - b.numero);
+    const j = JSON.stringify(lista);
+    if (j === filaPublicada && Date.now() - filaEm < 4 * 60000) return;   // nada mudou: só um "sinal de vida" a cada 4 min
+    try { await DB.salvarFila({ atualizadoEm: Date.now(), pedidos: lista }); filaPublicada = j; filaEm = Date.now(); }
+    catch (e) { console.error(e); }
+  }, 3000);
+}
+const MOVIMENTO = [[0, 'Normal'], [15, '+15 min'], [30, '+30 min']];
+function renderMovimento() {
+  document.getElementById('movimento').innerHTML = '⏱️ Movimento: ' + MOVIMENTO.map(([m, n]) =>
+    `<button class="btn sm ${m === ajusteMin ? 'dark' : 'sec'}" onclick="setMovimento(${m})">${n}</button>`).join('');
+}
+async function setMovimento(m) {
+  try { await DB.salvarFila({ ajusteMin: m, atualizadoEm: Date.now() }); toast(m ? `Previsão dos clientes +${m} min.` : 'Previsão normal.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+DB.observarFila(f => { ajusteMin = (f && Number(f.ajusteMin)) || 0; renderMovimento(); });
 
 // estoque e sachês em tempo real (aviso de falta ao iniciar produção)
 Catalogo.iniciar(() => { if (pedidos.length) render(); });
