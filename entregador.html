@@ -7,13 +7,10 @@
 <meta name="robots" content="noindex">
 <title>Entregador • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
-<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:720px;padding-bottom:40px}
-
+.topo .in{max-width:720px}
 #login{max-width:380px;margin:40px auto}
 #mapaRota{height:300px;border-radius:12px;border:1px solid var(--line);margin:8px 0}
 .resumoRota{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0}
@@ -53,7 +50,7 @@ main{max-width:720px;padding-bottom:40px}
 <body>
 <header class="topo">
   <div class="in">
-    <h1><img class="logo" src="img/logo-128.jpg" alt="Clube da Pizza" width="56" height="56">Entregas <span id="quem" style="font-weight:400;font-size:14px;opacity:.85"></span></h1>
+    <h1>🛵 Entregas <span id="quem" style="font-weight:400;font-size:14px;opacity:.85"></span></h1>
     <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
   </div>
 </header>
@@ -91,7 +88,6 @@ main{max-width:720px;padding-bottom:40px}
       <div id="feitas" style="margin-top:10px"></div>
     </details>
   </div>
-  <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 </main>
 
 <!-- Não entregue -->
@@ -270,7 +266,7 @@ function renderRota(pend, feitas) {
       <div class="end">📍 ${esc(endereco(e))}</div>
       ${e.complemento ? `<div>🏠 ${esc(e.complemento)}</div>` : ''}
       ${e.referencia ? `<div class="muted">👀 Ref.: ${esc(e.referencia)}</div>` : ''}
-      <div class="itens">${p.itens.filter(it => !Preco.ehSache(it)).map(it => `${it.qtd}x ${esc(Preco.descricao(it))}${Preco.textoRetirar(it) ? ` (${esc(Preco.textoRetirar(it))})` : ''}`).join(' • ')}</div>
+      <div class="itens">${p.itens.filter(it => !Preco.ehSache(it)).map(it => `${it.qtd}x ${esc(Preco.descricao(it))}`).join(' • ')}</div>
       ${sc.qtd ? `<div class="saches">🥫 SACHÊS: ${esc(Preco.listaSaches(p.itens))}</div>` : ''}
       ${p.obs ? `<div class="aviso" style="margin:4px 0">📝 ${esc(p.obs)}</div>` : ''}
       <div class="cobrar ${c.classe}">${c.longo}</div>

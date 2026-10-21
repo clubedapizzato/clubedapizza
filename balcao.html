@@ -7,13 +7,10 @@
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
-<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:1400px;padding-bottom:30px}
-
+.topo .in{max-width:1400px}
 .ferramentas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 #login{max-width:380px;margin:40px auto}
 .pdv{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}
@@ -31,7 +28,7 @@ main{max-width:1400px;padding-bottom:30px}
 .sachesRap{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)}
 .sachesRap .chip{padding:9px 11px;font-size:14px}
 .tile .badge{position:absolute;top:-8px;right:-6px;background:var(--brand);color:#fff;border-radius:999px;min-width:26px;height:26px;padding:0 7px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px}
-.painel{position:sticky;top:84px}
+.painel{position:sticky;top:64px}
 .painel .card{margin-bottom:10px}
 .item{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 .item:last-child{border-bottom:0}
@@ -61,7 +58,7 @@ main{max-width:1400px;padding-bottom:30px}
 <body>
 <header class="topo">
   <div class="in">
-    <h1><img class="logo" src="img/logo-128.jpg" alt="Clube da Pizza" width="56" height="56">Balcão <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1>
+    <h1>🏪 Balcão <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1>
     <div class="ferramentas hide" id="ferramentas">
       <a class="btn sm sec" style="text-decoration:none" href="cozinha.html" target="_blank">👨‍🍳 Cozinha</a>
       <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
@@ -132,7 +129,6 @@ main{max-width:1400px;padding-bottom:30px}
       </div>
     </aside>
   </div>
-  <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 </main>
 
 <div class="barra" id="barraMob">
@@ -252,22 +248,25 @@ function alterarProduto(id, d) {
 /* ---------------- MONTAR PIZZA ---------------- */
 let montagem = null;
 function abrirPizza(iSabor) {
-  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicionais: [], retirar: [], qtd: 1, obs: '' };
+  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicional: false, qtd: 1, obs: '' };
   renderModal();
   document.getElementById('modalPizza').classList.add('on');
 }
 function fecharModal() { document.getElementById('modalPizza').classList.remove('on'); }
 function renderModal() {
   const m = montagem, t = Preco.tamanho(m.tamanho);
-  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicionais);
+  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicional);
   document.getElementById('modalConteudo').innerHTML = `
     <h2>🍕 Montar pizza</h2>
     <div class="opcoes">${C.tamanhos.map(x => `<div class="opcao ${x.id === m.tamanho ? 'on' : ''}" onclick="mTamanho('${x.id}')">${x.nome} (${x.id})<small>${x.maxSabores === 1 ? '1 sabor' : 'até ' + x.maxSabores + ' sabores'}</small></div>`).join('')}</div>
     <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
     <div class="chips">${Catalogo.saboresAtivos().map(({ s, i }) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor(${i})">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
-    ${Catalogo.htmlExtras(m)}
+    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:700;font-size:15px">
+      <input type="checkbox" style="width:22px;height:22px" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
+      Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
+    </label>
     <label for="mObs">Observação desta pizza</label>
-    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: bem assada, cortar em 8" oninput="montagem.obs=this.value">
+    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: sem cebola" oninput="montagem.obs=this.value">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">
       <div class="qty"><button onclick="montagem.qtd=Math.max(1,montagem.qtd-1);renderModal()">−</button><b>${m.qtd}</b><button onclick="montagem.qtd++;renderModal()">+</button></div>
       <button class="btn grande" style="flex:1" ${m.sabores.length ? '' : 'disabled'} onclick="adicionarPizza()">Adicionar • ${dinheiro(preco * m.qtd)}</button>
@@ -277,7 +276,6 @@ function renderModal() {
 function mTamanho(id) {
   montagem.tamanho = id;
   montagem.sabores = montagem.sabores.slice(0, Preco.tamanho(id).maxSabores);
-  Catalogo.ajustarMontagem(montagem);
   renderModal();
 }
 function mSabor(i) {
@@ -286,14 +284,11 @@ function mSabor(i) {
   else if (max === 1) m.sabores = [nome];
   else if (m.sabores.length >= max) { toast(`Máximo de ${max} sabores neste tamanho.`); return; }
   else m.sabores.push(nome);
-  Catalogo.ajustarMontagem(m);
   renderModal();
 }
-function mAdic(id) { Catalogo.alternarAdicional(montagem, id); renderModal(); }
-function mRet(iSabor, iIng) { Catalogo.alternarRetirar(montagem, iSabor, iIng); renderModal(); }
 function adicionarPizza() {
   if (!montagem.sabores.length) return;
-  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, Catalogo.extrasItem(montagem), { obs: montagem.obs.trim() }));
+  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { obs: montagem.obs.trim() }));
   fecharModal();
   atualizar();
 }
@@ -312,7 +307,6 @@ function renderItens() {
   document.getElementById('itens').innerHTML = carrinho.length ? carrinho.map((it, i) => `
     <div class="item">
       <div><div class="d">${Preco.ehSache(it) ? '🥫 Sachê ' : ''}${esc(Preco.descricao(it))}</div>
-        ${Preco.textoRetirar(it) ? `<div class="muted">🚫 ${esc(Preco.textoRetirar(it))}</div>` : ''}
         ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
         <div class="muted">${dinheiro(Preco.unitario(it) * (it.qtd - (sc.gratisPorItem[i] || 0)))}${sc.gratisPorItem[i] ? ` • ${sc.gratisPorItem[i]} cortesia` : ''}</div></div>
       <div class="qty"><button onclick="alterarItem('${it.uid}',-1)">−</button><b>${it.qtd}</b><button onclick="alterarItem('${it.uid}',1)">+</button></div>
@@ -425,7 +419,7 @@ function textoPagamento(p) {
 // Resumo para o cliente confirmar pelo WhatsApp
 function mensagemConfirmacao(p) {
   const e = p.entrega, pg = p.pagamento;
-  const linhas = p.itens.filter(it => !Preco.ehSache(it)).map(it => `• ${it.qtd}x ${Preco.descricao(it)}${Preco.textoRetirar(it) ? ` — ${Preco.textoRetirar(it)}` : ''}${it.obs ? ` (${it.obs})` : ''}`);
+  const linhas = p.itens.filter(it => !Preco.ehSache(it)).map(it => `• ${it.qtd}x ${Preco.descricao(it)}${it.obs ? ` (${it.obs})` : ''}`);
   const sc = Preco.listaSaches(p.itens);
   if (sc) linhas.push(`• Sachês: ${sc}`);
   let pagto = textoPagamento(p).replace(/^\S+ /, '');

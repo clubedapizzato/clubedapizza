@@ -41,16 +41,12 @@ window.DB = (function () {
   const usuario = () => (modo() === 'demo' ? 'demo' : (auth && auth.currentUser && auth.currentUser.email) || '');
 
   /* ---------------- ESTOQUE (regras comuns aos dois modos) ---------------- */
-  // produtos + adicionais das pizzas (adicional pode controlar estoque)
-  const idsProdutos = itens => [...new Set((itens || []).flatMap(it => it.tipo === 'produto' ? [it.id] : (it.adicionais || []).map(a => a.id)))];
+  const idsProdutos = itens => [...new Set((itens || []).filter(it => it.tipo === 'produto').map(it => it.id))];
 
   // Alterações de estoque de um pedido. sinal -1 = baixa (venda), +1 = estorno
   function planoEstoque(pedido, prods, sinal) {
     const qtd = {};
-    (pedido.itens || []).forEach(it => {
-      if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1);
-      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); });
-    });
+    (pedido.itens || []).forEach(it => { if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1); });
     const mudancas = [], faltas = [];
     Object.keys(qtd).forEach(id => {
       const p = prods[id];
