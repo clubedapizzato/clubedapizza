@@ -6,10 +6,13 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Cozinha • Clube da Pizza</title>
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:1400px;padding-bottom:30px}
-.topo .in{max-width:1400px;flex-wrap:wrap}
+.topo .in{flex-wrap:wrap}
 .ferramentas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ferramentas .btn{padding:7px 10px;font-size:13px}
 .toggle{display:flex;align-items:center;gap:6px;font-size:13px;background:#ffffff14;border-radius:9px;padding:6px 10px;cursor:pointer;user-select:none}
@@ -61,7 +64,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <body>
 <header class="topo">
   <div class="in">
-    <h1>👨‍🍳 Cozinha <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1>
+    <h1><img class="logo" src="img/logo-128.jpg" alt="Clube da Pizza" width="56" height="56">Cozinha <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1>
     <div class="ferramentas hide" id="ferramentas">
       <input type="date" id="dataFiltro" style="width:auto;padding:6px;border-radius:8px">
       <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
@@ -95,6 +98,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
     <div id="agendados" class="agendados hide"></div>
     <div class="colunas" id="colunas"></div>
   </div>
+  <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 </main>
 
 <pre id="ticketPrint" class="print-only"></pre>
@@ -279,9 +283,9 @@ function cartao(p) {
          <div class="muted">📏 ${e.distanciaKm != null ? String(e.distanciaKm).replace('.', ',') + ' km' : 'distância não informada'} • entrega ${taxaCalc == null ? '<span class="tag pend">TAXA A COMBINAR</span>' : taxaCalc ? dinheiro(taxaCalc) : 'grátis'}</div>
          ${e.lat ? `<a class="lnk" target="_blank" href="https://www.google.com/maps/search/?api=1&query=${e.lat},${e.lng}">🗺️ Abrir no mapa</a>` : ''}`
       : '<span class="tag info">🏪 RETIRADA NO BALCÃO</span>'}
-    <ul>${p.itens.filter(it => !Preco.ehSache(it)).map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>
+    <ul>${p.itens.filter(it => !Preco.ehSache(it)).map(it => `<li><b>${it.qtd}x</b> ${esc(Preco.descricao(it))}${Preco.textoRetirar(it) ? `<br><b style="color:#b91c1c">🚫 ${esc(Preco.textoRetirar(it).toUpperCase())}</b>` : ''}${it.obs ? `<br><span class="muted">⚠️ ${esc(it.obs)}</span>` : ''}</li>`).join('')}</ul>
     ${sc.qtd ? `<div class="saches">🥫 SACHÊS (sacola): ${esc(Preco.listaSaches(p.itens))}${sc.gratis ? ` • ${sc.gratis} cortesia` : ''}</div>` : ''}
-    ${p.entregador && ['saiu', 'entregue', 'nao_entregue'].includes(p.status) && e.tipo === 'entrega' ? `<div class="muted">🛵 ${esc(p.entregador.nome)}${p.rota && p.rota.ordem ? ` • parada ${p.rota.ordem}` : ''}</div>` : ''}
+    ${p.entregador && ['saiu', 'entregue', 'nao_entregue'].includes(p.status) && e.tipo === 'entrega' ? `<div class="muted">🛵 ${esc(Equipe.nome(p.entregador.nome))}${p.rota && p.rota.ordem ? ` • parada ${p.rota.ordem}` : ''}</div>` : ''}
     ${p.status === 'nao_entregue' && p.naoEntregue ? `<div class="tag erro" style="font-size:13px;display:block;margin:6px 0">❌ NÃO ENTREGUE: ${esc(p.naoEntregue.motivo)}${p.naoEntregue.obs ? ' — ' + esc(p.naoEntregue.obs) : ''}${p.naoEntregue.em ? ' • ' + new Date(p.naoEntregue.em).toLocaleTimeString('pt-BR').slice(0, 5) : ''}</div>` : ''}
     ${p.obs ? `<div class="aviso" style="margin:4px 0">📝 ${esc(p.obs)}</div>` : ''}
     <div><b>Total ${dinheiro(p.total)}</b> ${pgTag}

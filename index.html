@@ -6,6 +6,19 @@
 <meta name="theme-color" content="#1c1917">
 <title>Clube da Pizza • Peça online</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="description" content="Peça sua pizza online no Clube da Pizza Delivery — Novo Acordo/TO. Pizzas, bebidas, entrega e acompanhamento do pedido em tempo real.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Clube da Pizza">
+<meta property="og:title" content="Clube da Pizza Delivery • Peça online">
+<meta property="og:description" content="Pizzas, bebidas e entrega em Novo Acordo/TO. Faça seu pedido e acompanhe em tempo real.">
+<meta property="og:url" content="https://clubedapizzato.com.br/">
+<meta property="og:image" content="https://clubedapizzato.com.br/img/logo.jpg">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+<meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="css/app.css">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
@@ -20,7 +33,7 @@
 <body>
 <header class="topo">
   <div class="in">
-    <h1 id="nomeLoja">🍕 Clube da Pizza</h1>
+    <h1><img class="logo" src="img/logo-128.jpg" alt="Clube da Pizza" width="56" height="56"><span id="nomeLoja">Clube da Pizza</span></h1>
     <div style="display:flex;gap:6px">
       <button class="btn sm sec" id="btnAcompanhar" onclick="abrirCodigo()">📦 Acompanhar pedido</button>
       <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
@@ -35,6 +48,7 @@
 
   <!-- ================= TELA 1: CARDÁPIO ================= -->
   <section id="tela-cardapio">
+    <div class="hero"><img src="img/logo-192.jpg" alt="Clube da Pizza Delivery" width="140" height="140"></div>
     <nav class="tabs" id="tabs"></nav>
     <div id="listaCardapio"></div>
   </section>
@@ -97,6 +111,7 @@
   <section id="tela-acompanhar" class="hide">
     <div class="card" id="acompanhar"></div>
   </section>
+  <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 </main>
 
 <!-- Barra inferior -->
@@ -144,7 +159,7 @@ let pararObservar = null, pararFila = null;
 let fila = null, pedidoAberto = null;   // fila pública (config/fila) e pedido em acompanhamento
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
-document.getElementById('nomeLoja').textContent = '🍕 ' + CONFIG.loja.nome;
+document.getElementById('nomeLoja').textContent = CONFIG.loja.nome;
 document.title = CONFIG.loja.nome + ' • Peça online';
 if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
 
@@ -160,7 +175,7 @@ function renderCardapio() {
   Catalogo.saboresAtivos().forEach(({ s, i }) => {
     h += `<div class="prod">
       <div><div class="nome">${esc(s.nome)}</div>
-        ${s.desc ? `<div class="muted">${esc(s.desc)}</div>` : ''}
+        ${Catalogo.descSabor(s) ? `<div class="muted">${esc(Catalogo.descSabor(s))}</div>` : ''}
         <div class="precos">${C.tamanhos.map(t => `<span>${t.id} ${dinheiro(s[t.id])}</span>`).join('')}</div></div>
       <button class="btn sm" onclick="abrirPizza(${i})">Escolher</button>
     </div>`;
@@ -203,7 +218,7 @@ function alterarProduto(id, d) {
 /* ---------------- MODAL PIZZA ---------------- */
 let montagem = null;
 function abrirPizza(iSabor) {
-  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicional: false, qtd: 1, obs: '' };
+  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicionais: [], retirar: [], qtd: 1, obs: '' };
   renderModal();
   document.getElementById('modalPizza').classList.add('on');
 }
@@ -211,7 +226,7 @@ function fecharModal() { document.getElementById('modalPizza').classList.remove(
 
 function renderModal() {
   const m = montagem, t = Preco.tamanho(m.tamanho);
-  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicional);
+  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicionais);
   document.getElementById('modalConteudo').innerHTML = `
     <h2>Monte sua pizza</h2>
     <h3>Tamanho</h3>
@@ -219,12 +234,9 @@ function renderModal() {
     <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
     <div class="chips">${Catalogo.saboresAtivos().map(({ s }) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
     ${t.maxSabores > 1 ? `<div class="muted" style="margin-top:6px">Meio a meio: preço pela ${CONFIG.meioAMeio === 'maior' ? 'pizza de maior valor' : 'média dos sabores'}.</div>` : ''}
-    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600">
-      <input type="checkbox" style="width:auto" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
-      Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
-    </label>
+    ${Catalogo.htmlExtras(m)}
     <label for="mObs">Observação desta pizza</label>
-    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: sem cebola" oninput="montagem.obs=this.value">
+    <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: bem assada, cortar em 8" oninput="montagem.obs=this.value">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">
       <div class="qty"><button onclick="montagem.qtd=Math.max(1,montagem.qtd-1);renderModal()">−</button><b>${m.qtd}</b><button onclick="montagem.qtd++;renderModal()">+</button></div>
       <button class="btn" style="flex:1" ${m.sabores.length ? '' : 'disabled'} onclick="adicionarPizza()">Adicionar • ${dinheiro(preco * m.qtd)}</button>
@@ -235,6 +247,7 @@ function mTamanho(id) {
   montagem.tamanho = id;
   const max = Preco.tamanho(id).maxSabores;
   montagem.sabores = montagem.sabores.slice(0, max);
+  Catalogo.ajustarMontagem(montagem);
   renderModal();
 }
 function mSabor(nome) {
@@ -243,11 +256,14 @@ function mSabor(nome) {
   else if (max === 1) m.sabores = [nome];
   else if (m.sabores.length >= max) { toast(`Máximo de ${max} sabores neste tamanho.`); return; }
   else m.sabores.push(nome);
+  Catalogo.ajustarMontagem(m);
   renderModal();
 }
+function mAdic(id) { Catalogo.alternarAdicional(montagem, id); renderModal(); }
+function mRet(iSabor, iIng) { Catalogo.alternarRetirar(montagem, iSabor, iIng); renderModal(); }
 function adicionarPizza() {
   if (!montagem.sabores.length) return;
-  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { obs: montagem.obs.trim() }));
+  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, Catalogo.extrasItem(montagem), { obs: montagem.obs.trim() }));
   fecharModal();
   atualizar();
   toast('Pizza adicionada!');
@@ -271,6 +287,7 @@ function renderCarrinho() {
   el.innerHTML = carrinho.filter(it => !Preco.ehSache(it)).map(it => `
     <div class="prod">
       <div><div class="nome">${esc(Preco.descricao(it))}</div>
+        ${Preco.textoRetirar(it) ? `<div class="muted">🚫 ${esc(Preco.textoRetirar(it))}</div>` : ''}
         ${it.obs ? `<div class="muted">Obs: ${esc(it.obs)}</div>` : ''}
         <div class="muted">${dinheiro(Preco.unitario(it))} cada</div></div>
       <div class="qty"><button onclick="alterarItem('${it.uid}',-1)">−</button><b>${it.qtd}</b><button onclick="alterarItem('${it.uid}',1)">+</button></div>
@@ -600,7 +617,7 @@ function htmlAcompanhar(p) {
   }
   if (p.status === 'nao_entregue') h += `<div class="aviso" style="background:#fef2f2;border-color:#fecaca;color:#7f1d1d">❌ <b>Não conseguimos entregar seu pedido</b>${p.naoEntregue && p.naoEntregue.motivo ? ` (${esc(p.naoEntregue.motivo.toLowerCase())})` : ''}. Fale com a gente no WhatsApp para combinarmos.
     <a class="btn wa full" style="display:block;text-align:center;text-decoration:none;margin-top:8px" target="_blank" href="${linkWhats(CONFIG.loja.whatsapp, `Olá! Sobre o meu pedido #${p.numero} (${p.cliente.nome}), que não foi entregue.`)}">💬 Falar com a loja</a></div>`;
-  if (p.status === 'saiu' && p.entrega.tipo === 'entrega' && p.entregador && p.entregador.nome) h += `<div class="okbox">🛵 Saiu com <b>${esc(p.entregador.nome.split(' ')[0])}</b>${p.rota && p.rota.ordem ? ` • você é a parada nº ${p.rota.ordem}` : ''}.</div>`;
+  if (p.status === 'saiu' && p.entrega.tipo === 'entrega' && p.entregador) h += `<div class="okbox">🛵 <b>Seu pedido saiu para entrega</b>${p.rota && p.rota.ordem ? ` • você é a parada nº ${p.rota.ordem}` : ''}.</div>`;
 
   if (p.pagamento.forma === 'pix' && !cancel) {
     if (p.pagamento.confirmado) h += `<div class="okbox">✅ Pagamento Pix confirmado.</div>`;
@@ -619,7 +636,7 @@ function htmlAcompanhar(p) {
 
   h += `<h3 style="margin-top:16px">Itens</h3>`;
   p.itens.filter(it => !Preco.ehSache(it)).forEach(it => {
-    h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
+    h += `<div class="linha"><span>${it.qtd}x ${esc(Preco.descricao(it))}${Preco.textoRetirar(it) ? `<br><span class="muted">🚫 ${esc(Preco.textoRetirar(it))}</span>` : ''}${it.obs ? `<br><span class="muted">Obs: ${esc(it.obs)}</span>` : ''}</span><span>${dinheiro(Preco.unitario(it) * it.qtd)}</span></div>`;
   });
   const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
   if (sc.qtd) h += `<div class="linha"><span>${textoSaches(sc)}<br><span class="muted">${esc(Preco.listaSaches(p.itens))}</span></span><span>${sc.valor ? dinheiro(sc.valor) : 'Grátis'}</span></div>`;
