@@ -6,13 +6,10 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Gestão • Clube da Pizza</title>
-<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
-<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="css/app.css">
 <style>
 main{max-width:1100px;padding-bottom:30px}
-
+.topo .in{max-width:1100px}
 #login{max-width:380px;margin:40px auto}
 .filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .filtros .chip{padding:9px 13px;font-size:14px}
@@ -76,7 +73,7 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <body>
 <header class="topo">
   <div class="in">
-    <h1><img class="logo" src="img/logo-128.jpg" alt="Clube da Pizza" width="56" height="56">Gestão</h1>
+    <h1>📊 Gestão</h1>
     <div class="hide" id="ferramentas" style="display:flex;gap:6px">
       <a class="btn sm sec" style="text-decoration:none" href="cozinha.html">👨‍🍳 Cozinha</a>
       <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
@@ -187,7 +184,6 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
       </div>
     </section>
   </div>
-  <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 </main>
 
 <div class="modal" id="modal" onclick="if(event.target===this)fecharModal()">
@@ -291,7 +287,7 @@ function custoItem(it) {
 function calcular(lista, de, ate) {
   const r = {
     faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, naoEntregues: 0, taxas: 0,
-    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}, adicionais: {},
+    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {},
     lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {}
   };
   // todos os dias do período (dias sem venda aparecem zerados)
@@ -301,9 +297,9 @@ function calcular(lista, de, ate) {
 
   lista.forEach(p => {
     // entregas por entregador (cada tentativa frustrada conta como "não entregue")
-    (p.falhas || []).forEach(f => { ent(Equipe.nome((f.entregador && f.entregador.nome) || f.entregador || '—')).nao++; });
+    (p.falhas || []).forEach(f => { ent((f.entregador && f.entregador.nome) || f.entregador || '—').nao++; });
     if (p.status === 'entregue' && p.entregador && p.entrega.tipo === 'entrega') {
-      const e = ent(Equipe.nome(p.entregador.nome || p.entregador.email));
+      const e = ent(p.entregador.nome || p.entregador.email);
       e.entregues++; e.taxas += p.taxaEntrega || 0;
       if (p.saiuEm && p.entregueEm) e.tempos.push(p.entregueEm - p.saiuEm);
     }
@@ -323,9 +319,6 @@ function calcular(lista, de, ate) {
       if (it.tipo === 'pizza') {
         it.sabores.forEach(s => { r.sabores[s] = (r.sabores[s] || 0) + q / it.sabores.length; });   // meio a meio = ½ por sabor
         r.tamanhos[it.tamanho] = (r.tamanhos[it.tamanho] || 0) + q;
-        // adicionais: quantidade e receita (pedido antigo "adicional: true" conta como Catupiry / Cheddar)
-        const lista = it.adicionais || (it.adicional ? [{ nome: CARDAPIO.nomeAdicional, preco: (Preco.tamanho(it.tamanho) || {}).adicional || 0 }] : []);
-        lista.forEach(a => { const n = (Preco.adicional(a.id) || a).nome || a.nome; soma(r.adicionais, n, (a.preco != null ? a.preco : Preco.precoAdicional(a, it.tamanho)) * q, q); });
       } else {
         const nome = Preco.descricao(it);
         r.produtos[nome] = (r.produtos[nome] || 0) + q;
@@ -417,7 +410,6 @@ function render(r) {
       <div class="card"><h2>💳 Formas de pagamento</h2>${barras(qv(r.formas, FORMAS), dinheiro)}</div>
       <div class="card"><h2>🍕 Pizzas por sabor</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div>${barras(ordenar(r.sabores), num)}</div>
       <div class="card"><h2>📏 Pizzas por tamanho</h2>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, r.tamanhos[t.id] || 0]).filter(x => x[1]), num)}</div>
-      <div class="card" id="cardAdicionaisRel"><h2>➕ Adicionais da pizza</h2>${barras(Object.entries(r.adicionais).sort((a, b) => b[1].valor - a[1].valor).map(([n, x]) => [n, x.valor, `${x.qtd} un`]), dinheiro)}</div>
       <div class="card"><h2>🥤 Bebidas, sachês e outros</h2>${barras(ordenar(r.produtos), num)}</div>
       <div class="card"><h2>🛵 Entrega × Retirada × Balcão</h2>${barras(qv(r.tipos, TIPOS), dinheiro)}
         <div class="linha total"><span>Taxas de entrega arrecadadas</span><span>${dinheiro(r.taxas)}</span></div></div>
@@ -446,9 +438,9 @@ function exportarCSV() {
     p.origem || 'site', p.status, p.cliente.nome, p.cliente.telefone, p.entrega.tipo,
     p.entrega.consumo === 'local' ? 'comer aqui' : p.entrega.consumo === 'levar' ? 'para levar' : '',
     p.agendadoPara ? Horario.formatar(p.agendadoPara) : '',
-    (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}${Preco.textoRetirar(it) ? ' (' + Preco.textoRetirar(it) + ')' : ''}`).join(' | '),
+    (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}`).join(' | '),
     n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao',
-    p.entregador ? Equipe.nome(p.entregador.nome) : ''
+    p.entregador ? p.entregador.nome : ''
   ]));
   const csv = '﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a');
@@ -488,9 +480,8 @@ function renderProdutos() {
 
   renderHorario();
 
-  const prods = todos.filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');
-  const adics = todos.filter(d => d.tipo === 'adicional');
-  const controlados = prods.concat(adics).filter(d => d.controlaEstoque);
+  const prods = todos.filter(d => d.tipo !== 'sabor');
+  const controlados = prods.filter(d => d.controlaEstoque);
   const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
   const negativos = controlados.filter(d => (d.estoqueAtual || 0) < 0);
   const parado = controlados.reduce((s, d) => s + Math.max(0, d.estoqueAtual || 0) * (d.custoUnitario || 0), 0);
@@ -506,22 +497,11 @@ function renderProdutos() {
   const sabores = todos.filter(d => d.tipo === 'sabor');
   let h = `<div class="card"><h2>🍕 Sabores de pizza</h2><div class="rolar"><table>
     <tr><th>Sabor</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Custo P/M/G</th><th></th></tr>
-    ${sabores.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b>${Catalogo.ingredientes(d.ingredientes).length ? `<div class="muted">${esc(Catalogo.ingredientes(d.ingredientes).join(', '))}</div>` : '<div class="muted" style="color:var(--warn)">sem ingredientes — cadastre no ✏️</div>'}</td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+    ${sabores.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
       ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
       <td class="r muted">${['P', 'M', 'G'].map(t => (d.custos || {})[t] != null && (d.custos || {})[t] !== '' ? dinheiro(d.custos[t]) : '—').join(' / ')}</td>
       <td class="r"><button class="btn sm sec" onclick="editarSabor('${d.id}')">✏️</button></td></tr>`).join('')}
   </table></div></div>`;
-  // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho, estoque opcional
-  h += `<div class="card" id="cardAdicionais"><h2>➕ Adicionais da pizza</h2>
-    ${adics.length ? `<div class="rolar"><table>
-      <tr><th>Adicional</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Estoque</th><th></th></tr>
-      ${adics.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
-        ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
-        <td class="r">${fmtEstoque(d)}</td><td class="r"><button class="btn sm sec" onclick="editarAdicional('${d.id}')">✏️</button></td></tr>`).join('')}
-    </table></div>` : `<div class="aviso">A loja está usando os adicionais padrão (Catupiry e Cheddar: P R$ 3 • M R$ 5 • G R$ 7). Crie-os aqui para poder editar.</div>
-      <button class="btn dark" onclick="criarAdicionaisPadrao()">➕ Criar Catupiry e Cheddar</button>`}
-    <button class="btn sec" style="margin-top:10px" onclick="editarAdicional(null)">🆕 Novo adicional</button>
-    <div class="muted" style="margin-top:6px">O cliente escolhe quantos quiser (1 de cada por pizza). Preço = pizza (regra do meio a meio) + soma dos adicionais do tamanho.</div></div>`;
   const cats = [];
   prods.forEach(d => { const c = d.categoria || 'Outros'; if (!cats.includes(c)) cats.push(c); });
   cats.forEach(c => {
@@ -636,7 +616,7 @@ let editando = null;   // id do produto em edição (null = novo)
 function editarProduto(id) {
   editando = id;
   const d = id ? Catalogo.doc(id) : { tipo: 'produto', ativo: true, controlaEstoque: true, unidade: 'un', estoqueAtual: 0, estoqueMinimo: 0, custoUnitario: 0, custosExtras: 0, taxaMaquininha: null, margemDesejada: 30, precoVenda: 0 };
-  const cats = [...new Set(Catalogo.todos().filter(x => x.tipo !== 'sabor' && x.tipo !== 'adicional').map(x => x.categoria))];
+  const cats = [...new Set(Catalogo.todos().filter(x => x.tipo !== 'sabor').map(x => x.categoria))];
   abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo produto'}</h2>
     <div class="grid2">
       ${campo('pNome', 'Nome', d.nome)}
@@ -718,9 +698,7 @@ function editarSabor(id) {
   const d = Catalogo.doc(id), pr = d.precos || {}, cu = d.custos || {};
   abrirModal(`<h2>🍕 ${esc(d.nome)}</h2>
     ${campo('sNome', 'Nome do sabor', d.nome)}
-    <label for="sIng">Ingredientes (separados por vírgula — o cliente pode pedir para retirar)</label>
-    <textarea id="sIng" placeholder="Ex.: mussarela, calabresa, cebola, orégano">${esc(Catalogo.ingredientes(d.ingredientes).join(', '))}</textarea>
-    ${campo('sDesc', 'Descrição (opcional — se vazia, o cardápio mostra os ingredientes)', d.desc || '')}
+    ${campo('sDesc', 'Descrição (opcional)', d.desc || '')}
     ${caixa('sAtivo', 'Ativo (aparece à venda)', d.ativo !== false)}
     <h3 style="margin-top:14px">Preço de venda</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sP' + t, t, pr[t], 'inputmode="decimal"')).join('')}</div>
@@ -740,46 +718,7 @@ async function salvarSaborForm() {
   }
   if (nome.length < 2) return toast('Informe o nome.');
   if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
-  try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ingredientes: Catalogo.ingredientes(val('sIng')), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
-}
-
-/* ---------------- ADICIONAIS DA PIZZA ---------------- */
-async function criarAdicionaisPadrao() {
-  try {
-    for (const a of Catalogo.adicionaisPadrao(Catalogo.todos().length + 1)) { const { id, ...dados } = a; await DB.salvarProduto(id, dados); }
-    toast('✅ Catupiry e Cheddar criados.');
-  } catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
-}
-function editarAdicional(id) {
-  editando = id;
-  const d = id ? Catalogo.doc(id) : { ativo: true, precos: {}, controlaEstoque: false, estoqueMinimo: 0, unidade: 'porção' };
-  abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo adicional'}</h2>
-    ${campo('aNome', 'Nome', d.nome || '', 'placeholder="Ex.: Bacon"')}
-    ${caixa('aAtivo', 'Ativo (aparece na montagem da pizza)', d.ativo !== false)}
-    <h3 style="margin-top:14px">Preço por tamanho</h3>
-    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('aP' + t, t, (d.precos || {})[t], 'inputmode="decimal"')).join('')}</div>
-    ${campo('aOrdem', 'Ordem na lista', d.ordem != null ? d.ordem : '', 'inputmode="decimal" placeholder="1, 2, 3..."')}
-    ${caixa('aControla', 'Controla estoque (some da montagem quando zerar; entrada pelo ➕ Entrada de compra)', !!d.controlaEstoque)}
-    ${campo('aMin', 'Estoque mínimo (alerta)', d.estoqueMinimo || 0, 'inputmode="decimal"')}
-    <button class="btn full" style="margin-top:14px" onclick="salvarAdicionalForm()">Salvar</button>
-    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
-}
-async function salvarAdicionalForm() {
-  const nome = val('aNome'), precos = {};
-  if (nome.length < 2) return toast('Informe o nome.');
-  for (const t of ['P', 'M', 'G']) { const v = numero(val('aP' + t)); if (v == null || v < 0) return toast(`Informe o preço ${t}.`); precos[t] = v; }
-  const campos = { tipo: 'adicional', nome, categoria: 'Adicionais', ativo: document.getElementById('aAtivo').checked, precos,
-    controlaEstoque: document.getElementById('aControla').checked, estoqueMinimo: numero(val('aMin')) || 0, unidade: 'porção' };
-  const ordem = numero(val('aOrdem')); if (ordem != null) campos.ordem = ordem;
-  let id = editando;
-  if (!id) {
-    const base = 'adic-' + (Catalogo.slug(nome) || 'item');
-    id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
-    Object.assign(campos, { estoqueAtual: 0, custoUnitario: 0, custosExtras: 0 });
-    if (campos.ordem == null) campos.ordem = Catalogo.todos().length + 1;
-  }
-  try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Adicional salvo.'); }
+  try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
   catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
 }
 
