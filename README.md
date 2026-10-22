@@ -91,7 +91,20 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
   - **Fichas** (`fichas/{saborId|adicionalId}`): insumo + quantidade por tamanho (P/M/G; aceita "280g" num insumo em kg), copiar de outro tamanho (com fator) ou de outro sabor. **Base comum** (`fichas/_base`: massa, caixa, gás…) entra em todos os sabores. Resultado: CMV %, maquininha, lucro, margem e preço sugerido pelo **CMV alvo**.
   - Visão geral de todos os sabores × tamanhos + CSV.
 - Meio a meio: custo = média das metades (ou a mais cara, se `CONFIG.meioAMeio = 'maior'`) + base + adicionais. O custo é gravado no item do pedido na baixa (cozinha/balcão logados); pedidos sem custo usam a ficha atual e aparecem como "estimado".
-- **Custos são privados**: `insumos` e `fichas` só para usuário logado (a loja do cliente não carrega nada disso). Insumos não baixam estoque nesta fase.
+- **Custos são privados**: `insumos` e `fichas` só para usuário logado (a loja do cliente não carrega nada disso).
+
+## Estoque de insumos — Gestão → 🧂 Estoque de insumos
+- **No insumo** (✏️ na aba Ficha técnica): `controlaEstoque`, `estoqueAtual` (na unidade do insumo; muda só por movimento), `estoqueMinimo`, `estoqueIdeal` (opcional). Cores: 🔴 no mínimo ou abaixo • 🟡 até 1,5 × o mínimo • 🟢 ok • fundo vermelho = negativo.
+- **Movimentos** ficam na coleção `movimentos` já existente com `tipoItem: 'insumo'` (sem coleção nova → **regras do Firebase não mudam**). Um documento por movimento com `itens: [{ insumoId, nome, unidade, qtd (+/−), custoUnit, valor, saldoDepois }]`, `data`, `em`, `usuario`, `obs`:
+  - `compra`: nota com vários insumos (fornecedor, nº da nota, total). Quantidade em **embalagens** (3 botijões, 2 pacotes de 50 caixas) ou direto em kg/g/L/ml/un. Custo pelo **custo médio ponderado** (gravado em `precoCompra` da embalagem, com histórico) → fichas recalculadas na hora.
+  - `ajuste`: perda/vencido, avaria, consumo interno, correção (+/−).
+  - `inventario`: contagem de todos de uma vez; a diferença vira ajuste com valor em R$ (`antes`, `contado`, `valorContado`).
+  - `consumo` (`movimentos/ins-consumo-{pedidoId}`): baixa pela ficha no **mesmo momento** da baixa de produtos (balcão ao criar; site em *Iniciar produção*). Meio a meio = metade de cada sabor; + base comum do tamanho + adicionais. Quantidade bruta = ficha ÷ (1 − perda %). Converte g↔kg e ml↔L. Pedido ganha `estoqueInsumosBaixado: true` (nunca baixa duas vezes). Sabor/adicional sem ficha → aviso `semFicha` (aparece na Gestão) e só ele não baixa. Insumo sem `controlaEstoque` é ignorado. Falta de estoque **nunca** bloqueia (fica negativo).
+  - `estorno` (`ins-estorno-{pedidoId}`): cancelar depois da baixa devolve exatamente o que baixou.
+- **Alertas**: card "⚠️ Insumos abaixo do mínimo" na Gestão e "⚠️ N insumos acabando" discreto na cozinha (link para a Gestão).
+- **🛒 Lista de compras**: abaixo do mínimo → ideal − atual (ideal vazio = 2 × mínimo) arredondado para embalagens inteiras, custo estimado, agrupada por fornecedor, **Copiar** / **Enviar no WhatsApp**. "Dura ~N dias" = estoque ÷ consumo médio dos últimos 14 dias com baixa.
+- **Relatório do período**: consumo por insumo (qtd e R$), compras, perdas/ajustes, diferença de inventário, valor parado e **CMV teórico × real** (real = estoque inicial + compras − estoque final, entre o último inventário antes do período — ou o 1º dentro dele — e o último dentro; por insumo contado nos dois). CSV das movimentações.
+- Trocar a unidade de um insumo (kg↔g, L↔ml) converte embalagem, estoque, mínimo/ideal e as fichas.
 
 ## Atualizações e cache
-As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy.
+As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy. Exceção: a loja do cliente (`index.html`) pode manter o número antigo quando a mudança não mexe no que ela usa (ex.: estoque de insumos, só nas páginas logadas).
