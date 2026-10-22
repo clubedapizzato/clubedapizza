@@ -128,7 +128,7 @@ th.ord:hover{color:var(--ink)}
     <section id="aba-fidelidade" class="hide">
       <div class="card">
         <h2>🎁 Fidelidade <span class="muted" style="font-weight:400">(simulador — controle interno)</span></h2>
-        <div class="aviso">A loja <b>não</b> mostra nada disso ao cliente. É um controle interno: a regra fica salva <b>só neste aparelho</b> e o resgate é marcado à mão (botão "Marcar recompensa entregue").</div>
+        <div class="aviso">A loja <b>não</b> mostra nada disso ao cliente. É um controle interno: a regra e os resgates ficam no Firebase (privado, só quem está logado vê) e valem em <b>todos os aparelhos</b>. O resgate é marcado à mão (botão "Marcar recompensa entregue").</div>
         <div class="fidCfg">
           <div><label for="fidTipo">Conta por</label><select id="fidTipo" onchange="trocarTipoFid()"><option value="pizzas">🍕 Pizzas</option><option value="valor">💰 R$ em compras</option></select></div>
           <div id="fidMetaBox"><label for="fidMeta" id="fidMetaLbl">A cada (pizzas)</label><input id="fidMeta" type="number" min="1" step="1"></div>
@@ -182,6 +182,7 @@ th.ord:hover{color:var(--ink)}
 <script src="js/cardapio.js?v=20261023"></script>
 <script src="js/db.js?v=20261023"></script>
 <script src="js/clientes.js?v=20261023"></script>
+<script src="js/fidelidade.js?v=20261023"></script>
 <script>
 let periodo = '90d';
 let pedidos = [], A = null;            // A = resultado de Clientes.analisar
@@ -208,7 +209,7 @@ DB.observarUsuario(u => {
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
-  if (logado) { mostrarAba(aba); carregar(); }
+  if (logado) { mostrarAba(aba); carregar(); ouvirFid(); }
   else { pedidos = []; A = null; }
 });
 async function entrar() {
@@ -396,11 +397,17 @@ function abrirWhats(chave, tipo) {
   document.getElementById('wTexto').focus();
 }
 
-/* ---------------- FIDELIDADE (salva só neste navegador) ---------------- */
-const LS_FID = 'cdp_fidelidade_regra', LS_FID_ENT = 'cdp_fidelidade_entregues';
-function lerFid() { try { return Object.assign({}, Clientes.FID_PADRAO, JSON.parse(localStorage.getItem(LS_FID)) || {}); } catch { return Object.assign({}, Clientes.FID_PADRAO); } }
-function lerEntregues() { try { return JSON.parse(localStorage.getItem(LS_FID_ENT)) || {}; } catch { return {}; } }
-function gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { toast('Não foi possível salvar neste navegador.'); return false; } }
+/* ---------------- FIDELIDADE (Firebase: coleção privada "fidelidade", vale em todos os aparelhos) ---------------- */
+let FID = { config: null, entregas: {} }, fidPronto = false, fidErro = null, fidOuvindo = false;
+function lerFid() { return Object.assign({}, Clientes.FID_PADRAO, FID.config || {}); }
+function lerEntregues() { return FID.entregas; }
+function ouvirFid() {
+  if (fidOuvindo) return;
+  fidOuvindo = true;
+  Fidelidade.observar(st => { FID = st; fidPronto = true; fidErro = null; renderFid(); if (A) renderLista(); },
+    e => { fidErro = e; fidOuvindo = false; renderFid(); });
+}
+function erroFid(e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 
 function trocarTipoFid() {
   const cfg = lerFid(), v = document.getElementById('fidTipo').value === 'valor';
@@ -408,25 +415,46 @@ function trocarTipoFid() {
   document.getElementById('fidMeta').step = v ? '10' : '1';
   document.getElementById('fidMeta').value = v ? cfg.valor : cfg.meta;
 }
-function salvarFid() {
+async function salvarFid() {
   const cfg = lerFid(), tipo = document.getElementById('fidTipo').value, m = Number(document.getElementById('fidMeta').value);
   if (!(m > 0)) return toast('Informe a meta (maior que zero).');
   cfg.tipo = tipo;
   if (tipo === 'valor') cfg.valor = m; else cfg.meta = Math.round(m);
   cfg.recompensa = document.getElementById('fidRecompensa').value.trim() || Clientes.FID_PADRAO.recompensa;
   cfg.inicio = document.getElementById('fidInicio').value || '';
-  if (gravar(LS_FID, cfg)) { toast('Regra de fidelidade salva neste aparelho.'); renderFid(); }
+  try { await Fidelidade.salvarConfig(cfg); toast('Regra de fidelidade salva (vale em todos os aparelhos).'); } catch (e) { erroFid(e); }
 }
-function marcarEntregue(chave) {
-  const c = porChave(chave);
-  if (!c || !confirm(`Marcar 1 recompensa ("${lerFid().recompensa}") como entregue para ${c.nome}?`)) return;
-  const ent = lerEntregues(); (ent[chave] = ent[chave] || []).push(Date.now());
-  if (gravar(LS_FID_ENT, ent)) { toast('Recompensa marcada como entregue.'); renderFid(); }
+async function marcarEntregue(chave) {
+  const c = porChave(chave); if (!c) return;
+  const obs = prompt(`Marcar 1 recompensa ("${lerFid().recompensa}") como entregue para ${c.nome}?\n\nObservação (opcional, ex.: pedido #12):`, '');
+  if (obs === null) return;
+  try { await Fidelidade.marcarEntregue(chave, obs.trim()); toast('Recompensa marcada como entregue.'); } catch (e) { erroFid(e); }
 }
-function desfazerEntregue(chave) {
-  const ent = lerEntregues(); if (!(ent[chave] || []).length || !confirm('Desfazer a última recompensa marcada como entregue?')) return;
-  ent[chave].pop(); if (!ent[chave].length) delete ent[chave];
-  if (gravar(LS_FID_ENT, ent)) renderFid();
+async function desfazerEntregue(chave) {
+  const l = lerEntregues()[chave] || [];
+  if (!l.length || !confirm('Desfazer a última recompensa marcada como entregue?')) return;
+  try { await Fidelidade.desfazer(chave, l[l.length - 1]); toast('Desfeito.'); } catch (e) { erroFid(e); }
+}
+
+/* Migração: regra/resgates antigos guardados só neste aparelho (versão anterior) → Firebase */
+function avisoMigracao() {
+  const leg = Fidelidade.legado();
+  if (!leg || !fidPronto || fidErro) return '';
+  const p = Fidelidade.pendencias(leg, FID);
+  if (!p.config && !p.nNovas) { Fidelidade.limparLegado(); return ''; }   // já está tudo no Firebase
+  return `<div class="alerta" id="avisoMigrar">📲 Este aparelho tem dados de fidelidade da versão antiga (salvos só aqui):
+    ${p.config ? `<b>regra ${p.temRemoto ? 'diferente da do Firebase' : 'ainda não enviada'}</b>` : ''}${p.config && p.nNovas ? ' e ' : ''}${p.nNovas ? `<b>${p.nNovas} recompensa(s) entregue(s)</b>` : ''}.
+    <div style="margin-top:8px"><button class="btn sm dark" onclick="migrarFid()">⬆️ Enviar dados deste aparelho para o Firebase</button></div></div>`;
+}
+async function migrarFid() {
+  const p = Fidelidade.pendencias(Fidelidade.legado(), FID); if (!p) return;
+  let substituir = false;
+  if (p.config && p.temRemoto) substituir = confirm('A regra salva neste aparelho é diferente da que já está no Firebase.\n\nOK = usar a regra DESTE aparelho\nCancelar = manter a do Firebase (as recompensas entregues são enviadas do mesmo jeito)');
+  try {
+    const r = await Fidelidade.migrar(FID, substituir);
+    toast(`Enviado: ${r.config ? 'regra + ' : ''}${r.entregas} recompensa(s). Dados antigos apagados deste aparelho.`);
+    renderFid();
+  } catch (e) { erroFid(e); }
 }
 function progresso(f) {
   if (f.porPizza && f.meta <= 20) return `<span class="prog" title="${f.resto} de ${f.meta}">${'🍕'.repeat(f.resto)}<span class="vazio">${'🍕'.repeat(f.meta - f.resto)}</span></span> <b>${f.resto}/${f.meta}</b>`;
@@ -435,6 +463,7 @@ function progresso(f) {
 }
 function renderFid() {
   if (!A) return;
+  document.getElementById('fidAviso').innerHTML = fidErro ? `<div class="alerta">⚠️ Fidelidade: ${esc(DB.mensagemErro(fidErro))} Se acabou de atualizar o sistema, publique as regras do Firebase com a coleção <b>fidelidade</b>. <a href="#" onclick="ouvirFid();return false">Tentar de novo</a></div>` : '';
   const cfg = lerFid(), ent = lerEntregues(), [de] = intervalo(periodo);
   document.getElementById('fidTipo').value = cfg.tipo;
   trocarTipoFid();
@@ -443,8 +472,8 @@ function renderFid() {
   document.getElementById('fidRegra').innerHTML = `Regra atual: a cada <b>${cfg.tipo === 'valor' ? dinheiro(cfg.valor) + ' em compras (sem taxa de entrega)' : cfg.meta + ' pizzas'}</b> o cliente ganha <b>${esc(cfg.recompensa)}</b>` +
     `${cfg.inicio ? `, contando pedidos desde ${br(cfg.inicio)}` : ''}. Pedidos cancelados não contam; meio a meio conta como 1 pizza.`;
   const inicioReal = cfg.inicio || '';
-  document.getElementById('fidAviso').innerHTML = periodo !== 'tudo' && de > (inicioReal || '0000')
-    ? `<div class="aviso">⚠️ O período carregado começa em ${br(de)}${inicioReal ? `, depois do início do programa (${br(inicioReal)})` : ''}: pizzas mais antigas não entram na conta. Para o progresso completo, escolha <b>Tudo</b>${inicioReal ? ' ou um período que comece antes do início' : ' ou defina "Contar pedidos desde"'}.</div>` : '';
+  document.getElementById('fidAviso').innerHTML += avisoMigracao() + (periodo !== 'tudo' && de > (inicioReal || '0000')
+    ? `<div class="aviso">⚠️ O período carregado começa em ${br(de)}${inicioReal ? `, depois do início do programa (${br(inicioReal)})` : ''}: pizzas mais antigas não entram na conta. Para o progresso completo, escolha <b>Tudo</b>${inicioReal ? ' ou um período que comece antes do início' : ' ou defina "Contar pedidos desde"'}.</div>` : '');
 
   const l = A.clientes.map(c => ({ c, f: Clientes.fidelidade(c, cfg, ent[c.chave]) })).filter(x => x.f.base > 0);
   const ganharam = l.filter(x => x.f.disponiveis > 0).sort((a, b) => b.f.disponiveis - a.f.disponiveis || b.f.base - a.f.base);
@@ -463,7 +492,7 @@ function renderFid() {
   const todos = l.slice().sort((a, b) => b.f.disponiveis - a.f.disponiveis || a.f.falta - b.f.falta);
   document.getElementById('fidTodos').innerHTML = todos.length ? `<table><tr><th>Cliente</th><th>Progresso</th><th class="r">${cfg.tipo === 'valor' ? 'Compras' : 'Pizzas'}</th><th class="r">Ganhas</th><th class="r">Entregues</th><th>Últimas entregas</th></tr>
     ${todos.map(({ c, f }) => `<tr><td>${nomeLink(c)}</td><td>${progresso(f)}</td><td class="r">${f.porPizza ? f.base : dinheiro(f.base)}</td><td class="r">${f.ganhos}</td>
-      <td class="r">${f.entregues}</td><td class="muted">${(ent[c.chave] || []).slice(-3).map(t => new Date(t).toLocaleDateString('pt-BR')).join(', ')}${(ent[c.chave] || []).length ? ` <a href="#" onclick="desfazerEntregue('${c.chave}');return false">desfazer</a>` : ''}</td></tr>`).join('')}</table>`
+      <td class="r">${f.entregues}</td><td class="muted">${(ent[c.chave] || []).slice(-3).map(e => `<span title="${esc((e.por || '') + (e.obs ? ' • ' + e.obs : ''))}">${new Date(e.em).toLocaleDateString('pt-BR')}</span>`).join(', ')}${(ent[c.chave] || []).length ? ` <a href="#" onclick="desfazerEntregue('${c.chave}');return false">desfazer</a>` : ''}</td></tr>`).join('')}</table>`
     : '<div class="muted">Nenhum pedido no período.</div>';
 }
 

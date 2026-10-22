@@ -21,6 +21,7 @@
 | `js/catalogo.js` | Lê o catálogo do Firestore (`produtos`, `config/loja`); se vazio/offline usa `js/cardapio.js` |
 | `js/endereco.js` | Endereço com mapa, pino, busca e taxa — usado pela loja e pelo delivery do balcão |
 | `js/rota.js` | Rota do entregador (vizinho mais próximo + 2-opt/or-opt) e links do Google Maps |
+| `js/fidelidade.js` | Fidelidade no Firestore (coleção privada `fidelidade`) + migração do aparelho |
 | `js/clientes.js` | Cálculos da página de clientes (agrupamento por telefone, segmentos, fidelidade, CSV) — só leitura |
 | `firestore.rules` | Regras de segurança do Firebase |
 
@@ -112,7 +113,8 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - Lê os pedidos do período escolhido (30 dias, **90 dias** (padrão), este ano, tudo ou datas) — mesma consulta dos relatórios, **regras do Firebase não mudam**.
 - Cliente = telefone só com dígitos (com/sem 55, com/sem 9 no celular antigo); nome = o mais recente. Pedidos sem telefone (balcão comer aqui/levar) ficam em "🏪 Balcão sem identificação". Cancelados e não entregues ficam fora do gasto.
 - Segmentos (nesta prioridade): ⭐ VIP (top 10% em gasto ou 8+ pedidos) • 💤 Inativo (60+ dias) • ⚠️ Em risco (2+ pedidos, 31–59 dias) • 🔁 Frequente (3+ pedidos, ≤ 30 dias) • 🆕 Novo (1º pedido ≤ 30 dias) • 🙂 Ocasional. "Novo/1ª compra" consideram só o período carregado.
-- 🎁 Fidelidade: simulador interno. Regra e recompensas entregues ficam no `localStorage` do aparelho (`cdp_fidelidade_regra`, `cdp_fidelidade_entregues`); a loja não muda.
+- 🎁 Fidelidade: controle interno (a loja não muda), salvo na coleção **privada** `fidelidade` (só logado) e válido em todos os aparelhos: `fidelidade/config` = regra `{ tipo, meta, valor, recompensa, inicio, atualizadoEm, atualizadoPor }`; `fidelidade/{telefone}` = `{ entregas: [{ em, por, obs }] }`. Lógica em `js/fidelidade.js` (usa o mesmo app Firebase do `db.js`; modo demo em `localStorage`).
+- Versão antiga guardava a fidelidade só no aparelho (`cdp_fidelidade_regra`, `cdp_fidelidade_entregues`): a página mostra **⬆️ Enviar dados deste aparelho para o Firebase** (mescla sem duplicar e depois apaga do aparelho).
 
 ## Atualizações e cache
 As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy. Exceção: a loja do cliente (`index.html`) pode manter o número antigo quando a mudança não mexe no que ela usa (ex.: estoque de insumos, só nas páginas logadas).
