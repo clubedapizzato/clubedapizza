@@ -136,4 +136,6 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - Regras: logado pode criar pedido de balcão já `entregue`; o site continua só `novo`.
 
 ## Atualizações e cache
+> Depois de cada atualização, se o site não mudar: confira em GitHub → Actions se o "pages build and deployment" terminou (ícone verde) e aperte Ctrl+F5.
+
 As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy. Exceção: a loja do cliente (`index.html`) pode manter o número antigo quando a mudança não mexe no que ela usa (ex.: estoque de insumos, só nas páginas logadas).
