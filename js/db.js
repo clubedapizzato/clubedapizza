@@ -50,6 +50,8 @@ window.DB = (function () {
     if (code === 'unauthenticated' || code === 'user-token-expired') return 'Sessão expirada: entre de novo.';
     if (code === 'unavailable' || code === 'deadline-exceeded' || code === 'network-request-failed') return 'Sem internet, tente de novo.';
     if (code === 'invalid-argument') return `Dado inválido${campo ? ' no campo ' + campo[1] : ''}. Confira e tente de novo.`;
+    // página nova com script antigo em cache (ex.: "DB.salvarInsumo is not a function")
+    if (e instanceof TypeError && /is not a function|undefined/.test(e.message)) return 'Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).';
     if (!code && e && e.message) return e.message;   // mensagens do próprio sistema (ex.: "Produto não encontrado.")
     return `Erro ao salvar${code ? ' (' + code + ')' : ''}. Tente de novo.`;
   }

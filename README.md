@@ -92,3 +92,6 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
   - Visão geral de todos os sabores × tamanhos + CSV.
 - Meio a meio: custo = média das metades (ou a mais cara, se `CONFIG.meioAMeio = 'maior'`) + base + adicionais. O custo é gravado no item do pedido na baixa (cozinha/balcão logados); pedidos sem custo usam a ficha atual e aparecem como "estimado".
 - **Custos são privados**: `insumos` e `fichas` só para usuário logado (a loja do cliente não carrega nada disso). Insumos não baixam estoque nesta fase.
+
+## Atualizações e cache
+As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy.

@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Gestão • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=20261022">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -251,11 +251,11 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/cardapio.js"></script>
-<script src="js/db.js"></script>
-<script src="js/catalogo.js"></script>
-<script src="js/ficha.js"></script>
+<script src="js/config.js?v=20261022"></script>
+<script src="js/cardapio.js?v=20261022"></script>
+<script src="js/db.js?v=20261022"></script>
+<script src="js/catalogo.js?v=20261022"></script>
+<script src="js/ficha.js?v=20261022"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
@@ -615,7 +615,7 @@ function renderProdutos() {
 async function importar() {
   if (!confirm('Importar o cardápio atual (sabores, bebidas e sachês) para o banco de dados?')) return;
   try { const n = await DB.importarProdutos(Catalogo.listaImportacao()); toast(`✅ ${n} itens importados.`); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 async function salvarCfg() {
   const c = numero(val('cfgCortesia')), t = numero(val('cfgTaxa'));
@@ -628,7 +628,7 @@ async function salvarCfg() {
     tempos[k] = v;
   }
   try { await DB.salvarConfig(Object.assign({ cortesiaSachesPorPizza: c, taxaMaquininha: t }, tempos)); toast('✅ Configurações salvas.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 /* ---------------- HORÁRIO (config/loja.horario) ---------------- */
@@ -668,7 +668,7 @@ function previaHorario() {
 }
 async function gravarHorario(mudancas, msg) {
   try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), mudancas) }); toast(msg); return true; }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); return false; }
+  catch (e) { avisarErro(e); return false; }
 }
 async function salvarHorario() {
   const semana = lerSemana(), prim = val('hPrimeiro');
@@ -779,7 +779,7 @@ async function salvarProdutoForm() {
     Object.assign(campos, { estoqueAtual: 0, ordem: mesmaCat.length ? Math.max(...mesmaCat.map(x => x.ordem || 0)) + 0.5 : Catalogo.todos().length + 1 });
   }
   try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Produto salvo.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 function editarSabor(id) {
@@ -811,7 +811,7 @@ async function salvarSaborForm() {
   if (nome.length < 2) return toast('Informe o nome.');
   if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
   try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 /* =========================================================
@@ -828,7 +828,7 @@ function renderAbaFichas() {
   document.getElementById('fichaVazio').classList.toggle('hide', Catalogo.doBanco());
   const er = Ficha.erro(), elE = document.getElementById('fichaErro');
   elE.classList.toggle('hide', !er);
-  if (er) elE.innerHTML = `🔴 <b>Não foi possível ler os insumos/fichas:</b> ${esc(DB.mensagemErro(er))}`;
+  if (er) elE.innerHTML = `🔴 <b>Não foi possível ler os insumos/fichas:</b> ${esc(DB.mensagemErro ? DB.mensagemErro(er) : er.message)}`;
   renderInsumos(); renderBase(); renderTabelaFichas();
 }
 
@@ -852,7 +852,7 @@ function renderInsumos() {
 async function carregarExemplo() {
   if (!confirm('Cadastrar os insumos de exemplo (muçarela, bacon, frango, gás, caixa, milho, azeitona, creme de leite, massa, molho)? Depois você edita ou desativa.')) return;
   try { for (const i of Ficha.listaExemplo()) if (!Ficha.insumo(i.id)) await DB.salvarInsumo(i.id, i); toast('✅ Insumos de exemplo cadastrados.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 let insEditando = null;
 function editarInsumo(id) {
@@ -897,7 +897,7 @@ async function salvarInsumoForm() {
     Object.assign(campos, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico: [] });
   }
   try { await DB.salvarInsumo(id, campos); fecharModal(); toast('✅ Insumo salvo.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 function atualizarPreco(id) {
   insEditando = id;
@@ -921,7 +921,7 @@ async function salvarPreco() {
   if (!(qtd > 0)) return toast('Informe a quantidade da embalagem.');
   const historico = (d.historico || []).concat([{ em: d.atualizadoEm || Date.now(), precoCompra: d.precoCompra, qtdEmbalagem: d.qtdEmbalagem }]);
   try { await DB.salvarInsumo(d.id, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico }); fecharModal(); toast('✅ Preço atualizado — fichas recalculadas.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 /* ---------- base comum, CMV alvo e visão geral ---------- */
@@ -934,7 +934,7 @@ function renderBase() {
 async function salvarCmvAlvo() {
   const v = numero(val('cmvAlvo'));
   if (!(v >= 5 && v <= 90)) return toast('CMV alvo entre 5 e 90%.');
-  try { await DB.salvarFicha('_base', { cmvAlvo: v }); toast('✅ CMV alvo salvo.'); } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  try { await DB.salvarFicha('_base', { cmvAlvo: v }); toast('✅ CMV alvo salvo.'); } catch (e) { avisarErro(e); }
 }
 // Linhas da visão geral: sabores e adicionais × P/M/G
 function linhasFichas() {
@@ -1096,7 +1096,7 @@ async function feSalvar() {
   const dados = {};
   TAMS.forEach(t => { dados[t] = fe.linhas[t].map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
   try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 /* ---------------- ADICIONAIS DA PIZZA ---------------- */
@@ -1104,7 +1104,7 @@ async function criarAdicionaisPadrao() {
   try {
     for (const a of Catalogo.adicionaisPadrao(Catalogo.todos().length + 1)) { const { id, ...dados } = a; await DB.salvarProduto(id, dados); }
     toast('✅ Catupiry e Cheddar criados.');
-  } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  } catch (e) { avisarErro(e); }
 }
 function editarAdicional(id) {
   editando = id;
@@ -1138,7 +1138,7 @@ async function salvarAdicionalForm() {
     if (campos.ordem == null) campos.ordem = Catalogo.todos().length + 1;
   }
   try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Adicional salvo.'); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 
 /* ---------------- MOVIMENTAÇÕES ---------------- */
@@ -1204,7 +1204,7 @@ async function salvarMov() {
     m = { tipo: 'ajuste', produtoId, qtd: contagem ? q : -q, contagem, motivo, obs: val('mObs'), data };
   }
   try { await DB.lancarMovimento(m); fecharModal(); toast('✅ Movimentação lançada.'); carregarMov(); }
-  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  catch (e) { avisarErro(e); }
 }
 const TIPOS_MOV = { entrada: '➕ Compra', ajuste: '➖ Ajuste', venda: '🛒 Venda', estorno: '↩️ Estorno' };
 async function carregarMov() {
@@ -1226,6 +1226,11 @@ async function carregarMov() {
   } catch (e) { console.error(e); el.innerHTML = '<div class="muted">Erro ao carregar (login/regras do Firebase).</div>'; }
 }
 
+// Erro ao gravar: mensagem clara (funciona mesmo se o db.js em cache for de outra versão)
+function avisarErro(e) {
+  if (window.DB && DB.mensagemErro) { DB.logErro(e); toast(DB.mensagemErro(e)); return; }
+  console.error(e); toast('Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).');
+}
 function toast(t) {
   const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
   clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);

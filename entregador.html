@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Entregador • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=20261022">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -97,11 +97,11 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/cardapio.js"></script>
-<script src="js/db.js"></script>
-<script src="js/catalogo.js"></script>
-<script src="js/rota.js"></script>
+<script src="js/config.js?v=20261022"></script>
+<script src="js/cardapio.js?v=20261022"></script>
+<script src="js/db.js?v=20261022"></script>
+<script src="js/catalogo.js?v=20261022"></script>
+<script src="js/rota.js?v=20261022"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }
@@ -142,7 +142,7 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 async function assinar() {
   if (pararLista) pararLista();
   pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => { pedidos = lista; render(); },
-    e => toast(DB.mensagemErro(e)));
+    e => avisarErro(e));
 }
 setInterval(() => { if (eu && Horario.dataTurno() !== assinar.dia) { assinar.dia = Horario.dataTurno(); assinar(); } }, 60000);
 assinar.dia = Horario.dataTurno();
@@ -228,7 +228,7 @@ async function iniciarRota() {
     marcados.clear();
     toast('Rota pronta! Avise cada cliente no botão 💬 Avisar saída.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  } catch (e) { avisarErro(e); }
   finally { b.disabled = false; render(); }
 }
 
@@ -322,7 +322,7 @@ async function entregue(id) {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status: 'entregue' }), 'entregue'));
     toast(`✅ #${p.numero} entregue!`);
-  } catch (e) { if (jan) jan.close(); DB.logErro(e); toast(DB.mensagemErro(e)); }
+  } catch (e) { if (jan) jan.close(); avisarErro(e); }
 }
 
 function abrirNao(id) { naoPedido = achar(id); naoMotivo = null; renderNao(); document.getElementById('modalNao').classList.add('on'); }
@@ -354,9 +354,14 @@ async function salvarNao() {
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { naoEntregue }), 'nao_entregue'));
     fecharNao();
     toast(`Pedido #${p.numero} marcado como NÃO entregue. Leve de volta à loja.`);
-  } catch (e) { if (jan) jan.close(); DB.logErro(e); toast(DB.mensagemErro(e)); }
+  } catch (e) { if (jan) jan.close(); avisarErro(e); }
 }
 
+// Erro ao gravar: mensagem clara (funciona mesmo se o db.js em cache for de outra versão)
+function avisarErro(e) {
+  if (window.DB && DB.mensagemErro) { DB.logErro(e); toast(DB.mensagemErro(e)); return; }
+  console.error(e); toast('Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).');
+}
 function toast(t) {
   const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
   clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 3200);
