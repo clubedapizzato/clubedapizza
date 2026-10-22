@@ -8,6 +8,7 @@
 | `balcao.html` | **Balcão** (login da cozinha) | Tela rápida de caixa: toca nos itens → *Comer aqui / Para levar* → Pix/Dinheiro (troco)/Cartão → pedido já PAGO, recebe número na hora e vai para a cozinha (impresso pela auto-impressão). **🛵 Delivery** para pedidos de WhatsApp/telefone: telefone (busca o endereço do último pedido), mapa com pino e taxa como na loja, pagamento na entrega ou Pix, e confirmação pronta no WhatsApp |
 | `relatorios.html` | **Gestão** (login da cozinha) | **Relatórios:** faturamento, ticket médio, pedidos por dia/origem, pizzas por sabor e tamanho, bebidas, pagamentos, **lucro bruto por produto e CMV**, **entregas por entregador**, CSV. **📦 Produtos & Estoque:** cadastro, preços, margem, compras, ajustes, sachês e cortesia |
 | `clientes.html` | **Gestão** (login da cozinha) | **👥 Clientes:** lista por telefone com segmentos (VIP, Frequente, Novo, Em risco, Inativo), ficha do cliente (o que compra, histórico), WhatsApp com mensagem pronta, 🎁 fidelidade (simulador), rankings e CSV. Acesso pelo endereço `/clientes.html` |
+| `caixa.html` | **Gestão** (login da cozinha; entregador sem acesso) | **💰 Caixa / Financeiro:** painel de saldos por conta, caixa do dia (abertura, sangria, suprimento, fechamento com conferência), vendas automáticas dos pedidos, lançamentos, contas a pagar/receber com recorrência e parcelas, fiados, funcionários e folha, DRE, fluxo, previsão e ponto de equilíbrio. Acesso pelo botão **💰 Caixa** na Gestão |
 | `loja.html` | — | Redireciona para o endereço principal (links antigos) |
 
 ## Arquivos
@@ -23,6 +24,9 @@
 | `js/rota.js` | Rota do entregador (vizinho mais próximo + 2-opt/or-opt) e links do Google Maps |
 | `js/fidelidade.js` | Fidelidade no Firestore (coleção privada `fidelidade`) + migração do aparelho |
 | `js/clientes.js` | Cálculos da página de clientes (agrupamento por telefone, segmentos, fidelidade, CSV) — só leitura |
+| `js/fincalc.js` | Cálculos do financeiro (recorrência, saldos, caixa, folha, DRE, previsão, ponto de equilíbrio, CSV) — sem tela e sem banco |
+| `js/financeiro.js` | Gravação do financeiro nas coleções privadas `fin_*` (lote atômico); modo demo em `localStorage` |
+| `js/caixa.js` | Tela do `caixa.html` |
 | `firestore.rules` | Regras de segurança do Firebase |
 
 ## Testar agora (modo demonstração)
@@ -115,6 +119,15 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - Segmentos (nesta prioridade): ⭐ VIP (top 10% em gasto ou 8+ pedidos) • 💤 Inativo (60+ dias) • ⚠️ Em risco (2+ pedidos, 31–59 dias) • 🔁 Frequente (3+ pedidos, ≤ 30 dias) • 🆕 Novo (1º pedido ≤ 30 dias) • 🙂 Ocasional. "Novo/1ª compra" consideram só o período carregado.
 - 🎁 Fidelidade: controle interno (a loja não muda), salvo na coleção **privada** `fidelidade` (só logado) e válido em todos os aparelhos: `fidelidade/config` = regra `{ tipo, meta, valor, recompensa, inicio, atualizadoEm, atualizadoPor }`; `fidelidade/{telefone}` = `{ entregas: [{ em, por, obs }] }`. Lógica em `js/fidelidade.js` (usa o mesmo app Firebase do `db.js`; modo demo em `localStorage`).
 - Versão antiga guardava a fidelidade só no aparelho (`cdp_fidelidade_regra`, `cdp_fidelidade_entregues`): a página mostra **⬆️ Enviar dados deste aparelho para o Firebase** (mescla sem duplicar e depois apaga do aparelho).
+
+## Financeiro / Caixa — `caixa.html`
+- **Coleções privadas (só logado):** `fin_config/geral` (contas caixa/banco/pix com saldo inicial e data, categorias com grupo do DRE, conta de cada forma de venda, taxa da maquininha, meta, meses fechados), `fin_lancamentos`, `fin_contas`, `fin_fiados` (um doc por telefone), `fin_funcionarios`, `fin_folha` (vales/descontos/bônus e folhas), `fin_caixas` (turnos). **Exigem as regras novas do `firestore.rules`.**
+- **Vendas automáticas:** lidas dos pedidos (cancelado e não entregue ficam fora) a partir de "Importar vendas a partir de"; dinheiro/Pix/cartão entram na conta configurada, cartão com a taxa estimada como saída. **Nada é gravado nos pedidos.** Venda lançada à mão em dia já importado gera alerta de duplicidade. Pedido lançado como fiado (nº + dia) sai da forma original e vira "fiado"; o pagamento do fiado entra como "Recebimento de fiado".
+- **Caixa do dia:** esperado em dinheiro = troco inicial + vendas em dinheiro + suprimentos − sangrias + entradas − saídas em dinheiro do dia. Sangria/suprimento viram transferência entre contas (ou retirada/aporte do dono). Diferença no fechamento vira "Sobra/Quebra de caixa" (justificativa obrigatória).
+- **Contas a pagar/receber:** recorrência única/diária/semanal/quinzenal (15 dias)/mensal/bimestral/trimestral/semestral/anual com data final ou nº de vezes; pagar gera o lançamento e a próxima ocorrência; compra parcelada cria as N parcelas de uma vez. "Desfazer" apaga o lançamento e a próxima ocorrência.
+- **Folha:** semanal (semana que termina no dia de pagamento), quinzenal (1–15 / 16–fim), mensal, diarista (dias marcados, ½ dia). Comissão por entrega (R$ e/ou % da taxa) pelos pedidos entregues com o nome do entregador. Vale sai do caixa na hora e é descontado na folha. Recibo 58/80 mm ou A4 e WhatsApp.
+- **DRE:** receita pelos pedidos (competência) − taxas − CMV (custo gravado nos itens/ficha; sem isso, as compras do grupo CMV; sem nenhum, "não disponível") − variáveis − fixas − folha. Aporte, recebimento de fiado e retirada do dono não entram no lucro (retirada aparece abaixo, com alerta se passar do lucro).
+- **Fechamento mensal:** mês fechado não aceita lançamento, edição nem exclusão com data nele (dá para reabrir).
 
 ## Atualizações e cache
 As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy. Exceção: a loja do cliente (`index.html`) pode manter o número antigo quando a mudança não mexe no que ela usa (ex.: estoque de insumos, só nas páginas logadas).

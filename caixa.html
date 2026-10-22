@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<meta name="robots" content="noindex">
+<title>Caixa • Clube da Pizza</title>
+<link rel="stylesheet" href="css/app.css?v=20261023">
+<style>
+main{max-width:1200px;padding-bottom:30px}
+.topo .in{max-width:1200px}
+#login,#semAcesso{max-width:380px;margin:40px auto}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px;min-width:0}
+.kpi small{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.kpi b{display:block;font-size:22px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.kpi span{font-size:12px;color:var(--muted)}
+.kpi b span{font-size:inherit;color:inherit}
+.kpi b span.pos{color:#15803d}.kpi b span.neg{color:#b91c1c}
+.kpi.verm{border-color:#fecaca;background:#fef2f2}.kpi.amar{border-color:#fde68a;background:#fffbeb}.kpi.verde{border-color:#bbf7d0;background:#f0fdf4}
+.abas{position:static;margin-bottom:6px}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grade .card{margin:0}
+.grade>*,.card{min-width:0}
+@media(max-width:760px){.grade{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+th{font-size:12px;color:var(--muted);white-space:nowrap}
+tr.tot td{font-weight:900;border-top:2px solid var(--ink)}
+.rolar{overflow-x:auto}
+.pos{color:#15803d;font-weight:800}.neg{color:#b91c1c;font-weight:800}
+.tag{display:inline-block;border-radius:999px;padding:2px 8px;font-size:11px;font-weight:800;white-space:nowrap;background:#f5f5f4;color:#57534e}
+.tag.verm{background:#fee2e2;color:#991b1b}.tag.amar{background:#fef3c7;color:#92400e}.tag.verde{background:#dcfce7;color:#166534}.tag.azul{background:#dbeafe;color:#1e40af}
+.barraTopo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.barraTopo h2{margin:0}
+.acoes{display:flex;flex-wrap:wrap;gap:6px}
+.filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+.filtros input,.filtros select{width:auto;padding:7px 9px;font-size:14px}
+.alertas>div{border-radius:12px;padding:9px 12px;margin-bottom:8px;font-size:14px}
+.al-verm{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d}
+.al-amar{background:#fffbeb;border:1px solid #fde68a;color:#78350f}
+.al-azul{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a}
+.al-verde{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d}
+.meta{height:14px;background:#f5f5f4;border-radius:7px;overflow:hidden;margin-top:6px}
+.meta i{display:block;height:100%;background:var(--ok)}
+.hb{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:8px;align-items:center;padding:5px 0;font-size:14px}
+.hb .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb .t{background:#f5f5f4;border-radius:4px;height:14px;overflow:hidden}
+.hb .t i{display:block;height:100%;background:var(--brand);border-radius:0 4px 4px 0}
+.hb .v{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.graf{display:flex;align-items:flex-end;gap:2px;height:180px;border-bottom:1px solid #a8a29e;padding-top:6px;overflow-x:auto}
+.graf .col{flex:1 0 14px;display:flex;align-items:flex-end;justify-content:center;gap:2px;height:100%;position:relative}
+.graf .col:hover{background:#f5f5f4}
+.graf .col i{display:block;width:45%;max-width:22px;border-radius:4px 4px 0 0;min-height:1px}
+.grafRot{display:flex;gap:2px;font-size:10px;color:var(--muted);overflow:hidden}
+.grafRot span{flex:1 0 14px;text-align:center;white-space:nowrap;overflow:hidden}
+.legenda{display:flex;gap:14px;font-size:12px;color:var(--muted);margin:6px 0}
+.legenda i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+#dica{position:fixed;pointer-events:none;background:var(--dark);color:#fff;font-size:12px;padding:6px 9px;border-radius:8px;z-index:300;display:none;white-space:pre}
+.modal .box{max-width:640px}
+.dre td:first-child{padding-left:6px}.dre tr.sub td:first-child{padding-left:22px;color:var(--muted)}
+.dre tr.res td{font-weight:900;background:#fafaf9}
+.semana{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin:10px 0}
+.semana button{border:2px solid #d6d3d1;background:#fff;border-radius:10px;padding:8px 2px;font:inherit;font-size:12px;cursor:pointer}
+.semana button b{display:block;font-size:16px}
+.semana button.d1{border-color:var(--ok);background:#dcfce7}.semana button.dm{border-color:#d97706;background:#fef3c7}
+.lista .item{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.lista .item:last-child{border-bottom:0}
+.vazio{color:var(--muted);font-size:14px;padding:6px 0}
+.cfgConta{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px}
+.cfgCat{display:grid;grid-template-columns:2fr 1.4fr auto;gap:8px;align-items:center;margin-bottom:6px}
+@media(max-width:620px){.cfgConta{grid-template-columns:1fr 1fr}.cfgCat{grid-template-columns:1fr 1fr auto}}
+#formCampos .w2{grid-column:1/-1}
+#formCampos{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media(max-width:560px){#formCampos{grid-template-columns:1fr}}
+.chk{display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px;margin-top:12px}
+.chk input{width:auto}
+#ticketPrint.m80{width:80mm}
+#ticketPrint.a4{width:auto;max-width:180mm;font-size:14px;padding:12mm}
+</style>
+</head>
+<body>
+<header class="topo">
+  <div class="in">
+    <h1>💰 Caixa</h1>
+    <div class="hide" id="ferramentas" style="display:flex;gap:6px">
+      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html">📊 Gestão</a>
+      <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> dados salvos só neste navegador; vendas lidas dos pedidos feitos aqui.</div>
+
+  <div id="login" class="card hide">
+    <h2>Acesso ao caixa</h2>
+    <div class="muted">Use o mesmo login da cozinha / gestão.</div>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
+    <button class="btn full" style="margin-top:14px" onclick="entrar()">Entrar</button>
+    <div id="erroLogin" class="muted" style="color:#b91c1c;margin-top:8px"></div>
+  </div>
+
+  <div id="semAcesso" class="card hide">
+    <h2>🔒 Sem acesso</h2>
+    <div class="muted">Este login (<span id="semAcessoEmail"></span>) é de entregador e não acessa o financeiro.</div>
+    <div style="display:flex;gap:8px;margin-top:14px"><a class="btn dark" style="text-decoration:none" href="entregador.html">🛵 Entregador</a><button class="btn sec" onclick="DB.sair()">Sair</button></div>
+  </div>
+
+  <div id="painel" class="hide">
+    <div id="erroFin"></div>
+    <nav class="tabs abas" id="abas"></nav>
+
+    <!-- ================= PAINEL ================= -->
+    <section id="aba-painel">
+      <div class="alertas" id="alertas"></div>
+      <h3>🏦 Saldo atual por conta</h3>
+      <div class="kpis" id="kpiSaldos"></div>
+      <h3>📅 Movimento</h3>
+      <div class="kpis" id="kpiMov"></div>
+      <h3>🧾 Compromissos</h3>
+      <div class="kpis" id="kpiComp"></div>
+      <div class="card" id="cardMeta"></div>
+      <div class="muted" id="statusPed"></div>
+    </section>
+
+    <!-- ================= CAIXA DO DIA ================= -->
+    <section id="aba-caixa" class="hide">
+      <div class="card" id="turno"></div>
+      <div class="card"><h2>📜 Histórico de fechamentos</h2><div class="rolar" id="histCaixa"></div></div>
+    </section>
+
+    <!-- ================= LANÇAMENTOS ================= -->
+    <section id="aba-lanc" class="hide">
+      <div class="card">
+        <div class="barraTopo"><h2>📒 Lançamentos</h2>
+          <div class="acoes">
+            <button class="btn sm" style="background:var(--ok)" onclick="novoLanc('entrada')">➕ Entrada</button>
+            <button class="btn sm" onclick="novoLanc('saida')">➖ Saída</button>
+            <button class="btn sm dark" onclick="novaTransf()">🔁 Transferência</button>
+            <button class="btn sm sec" onclick="csvLanc()">⬇️ CSV</button>
+          </div>
+        </div>
+        <div class="filtros">
+          <input type="date" id="lDe" onchange="renderLanc()"> até <input type="date" id="lAte" onchange="renderLanc()">
+          <select id="lTipo" onchange="renderLanc()"><option value="">Todos</option><option value="entrada">Entradas</option><option value="saida">Saídas</option><option value="transferencia">Transferências</option></select>
+          <select id="lConta" onchange="renderLanc()"></select>
+          <select id="lCat" onchange="renderLanc()"></select>
+          <input id="lBusca" placeholder="🔎 Buscar" oninput="renderLanc()">
+          <label class="chk" style="margin:0"><input type="checkbox" id="lVendas" checked onchange="renderLanc()"> vendas dos pedidos</label>
+        </div>
+        <div id="lAviso"></div>
+        <div class="rolar" id="tabLanc"></div>
+      </div>
+      <div class="card">
+        <h2>🛒 Vendas importadas dos pedidos <span class="muted" style="font-weight:400">(só leitura)</span></h2>
+        <div class="muted" id="vendasInfo" style="margin-bottom:8px"></div>
+        <div class="rolar" id="tabVendas"></div>
+      </div>
+    </section>
+
+    <!-- ================= CONTAS A PAGAR / RECEBER ================= -->
+    <section id="aba-pagar" class="hide"><div class="card" id="cPagar"></div></section>
+    <section id="aba-receber" class="hide"><div class="card" id="cReceber"></div></section>
+
+    <!-- ================= FIADOS ================= -->
+    <section id="aba-fiados" class="hide">
+      <div class="kpis" id="kpiFiado"></div>
+      <div class="card">
+        <div class="barraTopo"><h2>📝 Fiados (crediário)</h2>
+          <div class="acoes"><button class="btn sm" onclick="editarFiado()">➕ Cliente</button><button class="btn sm sec" onclick="csvFiados()">⬇️ CSV</button></div></div>
+        <div class="filtros"><input id="fBusca" placeholder="🔎 Nome ou telefone" oninput="renderFiados()">
+          <label class="chk" style="margin:0"><input type="checkbox" id="fSoAberto" checked onchange="renderFiados()"> só com saldo</label></div>
+        <div class="rolar" id="tabFiados"></div>
+      </div>
+      <div class="card"><h2>🏆 Maiores devedores</h2><div id="rankFiado"></div></div>
+    </section>
+
+    <!-- ================= FUNCIONÁRIOS / FOLHA ================= -->
+    <section id="aba-func" class="hide">
+      <div class="card">
+        <div class="barraTopo"><h2>👷 Funcionários</h2>
+          <div class="acoes"><button class="btn sm" onclick="editarFunc()">➕ Funcionário</button><button class="btn sm dark" onclick="gerarTodas()">🧾 Gerar folhas do período</button></div></div>
+        <label class="chk" style="margin:0 0 6px"><input type="checkbox" id="fuInativos" onchange="renderFunc()"> mostrar inativos</label>
+        <div class="lista" id="listaFunc"></div>
+      </div>
+      <div class="card"><h2>🧾 Folhas</h2>
+        <div class="filtros"><select id="foStatus" onchange="renderFolhas()"><option value="aberta">A pagar</option><option value="paga">Pagas</option><option value="">Todas</option></select></div>
+        <div class="rolar" id="tabFolhas"></div></div>
+      <div class="card"><h2>💸 Vales, descontos e bônus</h2>
+        <div class="filtros"><select id="itStatus" onchange="renderItensFolha()"><option value="pend">Ainda não descontados/pagos na folha</option><option value="">Todos</option></select></div>
+        <div class="rolar" id="tabItens"></div></div>
+    </section>
+
+    <!-- ================= RELATÓRIOS ================= -->
+    <section id="aba-rel" class="hide">
+      <div class="card">
+        <div class="filtros" id="rPeriodos"></div>
+        <div class="filtros"><input type="date" id="rDe"> até <input type="date" id="rAte"> <button class="btn sm dark" onclick="relPeriodo='livre';renderRel()">Ver</button>
+          <button class="btn sm sec" onclick="csvLanc(true)">⬇️ CSV lançamentos</button><button class="btn sm sec" onclick="csvContas()">⬇️ CSV contas</button>
+          <button class="btn sm sec" onclick="csvFolha()">⬇️ CSV folha</button><button class="btn sm sec" onclick="csvFiados()">⬇️ CSV fiados</button></div>
+        <div class="muted" id="rStatus"></div>
+      </div>
+      <div class="card"><div class="barraTopo"><h2>💹 Fluxo de caixa</h2>
+        <div class="acoes"><select id="rFluxoModo" onchange="renderFluxo()" style="width:auto;padding:7px"><option value="d">Diário</option><option value="m">Mensal</option></select><button class="btn sm sec" onclick="csvFluxo()">⬇️ CSV</button></div></div>
+        <div id="rFluxo"></div></div>
+      <div class="card"><div class="barraTopo"><h2>📑 DRE simplificado</h2>
+        <div class="acoes"><input type="month" id="rMes" onchange="renderDre()" style="width:auto;padding:7px"><button class="btn sm sec" onclick="csvDre()">⬇️ CSV</button></div></div>
+        <div class="rolar" id="rDre"></div></div>
+      <div class="card"><h2>⚖️ Ponto de equilíbrio <span class="muted" style="font-weight:400" id="rPeMes"></span></h2><div id="rPe"></div></div>
+      <div class="grade">
+        <div class="card"><h2>🧩 Despesas por categoria</h2><div id="rCat"></div></div>
+        <div class="card"><h2>🔮 Previsão de caixa</h2>
+          <label class="chk" style="margin:0"><input type="checkbox" id="pvFolha" checked onchange="renderPrev()"> incluir folha estimada</label>
+          <label class="chk" style="margin:4px 0 8px"><input type="checkbox" id="pvVendas" onchange="renderPrev()"> incluir média de vendas líquidas (últimos 30 dias)</label>
+          <div id="rPrev"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h2>📆 Últimos 6 meses</h2><div class="rolar" id="r6m"></div></div>
+      <div class="grade">
+        <div class="card"><h2>👷 Folha por funcionário</h2><div class="rolar" id="rFolha"></div></div>
+        <div class="card"><h2>⏳ Fiados em aberto por idade</h2><div class="rolar" id="rIdade"></div></div>
+      </div>
+    </section>
+
+    <!-- ================= CONFIGURAÇÕES ================= -->
+    <section id="aba-cfg" class="hide">
+      <div class="card"><h2>🏦 Contas e saldo inicial</h2>
+        <div class="muted">Saldo inicial = quanto havia na conta no início da <b>data do saldo</b>. Tudo que entra/sai a partir dessa data é somado.</div>
+        <div id="cfgContas" style="margin-top:10px"></div>
+        <button class="btn sm sec" onclick="addConta()">➕ Conta</button>
+      </div>
+      <div class="card"><h2>🛒 Vendas automáticas (pedidos)</h2>
+        <div class="grid2">
+          <div><label for="cVendasDesde">Importar vendas a partir de</label><input type="date" id="cVendasDesde"></div>
+          <div><label for="cTaxa">Taxa da maquininha % (vazio = a da Gestão: <span id="cTaxaPadrao"></span>)</label><input id="cTaxa" inputmode="decimal"></div>
+          <div><label for="cCtDin">💵 Vendas em dinheiro entram em</label><select id="cCtDin"></select></div>
+          <div><label for="cCtPix">⚡ Vendas no Pix entram em</label><select id="cCtPix"></select></div>
+          <div><label for="cCtCar">💳 Vendas no cartão entram em</label><select id="cCtCar"></select></div>
+          <div><label for="cMeta">🎯 Meta de faturamento mensal (R$)</label><input id="cMeta" inputmode="decimal"></div>
+        </div>
+        <div class="muted" style="margin-top:6px">Antes da data de importação, lance as vendas à mão (categoria "Vendas balcão/site"). Depois dela, <b>não</b> lance vendas à mão: elas vêm dos pedidos (cancelados e não entregues ficam fora).</div>
+      </div>
+      <div class="card"><h2>🏷️ Categorias</h2>
+        <div class="grade"><div><h3>➖ Saídas</h3><div id="cfgCatSaida"></div><button class="btn sm sec" onclick="addCat('saida')">➕ Categoria</button></div>
+          <div><h3>➕ Entradas</h3><div id="cfgCatEntrada"></div><button class="btn sm sec" onclick="addCat('entrada')">➕ Categoria</button></div></div>
+        <div class="muted" style="margin-top:8px">O <b>grupo</b> define onde a categoria entra no DRE e no ponto de equilíbrio.</div>
+      </div>
+      <button class="btn full" onclick="salvarCfg()">💾 Salvar configurações</button>
+      <div class="card" style="margin-top:14px"><h2>🔒 Fechamento mensal</h2>
+        <div class="muted">Mês fechado = não aceita novos lançamentos, edições nem exclusões com data naquele mês (pode reabrir).</div>
+        <div class="rolar" id="cfgMeses" style="margin-top:8px"></div></div>
+    </section>
+  </div>
+</main>
+
+<!-- formulário genérico -->
+<div class="modal" id="mForm" onclick="if(event.target===this)fecharForm()"><div class="box">
+  <h2 id="formTitulo"></h2>
+  <div id="formTopo"></div>
+  <div id="formCampos"></div>
+  <div id="formExtra"></div>
+  <div style="display:flex;gap:8px;margin-top:14px"><button class="btn sec" onclick="fecharForm()">Cancelar</button><button class="btn" style="flex:1" id="formOk">Salvar</button></div>
+</div></div>
+<!-- escolha / visualização -->
+<div class="modal" id="mVer" onclick="if(event.target===this)fechar('mVer')"><div class="box" id="verBox"></div></div>
+<!-- WhatsApp -->
+<div class="modal" id="mWhats" onclick="if(event.target===this)fechar('mWhats')"><div class="box">
+  <h2>💬 WhatsApp para <span id="wNome"></span></h2>
+  <div class="muted" id="wTel"></div>
+  <label for="wTexto">Mensagem (edite à vontade antes de enviar)</label>
+  <textarea id="wTexto" style="min-height:170px"></textarea>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn sec" onclick="fechar('mWhats')">Fechar</button>
+    <a class="btn wa" style="flex:1;text-align:center;text-decoration:none" id="wLink" target="_blank" rel="noopener" onclick="this.href=linkWhats(telWhats, document.getElementById('wTexto').value)">💬 Abrir no WhatsApp</a>
+  </div>
+</div></div>
+<div id="ticketPrint" class="print-only"></div>
+<div id="dica"></div>
+<div id="toast"></div>
+<script src="js/config.js?v=20261023"></script>
+<script src="js/cardapio.js?v=20261023"></script>
+<script src="js/db.js?v=20261023"></script>
+<script src="js/catalogo.js?v=20261023"></script>
+<script src="js/ficha.js?v=20261023"></script>
+<script src="js/clientes.js?v=20261023"></script>
+<script src="js/fincalc.js?v=20261024"></script>
+<script src="js/financeiro.js?v=20261024"></script>
+<script src="js/caixa.js?v=20261024"></script>
+</body>
+</html>
