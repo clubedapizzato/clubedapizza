@@ -7,6 +7,7 @@
 | `entregador.html` | **Entregador** (login próprio) | Escolhe os pedidos prontos → **rota otimizada** saindo da pizzaria, mapa com paradas numeradas, **🧭 Navegar** no Google Maps, valor a cobrar/troco, ✅ Entregue / ❌ Não entregue com motivo |
 | `balcao.html` | **Balcão** (login da cozinha) | Tela rápida de caixa: toca nos itens → *Comer aqui / Para levar* → Pix/Dinheiro (troco)/Cartão → pedido já PAGO, recebe número na hora e vai para a cozinha (impresso pela auto-impressão). **🛵 Delivery** para pedidos de WhatsApp/telefone: telefone (busca o endereço do último pedido), mapa com pino e taxa como na loja, pagamento na entrega ou Pix, e confirmação pronta no WhatsApp |
 | `relatorios.html` | **Gestão** (login da cozinha) | **Relatórios:** faturamento, ticket médio, pedidos por dia/origem, pizzas por sabor e tamanho, bebidas, pagamentos, **lucro bruto por produto e CMV**, **entregas por entregador**, CSV. **📦 Produtos & Estoque:** cadastro, preços, margem, compras, ajustes, sachês e cortesia |
+| `clientes.html` | **Gestão** (login da cozinha) | **👥 Clientes:** lista por telefone com segmentos (VIP, Frequente, Novo, Em risco, Inativo), ficha do cliente (o que compra, histórico), WhatsApp com mensagem pronta, 🎁 fidelidade (simulador), rankings e CSV. Acesso pelo endereço `/clientes.html` |
 | `loja.html` | — | Redireciona para o endereço principal (links antigos) |
 
 ## Arquivos
@@ -20,6 +21,7 @@
 | `js/catalogo.js` | Lê o catálogo do Firestore (`produtos`, `config/loja`); se vazio/offline usa `js/cardapio.js` |
 | `js/endereco.js` | Endereço com mapa, pino, busca e taxa — usado pela loja e pelo delivery do balcão |
 | `js/rota.js` | Rota do entregador (vizinho mais próximo + 2-opt/or-opt) e links do Google Maps |
+| `js/clientes.js` | Cálculos da página de clientes (agrupamento por telefone, segmentos, fidelidade, CSV) — só leitura |
 | `firestore.rules` | Regras de segurança do Firebase |
 
 ## Testar agora (modo demonstração)
@@ -92,6 +94,12 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
   - Visão geral de todos os sabores × tamanhos + CSV.
 - Meio a meio: custo = média das metades (ou a mais cara, se `CONFIG.meioAMeio = 'maior'`) + base + adicionais. O custo é gravado no item do pedido na baixa (cozinha/balcão logados); pedidos sem custo usam a ficha atual e aparecem como "estimado".
 - **Custos são privados**: `insumos` e `fichas` só para usuário logado (a loja do cliente não carrega nada disso). Insumos não baixam estoque nesta fase.
+
+## Clientes — `clientes.html` (só leitura)
+- Lê os pedidos do período escolhido (30 dias, **90 dias** (padrão), este ano, tudo ou datas) — mesma consulta dos relatórios, **regras do Firebase não mudam**.
+- Cliente = telefone só com dígitos (com/sem 55, com/sem 9 no celular antigo); nome = o mais recente. Pedidos sem telefone (balcão comer aqui/levar) ficam em "🏪 Balcão sem identificação". Cancelados e não entregues ficam fora do gasto.
+- Segmentos (nesta prioridade): ⭐ VIP (top 10% em gasto ou 8+ pedidos) • 💤 Inativo (60+ dias) • ⚠️ Em risco (2+ pedidos, 31–59 dias) • 🔁 Frequente (3+ pedidos, ≤ 30 dias) • 🆕 Novo (1º pedido ≤ 30 dias) • 🙂 Ocasional. "Novo/1ª compra" consideram só o período carregado.
+- 🎁 Fidelidade: simulador interno. Regra e recompensas entregues ficam no `localStorage` do aparelho (`cdp_fidelidade_regra`, `cdp_fidelidade_entregues`); a loja não muda.
 
 ## Atualizações e cache
 As páginas carregam `js/*.js` e `css/app.css` com `?v=AAAAMMDD`. **Ao alterar qualquer JS/CSS, troque esse número em todas as páginas** (mesmo valor), para o navegador não misturar página nova com script antigo — isso causava "Erro ao salvar" logo após um deploy.

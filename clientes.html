@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1c1917">
+<meta name="robots" content="noindex">
+<title>Clientes • Clube da Pizza</title>
+<link rel="stylesheet" href="css/app.css?v=20261023">
+<style>
+main{max-width:1200px;padding-bottom:30px}
+.topo .in{max-width:1200px}
+#login{max-width:380px;margin:40px auto}
+.filtros{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.filtros .chip{padding:9px 13px;font-size:14px}
+.datas{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.datas input,.datas select{width:auto;padding:8px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.kpi small{display:block;color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.kpi b{display:block;font-size:24px;font-weight:900;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:12px;color:var(--muted)}
+.abas{position:static;margin-bottom:6px}
+.grade{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grade .card{margin:0}
+@media(max-width:760px){.grade{grid-template-columns:1fr}}
+table{width:100%;border-collapse:collapse;font-size:13px}
+td,th{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+td.r,th.r{text-align:right;font-variant-numeric:tabular-nums}
+th{font-size:12px;color:var(--muted);white-space:nowrap}
+th.ord{cursor:pointer;user-select:none}
+th.ord:hover{color:var(--ink)}
+.rolar{overflow-x:auto}
+#tabClientes tr.cli{cursor:pointer}
+#tabClientes tr.cli:hover td{background:#fafaf9}
+#tabClientes td{white-space:nowrap}
+#tabClientes td:first-child,#tabClientes th:first-child{position:sticky;left:0;background:#fff;z-index:1}
+#tabClientes tr.cli:hover td:first-child{background:#fafaf9}
+.seg{display:inline-block;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:800;white-space:nowrap}
+.legenda{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:6px 14px;font-size:13px;margin-top:8px}
+.busca{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+.busca input{flex:1;min-width:180px;padding:9px}
+.hb{display:grid;grid-template-columns:minmax(90px,38%) 1fr auto;gap:8px;align-items:center;padding:5px 0;font-size:14px}
+.hb .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hb .t{background:#f5f5f4;border-radius:4px;height:14px;overflow:hidden}
+.hb .t i{display:block;height:100%;background:var(--brand);border-radius:0 4px 4px 0}
+.hb .v{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.hb .v small{font-weight:400;color:var(--muted)}
+.modal .box{max-width:640px}
+.modal .box.largo{max-width:900px}
+.fichaTopo{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.miniKpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin:12px 0}
+.miniKpis div{background:#f5f5f4;border-radius:10px;padding:8px 10px}
+.miniKpis small{display:block;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase}
+.miniKpis b{font-size:16px;font-variant-numeric:tabular-nums}
+.fichaSec{margin-top:16px}
+.prog{font-size:18px;letter-spacing:1px;white-space:nowrap}
+.prog .vazio{filter:grayscale(1);opacity:.22}
+.barraP{height:10px;background:#f5f5f4;border-radius:5px;overflow:hidden;min-width:90px}
+.barraP i{display:block;height:100%;background:var(--ok)}
+.fidCfg{display:grid;grid-template-columns:150px 120px 1fr 160px auto;gap:10px;align-items:end}
+@media(max-width:760px){.fidCfg{grid-template-columns:1fr 1fr}}
+.premio{background:#f0fdf4}
+.linhaFid{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:10px;margin-bottom:6px}
+.acoesFid{display:flex;flex-wrap:wrap;gap:6px}
+.lgpd{text-align:center;color:var(--muted);font-size:12px;margin:24px 0 8px}
+.alerta{background:#fef2f2;border:1px solid #fecaca;color:#7f1d1d;border-radius:12px;padding:10px 12px;margin-bottom:14px;font-size:14px}
+</style>
+</head>
+<body>
+<header class="topo">
+  <div class="in">
+    <h1>👥 Clientes</h1>
+    <div class="hide" id="ferramentas" style="display:flex;gap:6px">
+      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html">📊 Gestão</a>
+      <a class="btn sm sec" style="text-decoration:none" href="cozinha.html">👨‍🍳 Cozinha</a>
+      <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> mostra só os pedidos feitos neste navegador.</div>
+
+  <div id="login" class="card hide">
+    <h2>Acesso aos clientes</h2>
+    <div class="muted">Use o mesmo login da cozinha / gestão.</div>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
+    <button class="btn full" style="margin-top:14px" onclick="entrar()">Entrar</button>
+    <div id="erroLogin" class="muted" style="color:#b91c1c;margin-top:8px"></div>
+  </div>
+
+  <div id="painel" class="hide">
+    <div class="card">
+      <div class="filtros" id="filtros"></div>
+      <div class="datas">
+        <label style="margin:0" for="de">De</label><input type="date" id="de">
+        <label style="margin:0" for="ate">até</label><input type="date" id="ate">
+        <button class="btn sm dark" onclick="periodo='livre';carregar()">Ver</button>
+      </div>
+      <div class="muted" id="status" style="margin-top:8px"></div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <nav class="tabs abas" id="abas"></nav>
+
+    <!-- ================= LISTA DE CLIENTES ================= -->
+    <section id="aba-lista">
+      <div class="card">
+        <h2>👥 Lista de clientes</h2>
+        <div class="filtros" id="segFiltros"></div>
+        <div class="busca">
+          <input id="busca" placeholder="🔎 Buscar por nome, telefone ou bairro" oninput="renderLista()">
+          <button class="btn sm sec" onclick="exportarCSV()">⬇️ Exportar CSV</button>
+        </div>
+        <div class="rolar"><table id="tabClientes"></table></div>
+        <div class="muted" id="rodapeLista" style="margin-top:8px"></div>
+        <details style="margin-top:10px"><summary class="muted" style="cursor:pointer;font-weight:700">ℹ️ Como os segmentos são definidos</summary>
+          <div class="legenda" id="legenda"></div>
+          <div class="muted" style="margin-top:8px">A ordem acima é a prioridade (um cliente fica em um só segmento). "Dias sem pedir" conta até hoje. Novo / 1ª compra consideram só o período carregado — escolha <b>Tudo</b> para o histórico completo. VIP há mais de 30 dias sem pedir aparece com ⏰.</div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ================= FIDELIDADE ================= -->
+    <section id="aba-fidelidade" class="hide">
+      <div class="card">
+        <h2>🎁 Fidelidade <span class="muted" style="font-weight:400">(simulador — controle interno)</span></h2>
+        <div class="aviso">A loja <b>não</b> mostra nada disso ao cliente. É um controle interno: a regra fica salva <b>só neste aparelho</b> e o resgate é marcado à mão (botão "Marcar recompensa entregue").</div>
+        <div class="fidCfg">
+          <div><label for="fidTipo">Conta por</label><select id="fidTipo" onchange="trocarTipoFid()"><option value="pizzas">🍕 Pizzas</option><option value="valor">💰 R$ em compras</option></select></div>
+          <div id="fidMetaBox"><label for="fidMeta" id="fidMetaLbl">A cada (pizzas)</label><input id="fidMeta" type="number" min="1" step="1"></div>
+          <div><label for="fidRecompensa">O cliente ganha</label><input id="fidRecompensa" placeholder="1 pizza G grátis"></div>
+          <div><label for="fidInicio">Contar pedidos desde</label><input id="fidInicio" type="date"></div>
+          <button class="btn dark" onclick="salvarFid()">Salvar</button>
+        </div>
+        <div class="muted" style="margin-top:6px" id="fidRegra"></div>
+        <div id="fidAviso"></div>
+      </div>
+      <div class="grade">
+        <div class="card"><h2>🎉 Já ganharam</h2><div id="fidGanharam"></div></div>
+        <div class="card"><h2>🔥 Quase lá</h2><div id="fidQuase"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h2>📋 Progresso de todos</h2><div class="rolar" id="fidTodos"></div></div>
+    </section>
+
+    <!-- ================= RANKINGS ================= -->
+    <section id="aba-rankings" class="hide">
+      <div class="grade">
+        <div class="card"><h2>💰 Top 10 por gasto</h2><div id="topGasto"></div></div>
+        <div class="card"><h2>🧾 Top 10 por nº de pedidos</h2><div id="topPedidos"></div></div>
+        <div class="card"><h2>⭐ Sabores dos clientes VIP</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div><div id="saboresVip"></div></div>
+        <div class="card"><h2>🍕 Sabores de todos os clientes</h2><div class="muted" style="margin-bottom:6px">Clientes identificados pelo telefone.</div><div id="saboresGeral"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h2>📍 Bairros que mais compram</h2><div class="rolar" id="bairros"></div>
+        <div class="muted" style="margin-top:6px">Só pedidos de entrega (o bairro digitado no endereço).</div></div>
+    </section>
+  </div>
+
+  <div class="lgpd">🔒 Dados de clientes para uso interno do Clube da Pizza.</div>
+</main>
+
+<!-- ficha do cliente -->
+<div class="modal" id="mFicha" onclick="if(event.target===this)fechar('mFicha')"><div class="box largo" id="fichaBox"></div></div>
+<!-- mensagem de WhatsApp editável -->
+<div class="modal" id="mWhats" onclick="if(event.target===this)fechar('mWhats')"><div class="box">
+  <h2>💬 WhatsApp para <span id="wNome"></span></h2>
+  <div class="muted" id="wTel"></div>
+  <label for="wTexto">Mensagem (edite à vontade antes de enviar)</label>
+  <textarea id="wTexto" style="min-height:150px"></textarea>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn sec" onclick="fechar('mWhats')">Fechar</button>
+    <a class="btn wa" style="flex:1;text-align:center;text-decoration:none" id="wLink" target="_blank" rel="noopener" onclick="this.href=linkWhats(telWhats, document.getElementById('wTexto').value)">💬 Abrir no WhatsApp</a>
+  </div>
+</div></div>
+
+<div id="toast"></div>
+
+<script src="js/config.js?v=20261023"></script>
+<script src="js/cardapio.js?v=20261023"></script>
+<script src="js/db.js?v=20261023"></script>
+<script src="js/clientes.js?v=20261023"></script>
+<script>
+let periodo = '90d';
+let pedidos = [], A = null;            // A = resultado de Clientes.analisar
+let aba = (() => { try { return localStorage.getItem('cdp_clientes_aba') || 'lista'; } catch { return 'lista'; } })();
+let filtroSeg = '', ordem = { col: 'total', dir: -1 };
+let telWhats = '';
+const PERIODOS = [{ id: '30d', nome: 'Últimos 30 dias' }, { id: '90d', nome: '90 dias' }, { id: 'ano', nome: 'Este ano' }, { id: 'tudo', nome: 'Tudo' }];
+const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
+const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
+const S = Clientes.SEGMENTOS;
+const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const pct = v => v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+const br = iso => iso ? iso.split('-').reverse().join('/') : '—';
+const segTag = c => `<span class="seg" style="color:${S[c.segmento].cor};background:${S[c.segmento].fundo}">${S[c.segmento].nome}</span>${c.sumido ? ' <span title="VIP há mais de 30 dias sem pedir">⏰</span>' : ''}`;
+const porChave = k => A.clientes.find(c => c.chave === k);
+
+if (DB.modo() === 'demo') document.getElementById('avisoDemo').classList.remove('hide');
+
+/* ---------------- LOGIN (mesmo da cozinha/gestão) ---------------- */
+DB.observarUsuario(u => {
+  if (u && Equipe.de(u.email).papel === 'entregador') return location.replace('entregador.html');
+  const logado = !!u;
+  document.getElementById('login').classList.toggle('hide', logado);
+  document.getElementById('painel').classList.toggle('hide', !logado);
+  document.getElementById('ferramentas').classList.toggle('hide', !logado);
+  document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
+  if (logado) { mostrarAba(aba); carregar(); }
+  else { pedidos = []; A = null; }
+});
+async function entrar() {
+  document.getElementById('erroLogin').textContent = '';
+  try { await DB.login(document.getElementById('email').value.trim(), document.getElementById('senha').value); }
+  catch (e) { document.getElementById('erroLogin').textContent = 'E-mail ou senha inválidos.'; }
+}
+document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
+
+function mostrarAba(a) {
+  aba = a;
+  try { localStorage.setItem('cdp_clientes_aba', a); } catch { }
+  document.getElementById('abas').innerHTML = [['lista', '👥 Clientes'], ['fidelidade', '🎁 Fidelidade'], ['rankings', '🏆 Rankings']]
+    .map(([id, n]) => `<button class="tab ${id === a ? 'on' : ''}" onclick="mostrarAba('${id}')">${n}</button>`).join('');
+  ['lista', 'fidelidade', 'rankings'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
+}
+
+/* ---------------- PERÍODO (carrega só o período escolhido) ---------------- */
+function intervalo(id) {
+  const h = new Date();
+  if (id === '30d') return [isoDe(new Date(h.getFullYear(), h.getMonth(), h.getDate() - 29)), hojeISO()];
+  if (id === '90d') return [isoDe(new Date(h.getFullYear(), h.getMonth(), h.getDate() - 89)), hojeISO()];
+  if (id === 'ano') return [isoDe(new Date(h.getFullYear(), 0, 1)), hojeISO()];
+  if (id === 'tudo') return ['2000-01-01', '2999-12-31'];   // inclui agendados futuros
+  return [document.getElementById('de').value, document.getElementById('ate').value];
+}
+function renderFiltros() {
+  document.getElementById('filtros').innerHTML = PERIODOS.map(p =>
+    `<span class="chip ${p.id === periodo ? 'on' : ''}" onclick="periodo='${p.id}';carregar()">${p.nome}</span>`).join('');
+}
+async function carregar() {
+  renderFiltros();
+  const [de, ate] = intervalo(periodo);
+  if (!de || !ate || de > ate) return toast('Período inválido.');
+  if (periodo !== 'tudo') { document.getElementById('de').value = de; document.getElementById('ate').value = ate; }
+  const st = document.getElementById('status');
+  st.textContent = 'Carregando...';
+  try {
+    pedidos = await DB.listarPedidos(de, ate);
+    const datas = pedidos.map(p => p.data).sort();
+    st.textContent = (periodo === 'tudo' ? 'Todo o histórico' : `${br(de)} a ${br(ate)}`) + ` • ${pedidos.length} pedido(s) lidos` +
+      (periodo === 'tudo' && datas.length ? ` (${br(datas[0])} a ${br(datas[datas.length - 1])})` : '');
+    A = Clientes.analisar(pedidos);
+    renderTudo();
+  } catch (e) {
+    console.error(e);
+    st.textContent = 'Erro ao carregar. Verifique a internet e o login.';
+  }
+}
+function renderTudo() { renderKpis(); renderLista(); renderFid(); renderRankings(); }
+
+/* ---------------- VISÃO GERAL ---------------- */
+function renderKpis() {
+  const r = A.resumo, b = A.balcao;
+  const kpi = (t, v, s) => `<div class="kpi"><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+  document.getElementById('kpis').innerHTML = [
+    kpi('👥 Clientes únicos', r.clientes, `${r.pedidosIdent} pedido(s) com telefone`),
+    kpi('🆕 Novos', r.novos, '1º pedido nos últimos 30 dias'),
+    kpi('🔁 Recorrentes', r.recorrentes, '2 ou mais pedidos'),
+    kpi('📈 Taxa de recompra', pct(r.recompra), 'clientes que voltaram'),
+    kpi('🎯 Ticket médio', dinheiro(r.ticket), `clientes identificados: ${dinheiro(r.ticketIdent)}`),
+    kpi('💰 Gasto médio por cliente', dinheiro(r.gastoMedio), 'no período'),
+    kpi('🏆 Top 20% dos clientes', pct(r.pctTop20), `do faturamento (${r.nTop20} cliente(s))`),
+    kpi('🏪 Balcão sem identificação', dinheiro(b.total), `${b.pedidos} pedido(s) sem telefone`),
+    kpi('❌ Cancelados', r.cancelados, (r.cancelados ? dinheiro(r.valorCancelado) + ' fora do gasto' : 'fora do gasto') + (r.naoEntregues ? ` • ${r.naoEntregues} não entregue(s)` : ''))
+  ].join('');
+}
+
+/* ---------------- LISTA ---------------- */
+const COLS = [
+  ['nome', 'Nome', c => c.nome.toLowerCase()], ['seg', 'Segmento', c => Object.keys(S).indexOf(c.segmento)], ['telefone', 'Telefone', c => c.telefone], ['bairro', 'Bairro', c => c.bairro.toLowerCase()],
+  ['n', 'Pedidos', c => c.n, 1], ['total', 'Total gasto', c => c.total, 1], ['ticket', 'Ticket médio', c => c.ticket, 1],
+  ['primeira', '1ª compra', c => c.primeira], ['ultima', 'Última', c => c.ultima], ['dias', 'Dias sem pedir', c => c.diasSemPedir, 1],
+  ['freq', 'Freq. média', c => c.freqMedia == null ? 1e9 : c.freqMedia, 1], ['sabor', 'Sabor favorito', c => c.saborFav],
+  ['pag', 'Pagamento', c => c.pagamentoFav]
+];
+function ordenarPor(col) {
+  ordem = ordem.col === col ? { col, dir: -ordem.dir } : { col, dir: ['nome', 'telefone', 'bairro', 'sabor', 'pag', 'seg', 'freq', 'dias'].includes(col) ? 1 : -1 };
+  renderLista();
+}
+function filtrados() {
+  const t = Clientes.chaveTexto(document.getElementById('busca').value), dig = t.replace(/\D/g, '');
+  return A.clientes.filter(c => (!filtroSeg || c.segmento === filtroSeg) && (!t ||
+    Clientes.chaveTexto(c.nome + ' ' + c.outrosNomes.join(' ') + ' ' + c.bairro).includes(t) || (dig.length >= 3 && c.telefone.includes(dig))));
+}
+function renderLista() {
+  if (!A) return;
+  const cont = {}; A.clientes.forEach(c => { cont[c.segmento] = (cont[c.segmento] || 0) + 1; });
+  document.getElementById('segFiltros').innerHTML = `<span class="chip ${!filtroSeg ? 'on' : ''}" onclick="filtroSeg='';renderLista()">Todos (${A.clientes.length})</span>` +
+    Object.keys(S).map(k => `<span class="chip ${filtroSeg === k ? 'on' : ''}" onclick="filtroSeg='${k}';renderLista()">${S[k].nome} (${cont[k] || 0})</span>`).join('');
+  document.getElementById('legenda').innerHTML = Object.values(S).map(s => `<div><span class="seg" style="color:${s.cor};background:${s.fundo}">${s.nome}</span> ${s.regra}</div>`).join('');
+  const col = COLS.find(c => c[0] === ordem.col), l = filtrados().sort((a, b) => {
+    const x = col[2](a), y = col[2](b);
+    return (x < y ? -1 : x > y ? 1 : 0) * ordem.dir || b.total - a.total;
+  });
+  const seta = k => ordem.col === k ? (ordem.dir > 0 ? ' ▲' : ' ▼') : '';
+  document.getElementById('tabClientes').innerHTML = `<tr>${COLS.map(([k, n, , r]) => `<th class="ord ${r ? 'r' : ''}" onclick="ordenarPor('${k}')">${n}${seta(k)}</th>`).join('')}</tr>` +
+    (l.length ? l.map(c => `<tr class="cli" onclick="abrirFicha('${c.chave}')">
+      <td><b>${esc(c.nome)}</b>${c.outrosNomes.length ? ` <span class="muted" title="Também usou: ${esc(c.outrosNomes.join(', '))}">+${c.outrosNomes.length}</span>` : ''}</td>
+      <td>${segTag(c)}</td><td>${Clientes.fmtTel(c.telefone)}</td><td>${esc(c.bairro) || '<span class="muted">—</span>'}</td>
+      <td class="r">${c.n}</td><td class="r"><b>${dinheiro(c.total)}</b></td><td class="r">${dinheiro(c.ticket)}</td>
+      <td>${br(c.primeira)}</td><td>${br(c.ultima)}</td><td class="r">${c.diasSemPedir}</td>
+      <td class="r">${c.freqMedia == null ? '—' : num(c.freqMedia) + ' d'}</td><td>${esc(c.saborFav) || '—'}</td>
+      <td>${FORMAS[c.pagamentoFav] || esc(c.pagamentoFav) || '—'}</td></tr>`).join('')
+      : `<tr><td colspan="${COLS.length}" class="muted">Nenhum cliente${filtroSeg || document.getElementById('busca').value ? ' com esse filtro' : ' no período'}.</td></tr>`);
+  const b = A.balcao;
+  document.getElementById('rodapeLista').innerHTML = `${l.length} cliente(s) na lista • toque num cliente para ver a ficha.` +
+    (b.pedidos || b.cancelados ? ` <br>🏪 <b>Balcão sem identificação</b> (sem telefone): ${b.pedidos} pedido(s) • ${dinheiro(b.total)}${b.cancelados ? ` • ${b.cancelados} cancelado(s)` : ''}.` : '');
+}
+function exportarCSV() {
+  if (!A || !A.clientes.length) return toast('Nenhum cliente no período.');
+  const cfg = lerFid(), ent = lerEntregues();
+  const csv = Clientes.csv(filtrados(), c => { const f = Clientes.fidelidade(c, cfg, ent[c.chave]); return f.porPizza ? `${f.resto}/${f.meta}${f.disponiveis ? ' (+' + f.disponiveis + ' a entregar)' : ''}` : `${dinheiro(f.resto)} de ${dinheiro(f.meta)}`; });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  const [de, ate] = intervalo(periodo);
+  a.download = periodo === 'tudo' ? 'clientes_tudo.csv' : `clientes_${de}_a_${ate}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------------- FICHA DO CLIENTE ---------------- */
+function barras(itens, fmt) {   // [[nome, valor, extra]]
+  if (!itens.length) return '<div class="muted">—</div>';
+  const max = Math.max(...itens.map(x => x[1])) || 1;
+  return itens.map(([n, v, extra]) => `<div class="hb"><span class="n" title="${esc(n)}">${esc(n)}</span>
+    <span class="t"><i style="width:${(v / max * 100).toFixed(1)}%"></i></span>
+    <span class="v">${fmt(v)}${extra ? ` <small>${extra}</small>` : ''}</span></div>`).join('');
+}
+const desc = o => Object.entries(o).sort((a, b) => b[1] - a[1]);
+const resumoItens = p => (p.itens || []).map(it => `${it.qtd || 1}x ${it.tipo === 'pizza' ? `${it.tamanho} ${(it.sabores || []).join(' / ')}` : (it.nome || Preco.descricao(it))}`).join(', ');
+const linkPedido = p => `index.html?${p.codigo ? 'codigo=' + encodeURIComponent(p.codigo) : 'pedido=' + encodeURIComponent(p.id)}`;
+
+function abrirFicha(chave) {
+  const c = porChave(chave); if (!c) return;
+  const f = Clientes.fidelidade(c, lerFid(), lerEntregues()[chave]);
+  const mini = (t, v) => `<div><small>${t}</small><b>${v}</b></div>`;
+  const tipos = Object.entries(c.tipos).map(([k, v]) => `${TIPOS[k] || k} ${v}`).join(' • ');
+  const ends = Object.values(c.enderecos).sort((a, b) => b.n - a.n).map(e => [e.texto, e.n]);
+  const statusTxt = p => p.status === 'cancelado' ? '<span style="color:#b91c1c;font-weight:700">Cancelado</span>' : p.status === 'nao_entregue' ? '<span style="color:var(--warn);font-weight:700">Não entregue</span>' : esc(STATUS.rotulo(p.status, (p.entrega || {}).tipo));
+  document.getElementById('fichaBox').innerHTML = `
+    <div class="fichaTopo">
+      <div><h2 style="margin:0">${esc(c.nome)} ${segTag(c)}</h2>
+        <div class="muted">📞 ${Clientes.fmtTel(c.telefone)}${c.outrosNomes.length ? ` • também usou: ${esc(c.outrosNomes.join(', '))}` : ''}</div></div>
+      <div style="display:flex;gap:6px"><button class="btn wa sm" onclick="abrirWhats('${c.chave}')">💬 WhatsApp</button><button class="btn sec sm" onclick="fechar('mFicha')">Fechar</button></div>
+    </div>
+    <div class="miniKpis">
+      ${mini('Total gasto', dinheiro(c.total))}${mini('Pedidos', c.n + (c.cancelados ? ` <small class="muted">+${c.cancelados} canc.</small>` : ''))}
+      ${mini('Ticket médio', dinheiro(c.ticket))}${mini('Cliente desde', br(c.primeira))}
+      ${mini('Última compra', `${br(c.ultima)} <small class="muted">(${c.diasSemPedir} d)</small>`)}${mini('Freq. média', c.freqMedia == null ? '—' : num(c.freqMedia) + ' dias')}
+      ${mini('Mais pede', `${c.diaFav}${c.horaFav != null ? ` ~${c.horaFav}h` : ''}`)}${mini('Pagamento', FORMAS[c.pagamentoFav] || esc(c.pagamentoFav) || '—')}
+    </div>
+    <div class="muted">${tipos}</div>
+    ${ends.length ? `<div class="muted" style="margin-top:4px">📍 ${ends.map(([e, n]) => `${esc(e)}${ends.length > 1 ? ` (${n}x)` : ''}`).join('<br>📍 ')}</div>` : ''}
+    <div class="okbox" style="margin-top:10px">🎁 Fidelidade: ${progresso(f)} ${f.disponiveis ? `<b>• ${f.disponiveis} recompensa(s) a entregar</b>` : ''}</div>
+
+    <div class="fichaSec grade">
+      <div><h3>🍕 Pizzas por sabor</h3>${barras(desc(c.sabores).map(([n, q]) => [n, q, dinheiro(c.saboresValor[n])]), num)}</div>
+      <div><h3>📏 Tamanhos</h3>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, c.tamanhos[t.id] || 0]).filter(x => x[1]), num)}
+        <h3 style="margin-top:12px">➕ Adicionais</h3>${barras(Object.entries(c.adicionais).sort((a, b) => b[1].qtd - a[1].qtd).map(([n, x]) => [n, x.qtd, dinheiro(x.valor)]), num)}</div>
+      <div><h3>🥤 Bebidas e outros</h3>${barras(Object.entries(c.produtos).sort((a, b) => b[1].qtd - a[1].qtd).map(([n, x]) => [n, x.qtd, dinheiro(x.valor)]), num)}</div>
+      <div><h3>🥫 Sachês</h3>${barras(desc(c.saches), num)}</div>
+    </div>
+
+    <div class="fichaSec"><h3>🧾 Histórico de pedidos</h3><div class="rolar"><table>
+      <tr><th>Nº</th><th>Data</th><th>Itens</th><th class="r">Total</th><th>Status</th><th></th></tr>
+      ${c.pedidos.map(p => `<tr><td>#${p.numero || '—'}</td><td style="white-space:nowrap">${br(p.data)}${p.criadoEm ? ' ' + Horario.hora(p.criadoEm) : ''}</td>
+        <td>${esc(resumoItens(p))}</td><td class="r">${dinheiro(p.total)}</td><td>${statusTxt(p)}</td>
+        <td><a href="${linkPedido(p)}" target="_blank" rel="noopener">acompanhar ↗</a></td></tr>`).join('')}
+    </table></div></div>`;
+  document.getElementById('mFicha').classList.add('on');
+}
+function fechar(id) { document.getElementById(id).classList.remove('on'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ['mWhats', 'mFicha'].forEach(id => { const m = document.getElementById(id); if (m.classList.contains('on')) { fechar(id); e.stopImmediatePropagation(); } }); });
+
+/* ---------------- WHATSAPP (mensagem editável) ---------------- */
+function abrirWhats(chave, tipo) {
+  const c = porChave(chave); if (!c) return;
+  const cfg = lerFid(), f = Clientes.fidelidade(c, cfg, lerEntregues()[chave]);
+  telWhats = c.telefone;
+  document.getElementById('wNome').textContent = c.nome;
+  document.getElementById('wTel').textContent = `${Clientes.fmtTel(c.telefone)} • ${S[c.segmento].nome}`;
+  document.getElementById('wTexto').value = Clientes.mensagem(c, tipo, f, cfg);
+  document.getElementById('mWhats').classList.add('on');
+  document.getElementById('wTexto').focus();
+}
+
+/* ---------------- FIDELIDADE (salva só neste navegador) ---------------- */
+const LS_FID = 'cdp_fidelidade_regra', LS_FID_ENT = 'cdp_fidelidade_entregues';
+function lerFid() { try { return Object.assign({}, Clientes.FID_PADRAO, JSON.parse(localStorage.getItem(LS_FID)) || {}); } catch { return Object.assign({}, Clientes.FID_PADRAO); } }
+function lerEntregues() { try { return JSON.parse(localStorage.getItem(LS_FID_ENT)) || {}; } catch { return {}; } }
+function gravar(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { toast('Não foi possível salvar neste navegador.'); return false; } }
+
+function trocarTipoFid() {
+  const cfg = lerFid(), v = document.getElementById('fidTipo').value === 'valor';
+  document.getElementById('fidMetaLbl').textContent = v ? 'A cada (R$)' : 'A cada (pizzas)';
+  document.getElementById('fidMeta').step = v ? '10' : '1';
+  document.getElementById('fidMeta').value = v ? cfg.valor : cfg.meta;
+}
+function salvarFid() {
+  const cfg = lerFid(), tipo = document.getElementById('fidTipo').value, m = Number(document.getElementById('fidMeta').value);
+  if (!(m > 0)) return toast('Informe a meta (maior que zero).');
+  cfg.tipo = tipo;
+  if (tipo === 'valor') cfg.valor = m; else cfg.meta = Math.round(m);
+  cfg.recompensa = document.getElementById('fidRecompensa').value.trim() || Clientes.FID_PADRAO.recompensa;
+  cfg.inicio = document.getElementById('fidInicio').value || '';
+  if (gravar(LS_FID, cfg)) { toast('Regra de fidelidade salva neste aparelho.'); renderFid(); }
+}
+function marcarEntregue(chave) {
+  const c = porChave(chave);
+  if (!c || !confirm(`Marcar 1 recompensa ("${lerFid().recompensa}") como entregue para ${c.nome}?`)) return;
+  const ent = lerEntregues(); (ent[chave] = ent[chave] || []).push(Date.now());
+  if (gravar(LS_FID_ENT, ent)) { toast('Recompensa marcada como entregue.'); renderFid(); }
+}
+function desfazerEntregue(chave) {
+  const ent = lerEntregues(); if (!(ent[chave] || []).length || !confirm('Desfazer a última recompensa marcada como entregue?')) return;
+  ent[chave].pop(); if (!ent[chave].length) delete ent[chave];
+  if (gravar(LS_FID_ENT, ent)) renderFid();
+}
+function progresso(f) {
+  if (f.porPizza && f.meta <= 20) return `<span class="prog" title="${f.resto} de ${f.meta}">${'🍕'.repeat(f.resto)}<span class="vazio">${'🍕'.repeat(f.meta - f.resto)}</span></span> <b>${f.resto}/${f.meta}</b>`;
+  const txt = f.porPizza ? `${f.resto}/${f.meta}` : `${dinheiro(f.resto)} / ${dinheiro(f.meta)}`;
+  return `<span class="barraP" style="display:inline-block;width:110px;vertical-align:middle"><i style="width:${f.pct.toFixed(1)}%"></i></span> <b>${txt}</b>`;
+}
+function renderFid() {
+  if (!A) return;
+  const cfg = lerFid(), ent = lerEntregues(), [de] = intervalo(periodo);
+  document.getElementById('fidTipo').value = cfg.tipo;
+  trocarTipoFid();
+  document.getElementById('fidRecompensa').value = cfg.recompensa;
+  document.getElementById('fidInicio').value = cfg.inicio;
+  document.getElementById('fidRegra').innerHTML = `Regra atual: a cada <b>${cfg.tipo === 'valor' ? dinheiro(cfg.valor) + ' em compras (sem taxa de entrega)' : cfg.meta + ' pizzas'}</b> o cliente ganha <b>${esc(cfg.recompensa)}</b>` +
+    `${cfg.inicio ? `, contando pedidos desde ${br(cfg.inicio)}` : ''}. Pedidos cancelados não contam; meio a meio conta como 1 pizza.`;
+  const inicioReal = cfg.inicio || '';
+  document.getElementById('fidAviso').innerHTML = periodo !== 'tudo' && de > (inicioReal || '0000')
+    ? `<div class="aviso">⚠️ O período carregado começa em ${br(de)}${inicioReal ? `, depois do início do programa (${br(inicioReal)})` : ''}: pizzas mais antigas não entram na conta. Para o progresso completo, escolha <b>Tudo</b>${inicioReal ? ' ou um período que comece antes do início' : ' ou defina "Contar pedidos desde"'}.</div>` : '';
+
+  const l = A.clientes.map(c => ({ c, f: Clientes.fidelidade(c, cfg, ent[c.chave]) })).filter(x => x.f.base > 0);
+  const ganharam = l.filter(x => x.f.disponiveis > 0).sort((a, b) => b.f.disponiveis - a.f.disponiveis || b.f.base - a.f.base);
+  const quase = l.filter(x => x.f.quaseLa && !x.f.disponiveis).sort((a, b) => a.f.falta - b.f.falta);
+  const faltaTxt = f => f.porPizza ? `falta${f.falta === 1 ? '' : 'm'} ${f.falta} pizza${f.falta === 1 ? '' : 's'}` : `faltam ${dinheiro(f.falta)}`;
+  const nomeLink = c => `<a href="#" onclick="abrirFicha('${c.chave}');return false"><b>${esc(c.nome)}</b></a>`;
+  document.getElementById('fidGanharam').innerHTML = ganharam.length ? ganharam.map(({ c, f }) => `<div class="premio linhaFid">
+      <div>${nomeLink(c)} <b>🎁 ${f.disponiveis}</b><div class="muted">${Clientes.fmtTel(c.telefone)} • ${f.ganhos} ganha(s), ${f.entregues} entregue(s)</div></div>
+      <div class="acoesFid"><button class="btn sm wa" onclick="abrirWhats('${c.chave}','fidelidade')">💬 WhatsApp</button>
+        <button class="btn sm dark" onclick="marcarEntregue('${c.chave}')">✅ Marcar recompensa entregue</button></div></div>`).join('')
+    : '<div class="muted">Ninguém completou a meta ainda.</div>';
+  document.getElementById('fidQuase').innerHTML = quase.length ? `<table>${quase.map(({ c, f }) => `<tr>
+      <td>${nomeLink(c)}<div>${progresso(f)}</div><div class="muted">${faltaTxt(f)}</div></td>
+      <td class="r"><button class="btn sm wa" onclick="abrirWhats('${c.chave}','fidelidade')">💬 WhatsApp</button></td></tr>`).join('')}</table>`
+    : `<div class="muted">Ninguém a ${cfg.tipo === 'valor' ? '20% da meta' : '1–2 pizzas'} de ganhar.</div>`;
+  const todos = l.slice().sort((a, b) => b.f.disponiveis - a.f.disponiveis || a.f.falta - b.f.falta);
+  document.getElementById('fidTodos').innerHTML = todos.length ? `<table><tr><th>Cliente</th><th>Progresso</th><th class="r">${cfg.tipo === 'valor' ? 'Compras' : 'Pizzas'}</th><th class="r">Ganhas</th><th class="r">Entregues</th><th>Últimas entregas</th></tr>
+    ${todos.map(({ c, f }) => `<tr><td>${nomeLink(c)}</td><td>${progresso(f)}</td><td class="r">${f.porPizza ? f.base : dinheiro(f.base)}</td><td class="r">${f.ganhos}</td>
+      <td class="r">${f.entregues}</td><td class="muted">${(ent[c.chave] || []).slice(-3).map(t => new Date(t).toLocaleDateString('pt-BR')).join(', ')}${(ent[c.chave] || []).length ? ` <a href="#" onclick="desfazerEntregue('${c.chave}');return false">desfazer</a>` : ''}</td></tr>`).join('')}</table>`
+    : '<div class="muted">Nenhum pedido no período.</div>';
+}
+
+/* ---------------- RANKINGS ---------------- */
+function renderRankings() {
+  const top = (fn, fmt, extra) => { const l = A.clientes.slice().sort((a, b) => fn(b) - fn(a) || b.total - a.total).slice(0, 10);
+    return l.length ? `<table>${l.map((c, i) => `<tr><td style="width:24px">${i + 1}º</td><td><a href="#" onclick="abrirFicha('${c.chave}');return false"><b>${esc(c.nome)}</b></a> ${segTag(c)}<div class="muted">${esc(c.bairro)}</div></td>
+      <td class="r"><b>${fmt(fn(c))}</b><div class="muted">${extra(c)}</div></td></tr>`).join('')}</table>` : '<div class="muted">Sem clientes no período.</div>'; };
+  document.getElementById('topGasto').innerHTML = top(c => c.total, dinheiro, c => `${c.n} pedido(s)`);
+  document.getElementById('topPedidos').innerHTML = top(c => c.n, v => v + ' ped.', c => dinheiro(c.total));
+  const sab = o => { const t = Object.values(o).reduce((a, b) => a + b, 0); return barras(desc(o).slice(0, 12).map(([n, q]) => [n, q, pct(q / t * 100)]), num); };
+  document.getElementById('saboresVip').innerHTML = Object.keys(A.saboresVip).length ? sab(A.saboresVip) : '<div class="muted">Sem clientes VIP no período.</div>';
+  document.getElementById('saboresGeral').innerHTML = sab(A.saboresGeral);
+  document.getElementById('bairros').innerHTML = A.bairros.length ? `<table><tr><th>Bairro</th><th class="r">Clientes</th><th class="r">Pedidos</th><th class="r">Faturamento</th><th class="r">Ticket</th></tr>
+    ${A.bairros.map(b => `<tr><td>${esc(b.nome)}</td><td class="r">${b.clientes}</td><td class="r">${b.pedidos}</td><td class="r"><b>${dinheiro(b.total)}</b></td><td class="r">${dinheiro(b.total / b.pedidos)}</td></tr>`).join('')}</table>`
+    : '<div class="muted">Nenhuma entrega no período.</div>';
+}
+
+function toast(t) {
+  const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
+  clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);
+}
+renderFiltros();
+</script>
+</body>
+</html>
