@@ -81,3 +81,14 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - Código + link `https://clubedapizzato.com.br/?codigo=...` vão em todas as mensagens de WhatsApp (comprovante Pix, confirmação do balcão, cada fase da cozinha/entregador).
 - Loja: botão **📦 Acompanhar pedido** (aceita minúsculas, espaço e hífen), `?codigo=` na URL e **"Seus pedidos de hoje"** (últimos 5 pedidos guardados no aparelho).
 - **Fila e previsão:** a cozinha (aberta e logada) publica `config/fila` sem dados pessoais (número, data, status, hora) a cada mudança e um "sinal de vida" a cada 4 min. O cliente vê "Há N pedidos na sua frente" e a faixa de previsão (preparo + 5 min por pedido à frente + ajuste de movimento + entrega + min/km, ±7 min). Tempos em **Gestão → ⚙️ Configurações**; ajuste rápido na cozinha: **⏱️ Movimento Normal / +15 / +30**. Sem atualização há mais de 10 min, a fila some e fica só o status.
+
+## Adicionais da pizza
+- Gestão → 📦 Produtos & Estoque → **➕ Adicionais da pizza**: produtos `tipo: 'adicional'` com preço P/M/G, ativo, ordem e estoque opcional. Padrão: Catupiry e Cheddar (P 3 • M 5 • G 7). Preço da pizza = regra do meio a meio + soma dos adicionais do tamanho. Item do pedido: `adicionais: [{ id, nome, preco }]` (pedidos antigos com `adicional: true` continuam valendo).
+
+## Ficha técnica (custo, CMV e lucro) — só Gestão
+- Gestão → **📋 Ficha técnica**:
+  - **🧂 Insumos** (`insumos/{id}`): unidade, preço de compra ÷ quantidade da embalagem = custo por kg/L/un, perda % (custo ÷ (1 − perda)), fornecedor, histórico de preço ("💲 Atualizar preço" recalcula as fichas na hora).
+  - **Fichas** (`fichas/{saborId|adicionalId}`): insumo + quantidade por tamanho (P/M/G; aceita "280g" num insumo em kg), copiar de outro tamanho (com fator) ou de outro sabor. **Base comum** (`fichas/_base`: massa, caixa, gás…) entra em todos os sabores. Resultado: CMV %, maquininha, lucro, margem e preço sugerido pelo **CMV alvo**.
+  - Visão geral de todos os sabores × tamanhos + CSV.
+- Meio a meio: custo = média das metades (ou a mais cara, se `CONFIG.meioAMeio = 'maior'`) + base + adicionais. O custo é gravado no item do pedido na baixa (cozinha/balcão logados); pedidos sem custo usam a ficha atual e aparecem como "estimado".
+- **Custos são privados**: `insumos` e `fichas` só para usuário logado (a loja do cliente não carrega nada disso). Insumos não baixam estoque nesta fase.

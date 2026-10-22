@@ -26,7 +26,7 @@ window.DB = (function () {
   }
 
   /* ---------------- modo demonstração ---------------- */
-  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config', LS_RAS = 'cdp_rastreio', LS_FILA = 'cdp_fila';
+  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config', LS_RAS = 'cdp_rastreio', LS_FILA = 'cdp_fila', LS_INS = 'cdp_insumos', LS_FIC = 'cdp_fichas';
   const lerLS = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) || padrao; } catch { return padrao; } };
   const gravarLS = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); window.dispatchEvent(new CustomEvent('cdp-local', { detail: k })); };
   const lerTodos = () => lerLS(LS, {});
@@ -41,12 +41,16 @@ window.DB = (function () {
   const usuario = () => (modo() === 'demo' ? 'demo' : (auth && auth.currentUser && auth.currentUser.email) || '');
 
   /* ---------------- ESTOQUE (regras comuns aos dois modos) ---------------- */
-  const idsProdutos = itens => [...new Set((itens || []).filter(it => it.tipo === 'produto').map(it => it.id))];
+  // produtos + adicionais das pizzas (adicional pode controlar estoque)
+  const idsProdutos = itens => [...new Set((itens || []).flatMap(it => it.tipo === 'produto' ? [it.id] : (it.adicionais || []).map(a => a.id)))];
 
   // Alterações de estoque de um pedido. sinal -1 = baixa (venda), +1 = estorno
   function planoEstoque(pedido, prods, sinal) {
     const qtd = {};
-    (pedido.itens || []).forEach(it => { if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1); });
+    (pedido.itens || []).forEach(it => {
+      if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1);
+      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); });
+    });
     const mudancas = [], faltas = [];
     Object.keys(qtd).forEach(id => {
       const p = prods[id];
@@ -65,7 +69,9 @@ window.DB = (function () {
         return Object.assign({}, it, { custoUnitario: p.custoUnitario || 0, custoExtras: p.custosExtras || 0 });
       }
       if (it.tipo === 'pizza' && it.custoUnitario == null && window.Catalogo) {
-        const c = Catalogo.custoPizza(it);
+        // ficha técnica (se carregada: cozinha/balcão logados); senão o custo manual do sabor
+        const f = window.Ficha ? Ficha.custoItem(it) : null;
+        const c = f != null ? f : Catalogo.custoPizza(it);
         return c != null ? Object.assign({}, it, { custoUnitario: c }) : it;
       }
       return it;
@@ -380,6 +386,29 @@ window.DB = (function () {
     return l.sort((a, b) => b.em - a.em);
   }
 
+  /* ---------------- FICHA TÉCNICA (insumos e fichas: só logado) ---------------- */
+  async function observarColecao(nome, chaveLS, cb, erro) {
+    await init();
+    if (modo() === 'demo') return ouvirLocal(() => cb(Object.values(lerLS(chaveLS, {}))), chaveLS);
+    return fs.onSnapshot(fs.collection(db, nome), s => cb(s.docs.map(d => Object.assign({}, d.data(), { id: d.id }))),
+      e => { console.error(e); erro && erro(e); });
+  }
+  async function salvarDoc(nome, chaveLS, id, campos) {
+    await init();
+    if (modo() === 'demo') { const o = lerLS(chaveLS, {}); o[id] = Object.assign(o[id] || {}, campos, { id }); gravarLS(chaveLS, o); return; }
+    const { id: _, ...dados } = campos;
+    await fs.setDoc(fs.doc(db, nome, id), dados, { merge: true });
+  }
+  const observarInsumos = (cb, erro) => observarColecao('insumos', LS_INS, cb, erro);
+  const observarFichas = (cb, erro) => observarColecao('fichas', LS_FIC, cb, erro);
+  const salvarInsumo = (id, campos) => salvarDoc('insumos', LS_INS, id, campos);
+  // ficha inteira (P/M/G) substitui a anterior
+  async function salvarFicha(id, campos) {
+    await init();
+    if (modo() === 'demo') { const o = lerLS(LS_FIC, {}); o[id] = Object.assign({}, o[id] || {}, campos, { id }); gravarLS(LS_FIC, o); return; }
+    await fs.setDoc(fs.doc(db, 'fichas', id), campos, { merge: true });
+  }
+
   async function login(email, senha) {
     await init();
     if (modo() === 'demo') return;
@@ -394,6 +423,7 @@ window.DB = (function () {
 
   return {
     init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, atualizarPedido,
+    observarInsumos, observarFichas, salvarInsumo, salvarFicha,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario
   };

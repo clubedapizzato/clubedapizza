@@ -7,7 +7,13 @@ window.CARDAPIO = {
     { id: 'M', nome: 'Média',   maxSabores: 2, adicional: 5 },
     { id: 'G', nome: 'Grande',  maxSabores: 2, adicional: 7 }
   ],
-  nomeAdicional: 'Catupiry / Cheddar',
+  nomeAdicional: 'Catupiry / Cheddar',   // só para pedidos antigos (adicional: true)
+
+  // Adicionais da pizza (preço por tamanho). Editáveis na Gestão (produtos tipo 'adicional').
+  adicionais: [
+    { id: 'adic-catupiry', nome: 'Catupiry', P: 3, M: 5, G: 7 },
+    { id: 'adic-cheddar',  nome: 'Cheddar',  P: 3, M: 5, G: 7 }
+  ],
 
   sabores: [
     { nome: 'CALABRESA',                  P: 37, M: 53, G: 70, desc: '' },
@@ -74,7 +80,12 @@ window.Preco = (function () {
   // Sachê = produto da categoria "Sachês" (o item do pedido também guarda sache: true)
   const ehSache = it => it.tipo === 'produto' && (it.sache || ((categoriaDe(it.id) || {}).id === 'saches'));
 
-  function pizza(tam, sabores, adicional) {
+  const adicional = id => (C.adicionais || []).find(a => a.id === id) || null;
+  // Preço de um adicional no tamanho (catálogo atual; se saiu do catálogo, o gravado no pedido)
+  const precoAdicional = (a, tam) => { const x = adicional(a.id || a); return x && typeof x[tam] === 'number' ? x[tam] : (a.preco || 0); };
+
+  /* adicionais: lista [{ id, nome, preco }] ou ids; true = pedido antigo ("Catupiry / Cheddar" do tamanho) */
+  function pizza(tam, sabores, adicionais) {
     const t = tamanho(tam);
     const precos = (sabores || []).map(n => (sabor(n) || {})[tam]).filter(v => typeof v === 'number');
     if (!t || !precos.length) return 0;
@@ -82,23 +93,27 @@ window.Preco = (function () {
     const base = regra === 'maior'
       ? Math.max(...precos)
       : precos.reduce((a, b) => a + b, 0) / precos.length;
-    return Math.round((base + (adicional ? t.adicional : 0)) * 100) / 100;
+    const extra = Array.isArray(adicionais) ? adicionais.reduce((s, a) => s + precoAdicional(a, tam), 0) : (adicionais ? t.adicional : 0);
+    return Math.round((base + extra) * 100) / 100;
   }
+  const adicionaisDe = it => it.adicionais || (it.adicional ? true : []);
+  // ['Catupiry', 'Cheddar'] (pedido antigo: ['Catupiry / Cheddar'])
+  const nomesAdicionais = it => it.adicionais ? it.adicionais.map(a => (adicional(a.id) || a).nome || a.nome) : it.adicional ? [C.nomeAdicional] : [];
 
   // Preço unitário de um item do carrinho (produto que saiu do catálogo usa o preço gravado no pedido)
   function unitario(item) {
-    if (item.tipo === 'pizza') return pizza(item.tamanho, item.sabores, item.adicional);
+    if (item.tipo === 'pizza') return pizza(item.tamanho, item.sabores, adicionaisDe(item));
     const p = produto(item.id);
     return p ? p.preco : (item.preco || 0);
   }
 
+  // "Pizza Grande (G) - CALABRESA" (sem adicionais)
+  function descricaoBase(item) {
+    const t = tamanho(item.tamanho);
+    return `Pizza ${t ? t.nome : item.tamanho} (${item.tamanho}) - ${item.sabores.join(' / ')}`;
+  }
   function descricao(item) {
-    if (item.tipo === 'pizza') {
-      const t = tamanho(item.tamanho);
-      let s = `Pizza ${t ? t.nome : item.tamanho} (${item.tamanho}) - ${item.sabores.join(' / ')}`;
-      if (item.adicional) s += ` + ${C.nomeAdicional}`;
-      return s;
-    }
+    if (item.tipo === 'pizza') return descricaoBase(item) + nomesAdicionais(item).map(n => ` + ${n}`).join('');
     const p = produto(item.id);
     return p ? p.nome : (item.nome || item.id);
   }
@@ -149,7 +164,7 @@ window.Preco = (function () {
     return Math.max(0, Math.ceil(excedente - 1e-9)) * (E.valorPorKm || 0);
   }
 
-  return { tamanho, sabor, produto, categoriaDe, ehSache, pizza, unitario, descricao, saches, listaSaches, subtotal, taxa, distanciaKm };
+  return { tamanho, sabor, produto, categoriaDe, ehSache, adicional, precoAdicional, pizza, adicionaisDe, nomesAdicionais, unitario, descricaoBase, descricao, saches, listaSaches, subtotal, taxa, distanciaKm };
 })();
 
 /* ---------- margem / preço sugerido (percentuais em %, ex.: 30 = 30%) ---------- */

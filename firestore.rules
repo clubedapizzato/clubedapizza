@@ -67,6 +67,14 @@ service cloud.firestore {
       allow write: if request.auth != null;
     }
 
+    // Ficha técnica: insumos (preço de compra) e fichas (custo de cada sabor/adicional). Custos são PRIVADOS: só logado.
+    match /insumos/{id} {
+      allow read, write: if request.auth != null;
+    }
+    match /fichas/{id} {
+      allow read, write: if request.auth != null;
+    }
+
     // Entradas de compra, ajustes, baixas de venda e estornos: só logado.
     match /movimentos/{id} {
       allow read, write: if request.auth != null;

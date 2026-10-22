@@ -58,6 +58,29 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 .cfg{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
 @media(max-width:640px){.cfg{grid-template-columns:1fr}}
 .modal .box{max-width:640px}
+.modal .box.largo{max-width:1000px}
+/* ficha técnica */
+.tamCards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 12px}
+.tamCard{border:2px solid var(--line);border-radius:12px;padding:8px 10px;cursor:pointer;background:#fff}
+.tamCard.on{border-color:var(--dark);background:#fafaf9}
+.tamCard b{font-size:16px}
+.tamCard small{display:block;color:var(--muted);font-size:12px}
+.fichaGrid{display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:14px;align-items:start}
+@media(max-width:760px){.fichaGrid{grid-template-columns:1fr}}
+.fichaTab td{vertical-align:middle}
+.fichaTab input.qtd{width:90px;padding:6px;text-align:right}
+.barra2{height:8px;background:#f5f5f4;border-radius:4px;overflow:hidden;min-width:60px}
+.barra2 i{display:block;height:100%;background:var(--brand)}
+.addLinha{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;gap:8px;margin-top:10px}
+.painelRes{background:#f5f5f4;border-radius:12px;padding:12px}
+.painelRes .linha{padding:4px 0}
+.cmv{font-weight:900;border-radius:6px;padding:1px 7px}
+.cmv.ok{background:#dcfce7;color:#166534}
+.cmv.medio{background:#fef3c7;color:#92400e}
+.cmv.alto{background:#fee2e2;color:#991b1b}
+.semFicha{color:var(--warn);font-weight:700}
+.copiar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font-size:13px}
+.copiar select,.copiar input{width:auto;padding:6px}
 .semana td{padding:5px 6px}
 .semana input[type=time]{width:auto;padding:7px}
 .semana input[type=checkbox]{width:22px;height:22px}
@@ -183,6 +206,40 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
         <div id="movs" class="rolar" style="margin-top:10px"></div>
       </div>
     </section>
+
+    <!-- ================= FICHA TÉCNICA ================= -->
+    <section id="aba-fichas" class="hide">
+      <div id="fichaVazio" class="aviso hide">Importe o cardápio em <b>📦 Produtos & Estoque</b> para montar as fichas dos sabores.</div>
+      <div class="card" id="cardInsumos">
+        <h2>🧂 Insumos <span class="muted" style="font-weight:400">(custos privados — só quem está logado vê)</span></h2>
+        <div class="datas" style="margin-top:0">
+          <input id="insBusca" placeholder="🔎 Buscar insumo" oninput="renderInsumos()" style="flex:1;min-width:160px">
+          <select id="insCat" onchange="renderInsumos()"></select>
+          <button class="btn sm" onclick="editarInsumo(null)">🆕 Novo insumo</button>
+          <button class="btn sm sec" id="btnExemplo" onclick="carregarExemplo()">📥 Carregar insumos de exemplo</button>
+        </div>
+        <div id="listaInsumos" class="rolar" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <h2>🧱 Base comum e CMV alvo</h2>
+        <div class="muted">Base comum = o que toda pizza leva (ex.: massa, molho, caixa, gás). Entra no custo de todos os sabores, por tamanho. Se preferir, lance tudo direto em cada ficha e deixe a base vazia.</div>
+        <div id="resumoBase" style="margin:10px 0;font-weight:700"></div>
+        <div class="cfg">
+          <button class="btn dark" onclick="abrirFicha('_base','G')">✏️ Editar base comum</button>
+          <div><label for="cmvAlvo">CMV alvo % (preço sugerido = custo ÷ CMV alvo)</label><input id="cmvAlvo" type="number" min="5" max="90" step="1"></div>
+          <button class="btn sec" onclick="salvarCmvAlvo()">Salvar</button>
+        </div>
+      </div>
+      <div class="card" id="cardFichas">
+        <h2>📋 Fichas técnicas</h2>
+        <div class="datas" style="margin-top:0">
+          <label style="margin:0" for="ordFichas">Ordenar por</label>
+          <select id="ordFichas" onchange="renderTabelaFichas()"><option value="lucro">Lucro (maior primeiro)</option><option value="cmv">CMV % (maior primeiro)</option><option value="nome">Nome</option></select>
+          <button class="btn sm sec" onclick="exportarFichasCSV()">⬇️ Exportar CSV</button>
+        </div>
+        <div id="tabFichas" class="rolar" style="margin-top:10px"></div>
+      </div>
+    </section>
   </div>
 </main>
 
@@ -197,6 +254,7 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
 <script src="js/catalogo.js"></script>
+<script src="js/ficha.js"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
@@ -223,7 +281,12 @@ DB.observarUsuario(u => {
   if (logado) {
     mostrarAba(aba);
     carregar();
-    if (!iniciado) { iniciado = true; Catalogo.iniciar(() => { renderProdutos(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); }); }
+    if (!iniciado) {
+      iniciado = true;
+      const tudo = () => { renderProdutos(); renderAbaFichas(); if (fe) renderFicha(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); };
+      Catalogo.iniciar(tudo);
+      Ficha.iniciar(tudo);   // insumos e fichas (privados)
+    }
   }
 });
 async function entrar() {
@@ -236,9 +299,10 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 function mostrarAba(a) {
   aba = a;
   try { localStorage.setItem('cdp_gestao_aba', a); } catch { }
-  document.getElementById('abas').innerHTML = [['relatorios', '📊 Relatórios'], ['produtos', '📦 Produtos & Estoque']]
+  document.getElementById('abas').innerHTML = [['relatorios', '📊 Relatórios'], ['produtos', '📦 Produtos & Estoque'], ['fichas', '📋 Ficha técnica']]
     .map(([id, n]) => `<button class="tab ${id === a ? 'on' : ''}" onclick="mostrarAba('${id}')">${n}</button>`).join('');
-  ['relatorios', 'produtos'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
+  ['relatorios', 'produtos', 'fichas'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
+  if (a === 'fichas') renderAbaFichas();
   if (a === 'produtos') { renderProdutos(); if (!document.getElementById('movs').innerHTML) carregarMov(); }
 }
 
@@ -280,15 +344,17 @@ const br = iso => iso.split('-').reverse().join('/');
 function custoItem(it) {
   if (it.custoUnitario != null && (it.custoUnitario || it.custoExtras)) return { v: it.custoUnitario + (it.custoExtras || 0), est: false };
   if (it.tipo === 'produto') { const d = Catalogo.doc(it.id); if (d && (d.custoUnitario || d.custosExtras)) return { v: (d.custoUnitario || 0) + (d.custosExtras || 0), est: true }; }
-  if (it.tipo === 'pizza') { const c = Catalogo.custoPizza(it); if (c) return { v: c, est: true }; }
+  // pizza sem custo gravado (pedido antigo): ficha técnica atual, senão o custo manual do sabor — "estimado"
+  if (it.tipo === 'pizza') { const f = Ficha.custoItem(it), c = f != null ? f : Catalogo.custoPizza(it); if (c) return { v: c, est: true }; }
   return null;
 }
 
 function calcular(lista, de, ate) {
   const r = {
     faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, naoEntregues: 0, taxas: 0,
-    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {},
-    lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {}
+    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}, adicionais: {},
+    lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {},
+    cmvPizzas: 0, receitaPizzas: 0, pizzasComCusto: 0, estPizzas: false
   };
   // todos os dias do período (dias sem venda aparecem zerados)
   for (let d = new Date(de + 'T12:00'); isoDe(d) <= ate; d.setDate(d.getDate() + 1)) r.dias[isoDe(d)] = { valor: 0, qtd: 0 };
@@ -319,6 +385,9 @@ function calcular(lista, de, ate) {
       if (it.tipo === 'pizza') {
         it.sabores.forEach(s => { r.sabores[s] = (r.sabores[s] || 0) + q / it.sabores.length; });   // meio a meio = ½ por sabor
         r.tamanhos[it.tamanho] = (r.tamanhos[it.tamanho] || 0) + q;
+        // adicionais: quantidade e receita (pedido antigo "adicional: true" conta como Catupiry / Cheddar)
+        const lista = it.adicionais || (it.adicional ? [{ nome: CARDAPIO.nomeAdicional, preco: (Preco.tamanho(it.tamanho) || {}).adicional || 0 }] : []);
+        lista.forEach(a => { const n = (Preco.adicional(a.id) || a).nome || a.nome; soma(r.adicionais, n, (a.preco != null ? a.preco : Preco.precoAdicional(a, it.tamanho)) * q, q); });
       } else {
         const nome = Preco.descricao(it);
         r.produtos[nome] = (r.produtos[nome] || 0) + q;
@@ -332,6 +401,7 @@ function calcular(lista, de, ate) {
       const l = r.lucro[nome] = r.lucro[nome] || { qtd: 0, receita: 0, custo: 0, est: false };
       l.qtd += q; l.receita += receita; l.custo += c.v * q; l.est = l.est || c.est;
       r.cmv += c.v * q; r.receitaComCusto += receita; r.estimado = r.estimado || c.est;
+      if (it.tipo === 'pizza') { r.cmvPizzas += c.v * q; r.receitaPizzas += receita; r.pizzasComCusto += q; r.estPizzas = r.estPizzas || c.est; }
     });
   });
   r.ticketMedio = r.pedidos ? r.faturamento / r.pedidos : 0;
@@ -370,7 +440,9 @@ function render(r) {
       ${kpi('❌ Cancelados', r.cancelados, (r.cancelados ? dinheiro(r.valorCancelado) + ' não faturados' : '') + (r.naoEntregues ? ` • ${r.naoEntregues} não entregue(s) pendente(s)` : ''))}
       ${kpi('🛵 Taxas de entrega', dinheiro(r.taxas))}
       ${kpi('📦 CMV', dinheiro(r.cmv), r.receitaComCusto ? `${pct(r.cmv / r.receitaComCusto * 100)} da receita desses itens` : 'cadastre custos em Produtos')}
-      ${kpi('💹 Lucro bruto', dinheiro(lucroBruto), 'itens com custo cadastrado')}
+      ${kpi('💹 Lucro bruto', dinheiro(lucroBruto), r.receitaComCusto ? `CMV ${pct(r.cmv / r.receitaComCusto * 100)} do período (pizzas + produtos)` : 'itens com custo cadastrado')}
+      <div class="kpi" id="kpiCmvPizzas"><small>🍕 CMV das pizzas</small><b>${dinheiro(r.cmvPizzas)}</b><span>${r.receitaPizzas ? pct(r.cmvPizzas / r.receitaPizzas * 100) + ' da receita' : 'monte as fichas técnicas'} • ${num(r.pizzasComCusto)} pizza(s)${r.estPizzas ? ' • * estimado' : ''}</span></div>
+      <div class="kpi" id="kpiLucroPizzas"><small>🍕 Lucro bruto das pizzas</small><b>${dinheiro(r.receitaPizzas - r.cmvPizzas)}</b><span>receita ${dinheiro(r.receitaPizzas)} − CMV</span></div>
     </div>
 
     <div class="card">
@@ -410,6 +482,7 @@ function render(r) {
       <div class="card"><h2>💳 Formas de pagamento</h2>${barras(qv(r.formas, FORMAS), dinheiro)}</div>
       <div class="card"><h2>🍕 Pizzas por sabor</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div>${barras(ordenar(r.sabores), num)}</div>
       <div class="card"><h2>📏 Pizzas por tamanho</h2>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, r.tamanhos[t.id] || 0]).filter(x => x[1]), num)}</div>
+      <div class="card" id="cardAdicionaisRel"><h2>➕ Adicionais da pizza</h2>${barras(Object.entries(r.adicionais).sort((a, b) => b[1].valor - a[1].valor).map(([n, x]) => [n, x.valor, `${x.qtd} un`]), dinheiro)}</div>
       <div class="card"><h2>🥤 Bebidas, sachês e outros</h2>${barras(ordenar(r.produtos), num)}</div>
       <div class="card"><h2>🛵 Entrega × Retirada × Balcão</h2>${barras(qv(r.tipos, TIPOS), dinheiro)}
         <div class="linha total"><span>Taxas de entrega arrecadadas</span><span>${dinheiro(r.taxas)}</span></div></div>
@@ -480,8 +553,9 @@ function renderProdutos() {
 
   renderHorario();
 
-  const prods = todos.filter(d => d.tipo !== 'sabor');
-  const controlados = prods.filter(d => d.controlaEstoque);
+  const prods = todos.filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');
+  const adics = todos.filter(d => d.tipo === 'adicional');
+  const controlados = prods.concat(adics).filter(d => d.controlaEstoque);
   const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
   const negativos = controlados.filter(d => (d.estoqueAtual || 0) < 0);
   const parado = controlados.reduce((s, d) => s + Math.max(0, d.estoqueAtual || 0) * (d.custoUnitario || 0), 0);
@@ -502,6 +576,17 @@ function renderProdutos() {
       <td class="r muted">${['P', 'M', 'G'].map(t => (d.custos || {})[t] != null && (d.custos || {})[t] !== '' ? dinheiro(d.custos[t]) : '—').join(' / ')}</td>
       <td class="r"><button class="btn sm sec" onclick="editarSabor('${d.id}')">✏️</button></td></tr>`).join('')}
   </table></div></div>`;
+  // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho, estoque opcional
+  h += `<div class="card" id="cardAdicionais"><h2>➕ Adicionais da pizza</h2>
+    ${adics.length ? `<div class="rolar"><table>
+      <tr><th>Adicional</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Estoque</th><th></th></tr>
+      ${adics.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+        ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
+        <td class="r">${fmtEstoque(d)}</td><td class="r"><button class="btn sm sec" onclick="editarAdicional('${d.id}')">✏️</button></td></tr>`).join('')}
+    </table></div>` : `<div class="aviso">A loja está usando os adicionais padrão (Catupiry e Cheddar: P R$ 3 • M R$ 5 • G R$ 7). Crie-os aqui para poder editar.</div>
+      <button class="btn dark" onclick="criarAdicionaisPadrao()">➕ Criar Catupiry e Cheddar</button>`}
+    <button class="btn sec" style="margin-top:10px" onclick="editarAdicional(null)">🆕 Novo adicional</button>
+    <div class="muted" style="margin-top:6px">O cliente escolhe quantos quiser (1 de cada por pizza). Preço = pizza (regra do meio a meio) + soma dos adicionais do tamanho.</div></div>`;
   const cats = [];
   prods.forEach(d => { const c = d.categoria || 'Outros'; if (!cats.includes(c)) cats.push(c); });
   cats.forEach(c => {
@@ -607,8 +692,11 @@ async function emergencia(fechar) {
 }
 
 /* ---------------- MODAL ---------------- */
-function abrirModal(html) { document.getElementById('modalConteudo').innerHTML = html; document.getElementById('modal').classList.add('on'); }
-function fecharModal() { document.getElementById('modal').classList.remove('on'); }
+function abrirModal(html) { fe = null; document.getElementById('modalConteudo').classList.remove('largo'); document.getElementById('modalConteudo').innerHTML = html; document.getElementById('modal').classList.add('on'); }
+function fecharModal() {
+  if (fe && fe.sujo && !confirm('Fechar sem salvar a ficha técnica?')) return;
+  fe = null; document.getElementById('modal').classList.remove('on');
+}
 const campo = (id, rotulo, valor, extra = '') => `<div><label for="${id}">${rotulo}</label><input id="${id}" value="${esc(valor == null ? '' : valor)}" ${extra}></div>`;
 const caixa = (id, rotulo, on) => `<label class="chk"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}> ${rotulo}</label>`;
 
@@ -616,7 +704,7 @@ let editando = null;   // id do produto em edição (null = novo)
 function editarProduto(id) {
   editando = id;
   const d = id ? Catalogo.doc(id) : { tipo: 'produto', ativo: true, controlaEstoque: true, unidade: 'un', estoqueAtual: 0, estoqueMinimo: 0, custoUnitario: 0, custosExtras: 0, taxaMaquininha: null, margemDesejada: 30, precoVenda: 0 };
-  const cats = [...new Set(Catalogo.todos().filter(x => x.tipo !== 'sabor').map(x => x.categoria))];
+  const cats = [...new Set(Catalogo.todos().filter(x => x.tipo !== 'sabor' && x.tipo !== 'adicional').map(x => x.categoria))];
   abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo produto'}</h2>
     <div class="grid2">
       ${campo('pNome', 'Nome', d.nome)}
@@ -697,16 +785,19 @@ function editarSabor(id) {
   editando = id;
   const d = Catalogo.doc(id), pr = d.precos || {}, cu = d.custos || {};
   abrirModal(`<h2>🍕 ${esc(d.nome)}</h2>
+    ${abasFicha('dados')}
+    <div id="painelDados">
     ${campo('sNome', 'Nome do sabor', d.nome)}
     ${campo('sDesc', 'Descrição (opcional)', d.desc || '')}
     ${caixa('sAtivo', 'Ativo (aparece à venda)', d.ativo !== false)}
     <h3 style="margin-top:14px">Preço de venda</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sP' + t, t, pr[t], 'inputmode="decimal"')).join('')}</div>
-    <h3 style="margin-top:14px">Custo (opcional — para a ficha técnica futura)</h3>
+    <h3 style="margin-top:14px">Custo manual (opcional — a ficha técnica tem prioridade)</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sC' + t, t, cu[t], 'inputmode="decimal" placeholder="—"')).join('')}</div>
-    <div class="muted" style="margin-top:6px">Sabores não controlam estoque. O custo, se preenchido, entra no lucro bruto dos relatórios.</div>
+    <div class="muted" style="margin-top:6px">Sabores não controlam estoque. Monte a aba 📋 Ficha técnica para calcular o custo pelos insumos.</div>
     <button class="btn full" style="margin-top:14px" onclick="salvarSaborForm()">Salvar</button>
-    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>
+    </div><div id="painelFicha" class="hide"></div>`);
 }
 async function salvarSaborForm() {
   const d = Catalogo.doc(editando), nome = val('sNome').toUpperCase();
@@ -719,6 +810,330 @@ async function salvarSaborForm() {
   if (nome.length < 2) return toast('Informe o nome.');
   if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
   try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* =========================================================
+   FICHA TÉCNICA (insumos, fichas por tamanho, base comum, resultado)
+   ========================================================= */
+const TAMS = Ficha.TAMANHOS;
+const pct1 = v => v == null ? '—' : v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+const qtdTxt = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 3 });
+const cmvTag = cmv => `<span class="cmv ${Ficha.corCmv(cmv)}">${pct1(cmv)}</span>`;
+const dataBr = ms => ms ? new Date(ms).toLocaleDateString('pt-BR') : '—';
+
+function renderAbaFichas() {
+  if (aba !== 'fichas') return;
+  document.getElementById('fichaVazio').classList.toggle('hide', Catalogo.doBanco());
+  renderInsumos(); renderBase(); renderTabelaFichas();
+}
+
+/* ---------- insumos ---------- */
+function renderInsumos() {
+  const sel = document.getElementById('insCat'), atual = sel.value;
+  sel.innerHTML = '<option value="">Todas as categorias</option>' + Ficha.CATEGORIAS.map(c => `<option>${c}</option>`).join('');
+  sel.value = atual;
+  const busca = val('insBusca').toLowerCase(), lista = Ficha.insumos();
+  document.getElementById('btnExemplo').classList.toggle('hide', lista.length > 0);
+  const l = lista.filter(i => (!busca || i.nome.toLowerCase().includes(busca)) && (!atual || i.categoria === atual));
+  document.getElementById('listaInsumos').innerHTML = !lista.length ? '<div class="muted">Nenhum insumo cadastrado. Cadastre ou carregue os de exemplo.</div>' : `<table>
+    <tr><th>Insumo</th><th>Categoria</th><th class="r">Embalagem</th><th class="r">Custo por unidade</th><th class="r">Perda</th><th>Fornecedor</th><th>Preço de</th><th class="r">Usado em</th><th></th></tr>
+    ${l.map(i => `<tr class="${i.ativo === false ? 'inativo' : ''}" data-ins="${esc(i.id)}"><td><b>${esc(i.nome)}</b></td><td>${esc(i.categoria || '')}</td>
+      <td class="r">${dinheiro(i.precoCompra)} / ${qtdTxt(i.qtdEmbalagem)} ${esc(i.unidade)}</td>
+      <td class="r"><b>${dinheiro(Ficha.custoUnit(i))}/${esc(i.unidade)}</b></td><td class="r">${i.perda ? pct1(Number(i.perda)) : '—'}</td>
+      <td>${esc(i.fornecedor || '')}</td><td>${dataBr(i.atualizadoEm)}</td><td class="r">${Ficha.usoInsumo(i.id)} ficha(s)</td>
+      <td class="r" style="white-space:nowrap"><button class="btn sm" onclick="atualizarPreco('${i.id}')">💲 Atualizar preço</button> <button class="btn sm sec" onclick="editarInsumo('${i.id}')">✏️</button></td></tr>`).join('')}
+  </table>`;
+}
+async function carregarExemplo() {
+  if (!confirm('Cadastrar os insumos de exemplo (muçarela, bacon, frango, gás, caixa, milho, azeitona, creme de leite, massa, molho)? Depois você edita ou desativa.')) return;
+  try { for (const i of Ficha.listaExemplo()) if (!Ficha.insumo(i.id)) await DB.salvarInsumo(i.id, i); toast('✅ Insumos de exemplo cadastrados.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+let insEditando = null;
+function editarInsumo(id) {
+  insEditando = id;
+  const d = id ? Ficha.insumo(id) : { ativo: true, unidade: 'kg', categoria: 'Outros', qtdEmbalagem: 1, perda: 0 };
+  abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo insumo'}</h2>
+    <div class="grid2">${campo('iNome', 'Nome', d.nome || '', 'placeholder="Ex.: Queijo muçarela"')}
+      <div><label for="iCat">Categoria</label><select id="iCat">${Ficha.CATEGORIAS.map(c => `<option ${c === d.categoria ? 'selected' : ''}>${c}</option>`).join('')}</select></div></div>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">
+      <div><label for="iUn">Unidade de medida</label><select id="iUn" onchange="calcInsumo()">${Ficha.UNIDADES.map(u => `<option ${u === d.unidade ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+      ${campo('iPreco', 'Preço de compra (R$)', d.precoCompra != null ? String(d.precoCompra).replace('.', ',') : '', `inputmode="decimal" oninput="calcInsumo()" ${id ? 'disabled' : ''}`)}
+      ${campo('iQtd', 'Quantidade da embalagem', d.qtdEmbalagem != null ? String(d.qtdEmbalagem).replace('.', ',') : '', `inputmode="decimal" oninput="calcInsumo()" ${id ? 'disabled' : ''}`)}
+    </div>
+    ${id ? '<div class="muted" style="margin-top:4px">Para mudar o preço use 💲 Atualizar preço (guarda o histórico).</div>' : '<div class="muted" style="margin-top:4px">Ex.: R$ 120 por botijão de 13 kg → preço 120, quantidade 13, unidade kg. Pacote de 50 caixas por R$ 63 → 63, 50, un.</div>'}
+    <div class="grid2">${campo('iPerda', 'Perda / rendimento % (opcional)', d.perda || '', 'inputmode="decimal" placeholder="Ex.: 10" oninput="calcInsumo()"')}${campo('iForn', 'Fornecedor', d.fornecedor || '')}</div>
+    ${caixa('iAtivo', 'Ativo', d.ativo !== false)}
+    <div class="calc" id="iCalc"></div>
+    ${id && (d.historico || []).length ? `<details style="margin-top:8px"><summary>Histórico de preços</summary><table>${d.historico.slice().reverse().map(h => `<tr><td>${dataBr(h.em)}</td><td class="r">${dinheiro(h.precoCompra)} / ${qtdTxt(h.qtdEmbalagem)} ${esc(d.unidade)}</td></tr>`).join('')}</table></details>` : ''}
+    <button class="btn full" style="margin-top:14px" onclick="salvarInsumoForm()">Salvar</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  calcInsumo();
+}
+function calcInsumo() {
+  const un = val('iUn'), x = { precoCompra: numero(val('iPreco')) || 0, qtdEmbalagem: numero(val('iQtd')) || 0, perda: numero(val('iPerda')) || 0 };
+  const bruto = Ficha.custoUnit(Object.assign({}, x, { perda: 0 })), efet = Ficha.custoUnit(x);
+  document.getElementById('iCalc').innerHTML = x.qtdEmbalagem > 0
+    ? `<div class="linha"><span>Custo por ${esc(un)}</span><b>${dinheiro(bruto)}/${esc(un)}</b></div>${x.perda ? `<div class="linha"><span>Custo efetivo com ${pct1(x.perda)} de perda</span><b id="iEfet">${dinheiro(efet)}/${esc(un)}</b></div>` : ''}`
+    : '<div class="muted">Informe preço e quantidade da embalagem.</div>';
+}
+async function salvarInsumoForm() {
+  const nome = val('iNome'), perda = numero(val('iPerda')) || 0;
+  if (nome.length < 2) return toast('Informe o nome.');
+  if (perda < 0 || perda >= 95) return toast('Perda deve ficar entre 0 e 95%.');
+  const campos = { nome, categoria: val('iCat'), unidade: val('iUn'), perda, fornecedor: val('iForn'), ativo: document.getElementById('iAtivo').checked };
+  let id = insEditando;
+  if (!id) {
+    const preco = numero(val('iPreco')), qtd = numero(val('iQtd'));
+    if (preco == null || preco < 0) return toast('Informe o preço de compra.');
+    if (!(qtd > 0)) return toast('Informe a quantidade da embalagem.');
+    const base = 'ins-' + (Catalogo.slug(nome) || 'item');
+    id = base; for (let i = 2; Ficha.insumo(id); i++) id = base + '-' + i;
+    Object.assign(campos, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico: [] });
+  }
+  try { await DB.salvarInsumo(id, campos); fecharModal(); toast('✅ Insumo salvo.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+function atualizarPreco(id) {
+  insEditando = id;
+  const d = Ficha.insumo(id);
+  abrirModal(`<h2>💲 Atualizar preço — ${esc(d.nome)}</h2>
+    <div class="muted">Atual: ${dinheiro(d.precoCompra)} / ${qtdTxt(d.qtdEmbalagem)} ${esc(d.unidade)} = <b>${dinheiro(Ficha.custoUnit(d))}/${esc(d.unidade)}</b> (desde ${dataBr(d.atualizadoEm)})</div>
+    <div class="grid2">${campo('uPreco', 'Novo preço de compra (R$)', '', 'inputmode="decimal" oninput="calcPreco()"')}${campo('uQtd', `Quantidade da embalagem (${esc(d.unidade)})`, String(d.qtdEmbalagem).replace('.', ','), 'inputmode="decimal" oninput="calcPreco()"')}</div>
+    <div class="calc" id="uCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarPreco()">Atualizar e recalcular fichas</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  calcPreco();
+}
+function calcPreco() {
+  const d = Ficha.insumo(insEditando), x = Object.assign({}, d, { precoCompra: numero(val('uPreco')) || 0, qtdEmbalagem: numero(val('uQtd')) || 0 });
+  document.getElementById('uCalc').innerHTML = x.precoCompra > 0 && x.qtdEmbalagem > 0
+    ? `<div class="linha"><span>Novo custo</span><b>${dinheiro(Ficha.custoUnit(d))} → ${dinheiro(Ficha.custoUnit(x))}/${esc(d.unidade)}</b></div><div class="muted">Recalcula na hora ${Ficha.usoInsumo(d.id)} ficha(s) que usam este insumo.</div>` : '';
+}
+async function salvarPreco() {
+  const d = Ficha.insumo(insEditando), preco = numero(val('uPreco')), qtd = numero(val('uQtd'));
+  if (preco == null || preco < 0) return toast('Informe o novo preço.');
+  if (!(qtd > 0)) return toast('Informe a quantidade da embalagem.');
+  const historico = (d.historico || []).concat([{ em: d.atualizadoEm || Date.now(), precoCompra: d.precoCompra, qtdEmbalagem: d.qtdEmbalagem }]);
+  try { await DB.salvarInsumo(d.id, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico }); fecharModal(); toast('✅ Preço atualizado — fichas recalculadas.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* ---------- base comum, CMV alvo e visão geral ---------- */
+function renderBase() {
+  const n = TAMS.reduce((s, t) => s + (Ficha.base()[t] || []).length, 0);
+  document.getElementById('resumoBase').innerHTML = n ? `Base comum: ${TAMS.map(t => `${t} ${dinheiro(Ficha.custoBase(t))}`).join(' • ')}` : '<span class="muted">Base comum vazia (cada ficha leva tudo).</span>';
+  const el = document.getElementById('cmvAlvo');
+  if (document.activeElement !== el) el.value = Ficha.cmvAlvo();
+}
+async function salvarCmvAlvo() {
+  const v = numero(val('cmvAlvo'));
+  if (!(v >= 5 && v <= 90)) return toast('CMV alvo entre 5 e 90%.');
+  try { await DB.salvarFicha('_base', { cmvAlvo: v }); toast('✅ CMV alvo salvo.'); } catch (e) { console.error(e); toast('Erro ao salvar.'); }
+}
+// Linhas da visão geral: sabores e adicionais × P/M/G
+function linhasFichas() {
+  const l = [];
+  Catalogo.todos().filter(d => d.tipo === 'sabor' || d.tipo === 'adicional').forEach(d => TAMS.forEach(t => {
+    const venda = Number((d.precos || {})[t]) || 0;
+    const custo = d.tipo === 'sabor' ? Ficha.custoSabor(d.id, t) : Ficha.custoFicha(d.id, t);
+    const r = custo == null ? null : Ficha.resultado(venda, custo);
+    l.push({ id: d.id, nome: d.nome, tipo: d.tipo, tam: t, venda, custo, r, ativo: d.ativo !== false });
+  }));
+  return l;
+}
+function renderTabelaFichas() {
+  const ord = val('ordFichas'), l = linhasFichas();
+  const chave = { lucro: x => x.r ? -x.r.lucro : 1e9, cmv: x => x.r ? -x.r.cmv : 1e9, nome: () => 0 }[ord];
+  const grupo = tipo => l.filter(x => x.tipo === tipo).sort((a, b) => chave(a) - chave(b) || a.nome.localeCompare(b.nome) || a.tam.localeCompare(b.tam));
+  const tabela = (rows, titulo) => rows.length ? `<h3 style="margin-top:8px">${titulo}</h3><table>
+    <tr><th>Item</th><th>Tam.</th><th class="r">Venda</th><th class="r">Custo</th><th class="r">CMV %</th><th class="r">Lucro bruto</th><th></th></tr>
+    ${rows.map(x => `<tr class="${x.ativo ? '' : 'inativo'}"><td><b>${esc(x.nome)}</b></td><td>${x.tam}</td><td class="r">${dinheiro(x.venda)}</td>
+      ${x.r ? `<td class="r">${dinheiro(x.custo)}</td><td class="r">${cmvTag(x.r.cmv)}</td><td class="r ${x.r.lucro < 0 ? 'neg' : ''}"><b>${dinheiro(x.r.lucro)}</b></td>`
+        : '<td class="r semFicha" colspan="3">⚠️ sem ficha</td>'}
+      <td class="r"><button class="btn sm sec" onclick="abrirFicha('${x.id}','${x.tam}')">📋 Ficha</button></td></tr>`).join('')}</table>` : '';
+  const sem = l.filter(x => !x.r && x.ativo).length, alto = l.filter(x => x.r && x.r.cmv > 45).length;
+  document.getElementById('tabFichas').innerHTML = !l.length ? '<div class="muted">Importe o cardápio primeiro.</div>'
+    : `<div class="muted">${sem ? `<span class="semFicha">${sem} sabor/tamanho sem ficha</span> • ` : ''}${alto ? `<span class="neg">${alto} com CMV acima de 45%</span> • ` : ''}Lucro bruto = venda − custo − taxa da maquininha (${pct1(Number(CARDAPIO.loja.taxaMaquininha) || 0)}).</div>`
+      + tabela(grupo('sabor'), '🍕 Sabores') + tabela(grupo('adicional'), '➕ Adicionais');
+}
+function exportarFichasCSV() {
+  const n = v => v == null ? '' : (Number(v) || 0).toFixed(2).replace('.', ',');
+  const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const linhas = [['Item', 'Tipo', 'Tamanho', 'Venda', 'Custo', 'CMV %', 'Taxa maquininha', 'Lucro bruto', 'Margem %']]
+    .concat(linhasFichas().map(x => [x.nome, x.tipo, x.tam, n(x.venda), n(x.custo), n(x.r && x.r.cmv), n(x.r && x.r.taxa), n(x.r && x.r.lucro), n(x.r && x.r.margem)]));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'fichas_tecnicas.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/* ---------- editor da ficha (aba do ✏️ do sabor/adicional, ou base comum) ---------- */
+let fe = null;   // { id, tipo: 'sabor'|'adicional'|'base', tam, linhas: { P, M, G }, sujo }
+const abasFicha = ativa => `<div class="tabs abas" style="position:static">
+  <button class="tab ${ativa === 'dados' ? 'on' : ''}" id="tabDados" onclick="abaModal('dados')">📝 Dados</button>
+  <button class="tab ${ativa === 'ficha' ? 'on' : ''}" id="tabFicha" onclick="abaModal('ficha')">📋 Ficha técnica</button></div>`;
+function abaModal(a) {
+  document.getElementById('painelDados').classList.toggle('hide', a !== 'dados');
+  document.getElementById('painelFicha').classList.toggle('hide', a !== 'ficha');
+  document.getElementById('tabDados').classList.toggle('on', a === 'dados');
+  document.getElementById('tabFicha').classList.toggle('on', a === 'ficha');
+  document.getElementById('modalConteudo').classList.toggle('largo', a === 'ficha');
+  if (a === 'ficha') { if (!fe) iniciarFicha(editando); renderFicha(); }
+}
+function iniciarFicha(id, tam) {
+  const f = id === '_base' ? Ficha.base() : (Ficha.ficha(id) || {});
+  const tipo = id === '_base' ? 'base' : (Catalogo.doc(id) || {}).tipo === 'adicional' ? 'adicional' : 'sabor';
+  fe = { id, tipo, tam: tam || 'G', linhas: {}, sujo: false };
+  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+}
+// abre direto na ficha (visão geral / base comum)
+function abrirFicha(id, tam) {
+  if (id === '_base') {
+    abrirModal('<h2>🧱 Base comum (toda pizza)</h2><div id="painelFicha"></div>');
+    document.getElementById('modalConteudo').classList.add('largo');
+    iniciarFicha('_base', tam); renderFicha(); return;
+  }
+  const d = Catalogo.doc(id);
+  if (!d) return toast('Crie o item em 📦 Produtos & Estoque primeiro.');
+  if (d.tipo === 'adicional') editarAdicional(id); else editarSabor(id);
+  iniciarFicha(id, tam); abaModal('ficha');
+}
+const vendaFe = t => fe.tipo === 'base' ? null : Number(((Catalogo.doc(fe.id) || {}).precos || {})[t]) || 0;
+const custoFe = t => Ficha.custoLinhas(fe.linhas[t]) + (fe.tipo === 'sabor' ? Ficha.custoBase(t) : 0);
+function renderFicha() {
+  const el = document.getElementById('painelFicha');
+  if (!el || !fe) return;
+  const t = fe.tam, linhas = fe.linhas[t];
+  linhas.sort((a, b) => Ficha.custoLinha(b) - Ficha.custoLinha(a));   // maior custo primeiro
+  const base = fe.tipo === 'sabor' ? Ficha.custoBase(t) : 0, total = custoFe(t);
+  const pctDe = v => total > 0 ? v / total * 100 : 0;
+  const barra = v => `<div style="display:flex;gap:6px;align-items:center"><div class="barra2" style="flex:1"><i style="width:${Math.min(100, pctDe(v)).toFixed(1)}%"></i></div><span style="min-width:40px;text-align:right">${pctDe(v).toFixed(0)}%</span></div>`;
+  const outros = fe.tipo === 'base' ? [] : Catalogo.todos().filter(d => d.tipo === fe.tipo && d.id !== fe.id && Ficha.ficha(d.id));
+  const r = fe.tipo === 'base' ? null : Ficha.resultado(vendaFe(t), total);
+  el.innerHTML = `
+    <div class="tamCards">${TAMS.map(x => { const v = vendaFe(x), c = custoFe(x), rr = v != null && fe.linhas[x].length ? Ficha.resultado(v, c) : null;
+      return `<div class="tamCard ${x === t ? 'on' : ''}" onclick="feTam('${x}')"><b>${x}</b>${v != null ? ` <small>Venda ${dinheiro(v)}</small>` : ''}<small>Custo ${fe.linhas[x].length || (fe.tipo === 'sabor' && Ficha.custoBase(x)) ? dinheiro(c) : '—'} ${rr ? cmvTag(rr.cmv) : ''}</small></div>`; }).join('')}</div>
+    <div class="fichaGrid"><div>
+      <table class="fichaTab" id="fichaTab">
+        <tr><th>Insumo</th><th class="r">Qtde.</th><th>Medida</th><th class="r">Custo</th><th style="width:30%">% do custo</th><th></th></tr>
+        ${linhas.map((l, i) => { const ins = Ficha.insumo(l.insumoId) || { nome: '(insumo removido)', unidade: '' }, c = Ficha.custoLinha(l);
+          return `<tr><td>${esc(ins.nome)}${ins.ativo === false ? ' <span class="muted">(inativo)</span>' : ''}</td>
+            <td class="r"><input class="qtd" value="${qtdTxt(l.qtd)}" onchange="feQtd(${i},this.value)"></td><td>${esc(ins.unidade)}</td>
+            <td class="r">${dinheiro(c)}</td><td>${barra(c)}</td><td class="r"><button class="btn sm sec" title="Excluir" onclick="feRem(${i})">🗑️</button></td></tr>`; }).join('')}
+        ${base ? `<tr><td><i>🧱 Base comum (${t})</i></td><td></td><td></td><td class="r">${dinheiro(base)}</td><td>${barra(base)}</td><td></td></tr>` : ''}
+        <tr><td colspan="3"><b>Custo</b></td><td class="r"><b id="feTotal">${dinheiro(total)}</b></td><td colspan="2"></td></tr>
+      </table>
+      ${!linhas.length && !base ? '<div class="muted" style="margin-top:6px">Nenhum insumo neste tamanho ainda.</div>' : ''}
+      <datalist id="dlInsumos">${Ficha.insumos().filter(i => i.ativo !== false).map(i => `<option value="${esc(i.nome)}">${esc(i.unidade)} • ${dinheiro(Ficha.custoUnit(i))}/${esc(i.unidade)}</option>`).join('')}</datalist>
+      <div class="addLinha">
+        <input id="feBusca" list="dlInsumos" placeholder="Pesquisar insumo e adicionar...">
+        <input id="feQtdNova" placeholder="Qtde. (ex.: 0,280 ou 280g)" onkeydown="if(event.key==='Enter')feAdd()">
+        <button class="btn sm" onclick="feAdd()">➕ Adicionar</button>
+      </div>
+      <div class="copiar">📄 Copiar ficha de outro tamanho:
+        <select id="feDe">${TAMS.filter(x => x !== t).map(x => `<option>${x}</option>`).join('')}</select>
+        × <input id="feFator" value="1" inputmode="decimal" style="width:70px" title="fator de escala (ex.: 0,75)">
+        <button class="btn sm sec" onclick="feCopiarTam()">Copiar para ${t}</button>
+      </div>
+      ${outros.length ? `<div class="copiar">🍕 Copiar de outro ${fe.tipo === 'sabor' ? 'sabor' : 'adicional'}:
+        <select id="feOutro">${outros.map(d => `<option value="${esc(d.id)}">${esc(d.nome)}</option>`).join('')}</select>
+        <button class="btn sm sec" onclick="feCopiarOutro()">Copiar (P, M e G)</button></div>` : ''}
+    </div>
+    ${r ? `<div class="painelRes" id="feResultado"><h3>Resultado ${t}</h3>
+      <div class="linha"><span>Preço de venda</span><b>${dinheiro(r.venda)}</b></div>
+      <div class="linha"><span>Custo (CMV R$)</span><b>${dinheiro(r.custo)}</b></div>
+      <div class="linha"><span>CMV %</span>${cmvTag(r.cmv)}</div>
+      <div class="linha"><span>Maquininha (${pct1(Number(CARDAPIO.loja.taxaMaquininha) || 0)})</span><b>${dinheiro(r.taxa)}</b></div>
+      <div class="linha"><span>Lucro bruto</span><b class="${r.lucro < 0 ? 'neg' : ''}">${dinheiro(r.lucro)}</b></div>
+      <div class="linha"><span>Margem</span><b>${pct1(r.margem)}</b></div>
+      <div class="linha" style="border-top:1px solid #d6d3d1;margin-top:6px;padding-top:8px"><span>Preço sugerido (CMV ${pct1(Ficha.cmvAlvo())})</span><b>${dinheiro(r.sugerido)}</b></div>
+      <div class="muted" style="font-size:12px">CMV até 35% verde • até 45% amarelo • acima vermelho</div></div>`
+      : '<div class="painelRes muted">A base comum entra no custo de todos os sabores, por tamanho.</div>'}
+    </div>
+    <button class="btn full" style="margin-top:14px" onclick="feSalvar()">💾 Salvar ficha técnica</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Fechar</button>`;
+}
+function feTam(t) { fe.tam = t; renderFicha(); }
+function feMudou() { fe.sujo = true; renderFicha(); }
+function feQtd(i, txt) {
+  const l = fe.linhas[fe.tam][i], ins = Ficha.insumo(l.insumoId) || {};
+  const q = Ficha.lerQtd(txt, ins.unidade);
+  if (q == null || q <= 0) { toast('Quantidade inválida.'); return renderFicha(); }
+  l.qtd = q; feMudou();
+}
+function feRem(i) { fe.linhas[fe.tam].splice(i, 1); feMudou(); }
+function feAdd() {
+  const nome = val('feBusca').toLowerCase(), lista = Ficha.insumos().filter(i => i.ativo !== false);
+  const ins = lista.find(i => i.nome.toLowerCase() === nome) || (nome && lista.filter(i => i.nome.toLowerCase().includes(nome)).length === 1 ? lista.find(i => i.nome.toLowerCase().includes(nome)) : null);
+  if (!ins) return toast('Escolha um insumo da lista (cadastre em 🧂 Insumos).');
+  const q = Ficha.lerQtd(val('feQtdNova'), ins.unidade);
+  if (q == null || q <= 0) return toast(`Quantidade inválida (em ${ins.unidade}${ins.unidade === 'kg' ? ' — ou digite em g, ex.: 280g' : ''}).`);
+  const ja = fe.linhas[fe.tam].find(l => l.insumoId === ins.id);
+  if (ja) ja.qtd = Math.round((ja.qtd + q) * 100000) / 100000; else fe.linhas[fe.tam].push({ insumoId: ins.id, qtd: q });
+  feMudou();
+  setTimeout(() => document.getElementById('feBusca').focus(), 0);
+}
+function feCopiarTam() {
+  const de = val('feDe'), fator = numero(val('feFator')) || 1;
+  if (!fe.linhas[de].length) return toast(`A ficha ${de} está vazia.`);
+  if (fe.linhas[fe.tam].length && !confirm(`Substituir a ficha ${fe.tam} pela ${de} × ${String(fator).replace('.', ',')}?`)) return;
+  fe.linhas[fe.tam] = fe.linhas[de].map(l => ({ insumoId: l.insumoId, qtd: Math.round(l.qtd * fator * 100000) / 100000 }));
+  feMudou();
+}
+function feCopiarOutro() {
+  const f = Ficha.ficha(val('feOutro')) || {};
+  if (TAMS.some(t => fe.linhas[t].length) && !confirm('Substituir a ficha (P, M e G) pela do item escolhido?')) return;
+  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+  feMudou();
+}
+async function feSalvar() {
+  const dados = {};
+  TAMS.forEach(t => { dados[t] = fe.linhas[t].map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+  try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); }
+  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+
+/* ---------------- ADICIONAIS DA PIZZA ---------------- */
+async function criarAdicionaisPadrao() {
+  try {
+    for (const a of Catalogo.adicionaisPadrao(Catalogo.todos().length + 1)) { const { id, ...dados } = a; await DB.salvarProduto(id, dados); }
+    toast('✅ Catupiry e Cheddar criados.');
+  } catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+}
+function editarAdicional(id) {
+  editando = id;
+  const d = id ? Catalogo.doc(id) : { ativo: true, precos: {}, controlaEstoque: false, estoqueMinimo: 0, unidade: 'porção' };
+  abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo adicional'}</h2>
+    ${id ? abasFicha('dados') : ''}
+    <div id="painelDados">
+    ${campo('aNome', 'Nome', d.nome || '', 'placeholder="Ex.: Bacon"')}
+    ${caixa('aAtivo', 'Ativo (aparece na montagem da pizza)', d.ativo !== false)}
+    <h3 style="margin-top:14px">Preço por tamanho</h3>
+    <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('aP' + t, t, (d.precos || {})[t], 'inputmode="decimal"')).join('')}</div>
+    ${campo('aOrdem', 'Ordem na lista', d.ordem != null ? d.ordem : '', 'inputmode="decimal" placeholder="1, 2, 3..."')}
+    ${caixa('aControla', 'Controla estoque (some da montagem quando zerar; entrada pelo ➕ Entrada de compra)', !!d.controlaEstoque)}
+    ${campo('aMin', 'Estoque mínimo (alerta)', d.estoqueMinimo || 0, 'inputmode="decimal"')}
+    <button class="btn full" style="margin-top:14px" onclick="salvarAdicionalForm()">Salvar</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>
+    </div>${id ? '<div id="painelFicha" class="hide"></div>' : ''}`);
+}
+async function salvarAdicionalForm() {
+  const nome = val('aNome'), precos = {};
+  if (nome.length < 2) return toast('Informe o nome.');
+  for (const t of ['P', 'M', 'G']) { const v = numero(val('aP' + t)); if (v == null || v < 0) return toast(`Informe o preço ${t}.`); precos[t] = v; }
+  const campos = { tipo: 'adicional', nome, categoria: 'Adicionais', ativo: document.getElementById('aAtivo').checked, precos,
+    controlaEstoque: document.getElementById('aControla').checked, estoqueMinimo: numero(val('aMin')) || 0, unidade: 'porção' };
+  const ordem = numero(val('aOrdem')); if (ordem != null) campos.ordem = ordem;
+  let id = editando;
+  if (!id) {
+    const base = 'adic-' + (Catalogo.slug(nome) || 'item');
+    id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
+    Object.assign(campos, { estoqueAtual: 0, custoUnitario: 0, custosExtras: 0 });
+    if (campos.ordem == null) campos.ordem = Catalogo.todos().length + 1;
+  }
+  try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Adicional salvo.'); }
   catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
 }
 

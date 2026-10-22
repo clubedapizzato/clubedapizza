@@ -6,7 +6,7 @@
 window.Catalogo = (function () {
   const C = window.CARDAPIO;
   const clone = o => JSON.parse(JSON.stringify(o));
-  const PADRAO = clone({ sabores: C.sabores, categorias: C.categorias });
+  const PADRAO = clone({ sabores: C.sabores, categorias: C.categorias, adicionais: C.adicionais });
   const LOJA_PADRAO = clone(C.loja);
   const SACHES = ['Maionese', 'Ketchup', 'Mostarda', 'Barbecue', 'Molho de pimenta'];
   const slug = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -27,6 +27,7 @@ window.Catalogo = (function () {
       controlaEstoque: false, unidade: 'un', estoqueAtual: 0, estoqueMinimo: 6, custoUnitario: 0, custosExtras: 0,
       taxaMaquininha: null, margemDesejada: 30, precoVenda: p.preco, precoAutomatico: false
     })));
+    l.push(...adicionaisPadrao(ordem)); ordem += PADRAO.adicionais.length;
     SACHES.forEach(n => l.push({
       id: 'sache-' + slug(n), tipo: 'produto', nome: n, categoria: 'Sachês', ordem: ordem++, ativo: true,
       controlaEstoque: true, unidade: 'sachê', estoqueAtual: 0, estoqueMinimo: 30, custoUnitario: 0, custosExtras: 0,
@@ -35,20 +36,30 @@ window.Catalogo = (function () {
     return l;
   }
 
+  // Adicionais iniciais (Catupiry e Cheddar) no formato do Firestore
+  const adicionaisPadrao = (ordem = 0) => PADRAO.adicionais.map((a, i) => ({
+    id: a.id, tipo: 'adicional', nome: a.nome, categoria: 'Adicionais', ordem: ordem + i, ativo: true,
+    precos: { P: a.P, M: a.M, G: a.G }, controlaEstoque: false, unidade: 'porção', estoqueAtual: 0, estoqueMinimo: 0
+  }));
+
   const ordenar = l => l.slice().sort((a, b) => (a.ordem ?? 9999) - (b.ordem ?? 9999) || String(a.nome).localeCompare(b.nome));
 
   function aplicar(lista) {
     docs = {};
     lista.forEach(p => { docs[p.id] = p; });
     doBanco = lista.length > 0;
-    if (!doBanco) { C.sabores = clone(PADRAO.sabores); C.categorias = clone(PADRAO.categorias); return; }
+    if (!doBanco) { C.sabores = clone(PADRAO.sabores); C.categorias = clone(PADRAO.categorias); C.adicionais = clone(PADRAO.adicionais); return; }
     const ord = ordenar(lista);
     C.sabores = ord.filter(p => p.tipo === 'sabor').map(p => ({
       id: p.id, nome: p.nome, desc: p.desc || '', P: (p.precos || {}).P, M: (p.precos || {}).M, G: (p.precos || {}).G,
       ativo: p.ativo !== false, custos: p.custos || {}
     }));
+    // adicionais da pizza; catálogo importado antes deles existirem → vale o padrão (Catupiry e Cheddar)
+    const adic = ord.filter(p => p.tipo === 'adicional');
+    C.adicionais = adic.length ? adic.map(p => ({ id: p.id, nome: p.nome, P: (p.precos || {}).P, M: (p.precos || {}).M, G: (p.precos || {}).G, ativo: p.ativo !== false }))
+      : clone(PADRAO.adicionais);
     const cats = [];
-    ord.filter(p => p.tipo !== 'sabor').forEach(p => {
+    ord.filter(p => p.tipo !== 'sabor' && p.tipo !== 'adicional').forEach(p => {
       const nome = p.categoria || 'Outros';
       let c = cats.find(x => x.nome === nome);
       if (!c) { c = { id: slug(nome), nome, produtos: [] }; cats.push(c); }
@@ -81,10 +92,26 @@ window.Catalogo = (function () {
   // Itens do carrinho que passam do estoque: [{ id, nome, pedido, tem }]
   function faltas(itens) {
     const qtd = {};
-    (itens || []).forEach(it => { if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1); });
-    return Object.keys(qtd).filter(id => qtd[id] > disponivel(id) || (Preco.produto(id) && Preco.produto(id).ativo === false))
-      .map(id => ({ id, nome: Preco.descricao({ tipo: 'produto', id }), pedido: qtd[id], tem: Preco.produto(id) && Preco.produto(id).ativo === false ? 0 : disponivel(id) }));
+    (itens || []).forEach(it => {
+      if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1);
+      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); });   // adicional com estoque
+    });
+    const item = id => Preco.produto(id) || Preco.adicional(id);
+    return Object.keys(qtd).filter(id => qtd[id] > disponivel(id) || (item(id) && item(id).ativo === false))
+      .map(id => ({ id, nome: (item(id) || {}).nome || id, pedido: qtd[id], tem: item(id) && item(id).ativo === false ? 0 : disponivel(id) }));
   }
+
+  /* ---------- adicionais na montagem da pizza (loja e balcão) ---------- */
+  const adicionaisVenda = () => (C.adicionais || []).filter(a => a.ativo !== false && disponivel(a.id) > 0);
+  // HTML da seção "➕ Adicionais" do modal (m = montagem { tamanho, adicionais: [ids] }); o clique chama mAdic(id) da página
+  function htmlAdicionais(m) {
+    const adic = adicionaisVenda();
+    return adic.length ? `<h3 style="margin-top:14px">➕ Adicionais</h3><div class="chips">${adic.map(a =>
+      `<span class="chip ${m.adicionais.includes(a.id) ? 'on' : ''}" onclick="mAdic('${a.id}')">${m.adicionais.includes(a.id) ? '✓ ' : '+ '}${esc(a.nome)} • ${dinheiro(a[m.tamanho])}</span>`).join('')}</div>` : '';
+  }
+  function alternarAdicional(m, id) { m.adicionais = m.adicionais.includes(id) ? m.adicionais.filter(x => x !== id) : m.adicionais.concat([id]); }
+  // [{ id, nome, preco }] para gravar no item
+  const adicionaisItem = m => m.adicionais.map(id => { const a = Preco.adicional(id) || { nome: id }; return { id, nome: a.nome, preco: a[m.tamanho] || 0 }; });
 
   // Taxa da maquininha (%) do produto ou a padrão da loja
   const taxaDe = d => (d && d.taxaMaquininha != null && d.taxaMaquininha !== '') ? Number(d.taxaMaquininha) : Number((C.loja || {}).taxaMaquininha) || 0;
@@ -100,7 +127,10 @@ window.Catalogo = (function () {
   function itensPedido(itens) {
     const s = Preco.saches(itens);
     return itens.map(({ uid, ...it }, i) => {
-      if (it.tipo !== 'produto') return Object.assign(it, { preco: Preco.unitario(it) });
+      if (it.tipo !== 'produto') {   // pizza: preço e adicionais do momento
+        if (it.adicionais) it.adicionais = it.adicionais.map(a => Object.assign({}, a, { preco: Preco.precoAdicional(a, it.tamanho) }));
+        return Object.assign(it, { preco: Preco.unitario(it) });
+      }
       const extra = { nome: Preco.descricao(it), preco: Preco.unitario(it), categoria: (Preco.categoriaDe(it.id) || {}).nome || '' };
       if (Preco.ehSache(it)) Object.assign(extra, { sache: true, gratis: s.gratisPorItem[i] || 0 });
       return Object.assign(it, extra);
@@ -109,6 +139,7 @@ window.Catalogo = (function () {
 
   return {
     iniciar, aplicar, listaImportacao, doc, todos: () => ordenar(Object.values(docs)), doBanco: () => doBanco,
-    disponivel, vendavel, saboresAtivos, categoriasVenda, sachesVenda, faltas, taxaDe, custoPizza, itensPedido, slug, SACHES
+    disponivel, vendavel, saboresAtivos, categoriasVenda, sachesVenda, faltas, taxaDe, custoPizza, itensPedido, slug, SACHES,
+    adicionaisPadrao, adicionaisVenda, htmlAdicionais, alternarAdicional, adicionaisItem
   };
 })();

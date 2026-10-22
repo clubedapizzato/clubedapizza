@@ -104,6 +104,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <script src="js/cardapio.js"></script>
 <script src="js/db.js"></script>
 <script src="js/catalogo.js"></script>
+<script src="js/ficha.js"></script>
 <script src="js/impressora.js"></script>
 <script>
 let pedidos = [];
@@ -163,7 +164,7 @@ DB.observarUsuario(u => {
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   logadoCoz = logado;
-  if (logado) { assinar(); assinarFuturos(); }
+  if (logado) { assinar(); assinarFuturos(); Ficha.iniciar(); }   // ficha técnica: custo gravado na baixa do pedido
   else {
     if (pararLista) { pararLista(); pararLista = null; }
     if (pararFuturos) { pararFuturos(); pararFuturos = null; }

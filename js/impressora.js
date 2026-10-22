@@ -42,7 +42,10 @@ window.Impressora = (function () {
     }
     s += linha('-');
     p.itens.filter(it => !Preco.ehSache(it)).forEach(it => {
-      s += `${it.qtd}x ${Preco.descricao(it).toUpperCase()}\n`;
+      if (it.tipo === 'pizza') {
+        s += `${it.qtd}x ${Preco.descricaoBase(it).toUpperCase()}\n`;
+        Preco.nomesAdicionais(it).forEach(n => { s += `   + ${n.toUpperCase()}\n`; });
+      } else s += `${it.qtd}x ${Preco.descricao(it).toUpperCase()}\n`;
       if (it.obs) s += `   OBS: ${it.obs}\n`;
     });
     const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
