@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Clientes • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261023">
+<link rel="stylesheet" href="css/app.css?v=20261025">
 <style>
 main{max-width:1200px;padding-bottom:30px}
 .topo .in{max-width:1200px}
@@ -178,11 +178,11 @@ th.ord:hover{color:var(--ink)}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261023"></script>
-<script src="js/cardapio.js?v=20261023"></script>
-<script src="js/db.js?v=20261023"></script>
-<script src="js/clientes.js?v=20261023"></script>
-<script src="js/fidelidade.js?v=20261023"></script>
+<script src="js/config.js?v=20261025"></script>
+<script src="js/cardapio.js?v=20261025"></script>
+<script src="js/db.js?v=20261025"></script>
+<script src="js/clientes.js?v=20261025"></script>
+<script src="js/fidelidade.js?v=20261025"></script>
 <script>
 let periodo = '90d';
 let pedidos = [], A = null;            // A = resultado de Clientes.analisar
@@ -190,7 +190,7 @@ let aba = (() => { try { return localStorage.getItem('cdp_clientes_aba') || 'lis
 let filtroSeg = '', ordem = { col: 'total', dir: -1 };
 let telWhats = '';
 const PERIODOS = [{ id: '30d', nome: 'Últimos 30 dias' }, { id: '90d', nome: '90 dias' }, { id: 'ano', nome: 'Este ano' }, { id: 'tudo', nome: 'Tudo' }];
-const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
+const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão', fiado: '📒 Fiado' };
 const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
 const S = Clientes.SEGMENTOS;
 const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });

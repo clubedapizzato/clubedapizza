@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Cozinha • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261023">
+<link rel="stylesheet" href="css/app.css?v=20261025">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px;flex-wrap:wrap}
@@ -101,12 +101,13 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261023"></script>
-<script src="js/cardapio.js?v=20261023"></script>
-<script src="js/db.js?v=20261023"></script>
-<script src="js/catalogo.js?v=20261023"></script>
-<script src="js/ficha.js?v=20261023"></script>
-<script src="js/impressora.js?v=20261023"></script>
+<script src="js/config.js?v=20261025"></script>
+<script src="js/cardapio.js?v=20261025"></script>
+<script src="js/db.js?v=20261025"></script>
+<script src="js/catalogo.js?v=20261025"></script>
+<script src="js/ficha.js?v=20261025"></script>
+<script src="js/impressora.js?v=20261025"></script>
+<script src="js/financeiro.js?v=20261025"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -187,7 +188,8 @@ async function assinar() {
     const ids = new Set(pedidos.map(p => p.id));
     if (conhecidos) {
       const chegaram = pedidos.filter(p => !conhecidos.has(p.id));
-      const novos = chegaram.filter(p => !Horario.emEspera(p)), agend = chegaram.filter(p => Horario.emEspera(p));
+      // balcão sem pizza já chega "entregue": não toca alarme
+      const novos = chegaram.filter(p => !Horario.emEspera(p) && p.status !== 'entregue'), agend = chegaram.filter(p => Horario.emEspera(p));
       if (novos.length) { tocar(); toast(`🔔 Novo pedido #${novos.map(p => p.numero).join(', #')}`); }
       else if (agend.length) toast(`📅 Novo agendamento #${agend.map(p => p.numero + ' p/ ' + Horario.hora(p.agendadoPara)).join(', #')}`);
     }
@@ -256,14 +258,16 @@ function render() {
 function cartao(p) {
   const e = p.entrega, pg = p.pagamento, min = minutos(p);
   const taxaCalc = Preco.taxa(e);
-  const conferido = Math.abs(Preco.subtotal(p.itens, p.cortesiaPorPizza || 0) + (taxaCalc || 0) - p.total) < 0.01;
+  const conferido = !!p.consumoInterno || Math.abs(Preco.subtotal(p.itens, p.cortesiaPorPizza || 0) + (taxaCalc || 0) - p.total) < 0.01;
   const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
   const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
   const ativo = !['entregue', 'cancelado'].includes(p.status);
 
   const balcao = e.tipo === 'balcao';
   let pgTag;
-  if (balcao) pgTag = `<span class="tag ok">✔ PAGO • ${({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTÃO' })[pg.forma] || pg.forma}${pg.trocoPara ? ' • troco ' + dinheiro(pg.trocoPara - p.total) : ''}</span>`;
+  if (pg.forma === 'consumo_interno') pgTag = '<span class="tag erro">🍽️ CONSUMO INTERNO — SEM COBRANÇA</span>';
+  else if (pg.forma === 'fiado') pgTag = `<span class="tag pend">📒 FIADO${p.cliente.nome ? ' • ' + esc(p.cliente.nome) : ''} — NÃO COBRAR</span>`;
+  else if (balcao) pgTag = `<span class="tag ok">✔ PAGO • ${({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTÃO' })[pg.forma] || pg.forma}${pg.trocoPara ? ' • troco ' + dinheiro(pg.trocoPara - p.total) : ''}</span>`;
   else if (pg.forma === 'pix') pgTag = pg.confirmado ? '<span class="tag ok">PIX ✔ PAGO</span>' : '<span class="tag pend">PIX AGUARDANDO</span>';
   else if (pg.forma === 'dinheiro') pgTag = `<span class="tag info">DINHEIRO${pg.trocoPara ? ' • troco p/ ' + dinheiro(pg.trocoPara) + ' (' + dinheiro(pg.trocoPara - p.total) + ')' : ''}</span>`;
   else pgTag = '<span class="tag info">CARTÃO NA ENTREGA</span>';
@@ -271,6 +275,7 @@ function cartao(p) {
   return `<div class="ped ${p.status}">
     <div class="cab"><span class="num">#${p.numero}</span>
       <span class="tempo ${ativo && !p.agendadoPara && min >= 40 ? 'atraso' : ''}">${hora}${ativo && !p.agendadoPara ? ' • há ' + min + ' min' : ''}</span></div>
+    ${p.consumoInterno ? `<div class="tag erro" style="font-size:14px;display:block;margin:4px 0">🍽️ CONSUMO INTERNO — SEM COBRANÇA • ${esc(p.consumoInterno.tipoNome || p.consumoInterno.tipo)}${p.consumoInterno.quem ? ': ' + esc(p.consumoInterno.quem) : ''}</div>` : ''}
     ${p.agendadoPara ? `<span class="hora-ag">📅 AGENDADO ${Horario.quando(p.agendadoPara).toUpperCase()} ${Horario.hora(p.agendadoPara)}${ativo ? ` • ${faltam(p)}` : ''}</span>` : ''}
     ${p.cliente.nome || p.cliente.telefone ? `<div><b>${esc(p.cliente.nome)}</b>${p.cliente.telefone ? ` • <a class="lnk" href="tel:${esc(p.cliente.telefone)}">${esc(fone(p.cliente.telefone))}</a>` : ''}</div>` : ''}
     ${balcao ? `<span class="tag info" style="font-size:13px">🏪 BALCÃO • ${e.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'}</span>`
@@ -296,7 +301,7 @@ function cartao(p) {
       ${pg.forma === 'pix' && ativo && !balcao ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
       <button class="btn sm sec" onclick="imprimirManual('${p.id}')">🖨️ Imprimir</button>
       ${p.cliente.telefone ? `<a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>` : ''}
-      ${ativo ? `<button class="btn sm sec" onclick="cancelar('${p.id}')">Cancelar</button>` : ''}
+      ${ativo || (p.status === 'entregue' && p.origem === 'balcao' && e.tipo === 'balcao') ? `<button class="btn sm sec" onclick="cancelar('${p.id}')">Cancelar</button>` : ''}
     </div>
   </div>`;
 }
@@ -359,6 +364,14 @@ async function cancelar(id) {
   const p = achar(id); if (!p) return;
   if (!confirm(`Cancelar o pedido #${p.numero}${p.cliente.nome ? ' de ' + p.cliente.nome : ''}?`)) return;
   await mudarStatus(id, 'cancelado');
+  // fiado / desconto na folha do consumo interno: estorna no financeiro
+  if ((p.pagamento.forma === 'fiado' || (p.consumoInterno && p.consumoInterno.descontar)) && window.Fin) {
+    try {
+      const r = await Fin.estornarPedido(p);
+      if (r.fiado) toast(`📒 Fiado do pedido #${p.numero} estornado.`);
+      if (r.descontoNaFolha) toast(`⚠️ O desconto do consumo #${p.numero} já está numa folha: ajuste no Caixa.`);
+    } catch (e) { DB.logErro(e); toast('Fiado/desconto não estornado: ' + DB.mensagemErro(e)); }
+  }
 }
 // Não entregue → volta para "Pronto" e aparece de novo para o entregador
 async function reenviar(id) {

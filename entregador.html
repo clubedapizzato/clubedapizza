@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Entregador • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261023">
+<link rel="stylesheet" href="css/app.css?v=20261025">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -97,11 +97,11 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261023"></script>
-<script src="js/cardapio.js?v=20261023"></script>
-<script src="js/db.js?v=20261023"></script>
-<script src="js/catalogo.js?v=20261023"></script>
-<script src="js/rota.js?v=20261023"></script>
+<script src="js/config.js?v=20261025"></script>
+<script src="js/cardapio.js?v=20261025"></script>
+<script src="js/db.js?v=20261025"></script>
+<script src="js/catalogo.js?v=20261025"></script>
+<script src="js/rota.js?v=20261025"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }
@@ -202,6 +202,8 @@ function textoCobrar(p) {
     return { classe: 'dinheiro', longo, curto: `💵 Cobrar ${t}${pg.trocoPara ? ' • troco ' + dinheiro(pg.trocoPara - p.total) : ''}` };
   }
   if (pg.forma === 'cartao') return { classe: 'cartao', longo: `💳 Cartão na entrega ${t} — levar a maquininha`, curto: `💳 Cartão ${t}` };
+  if (pg.forma === 'fiado') return { classe: 'pago', longo: `📒 FIADO — não cobrar (${t} no crediário; pegar assinatura no comprovante)`, curto: '📒 Fiado — não cobrar' };
+  if (pg.forma === 'consumo_interno') return { classe: 'pago', longo: '🍽️ Consumo interno — sem cobrança', curto: '🍽️ Sem cobrança' };
   if (pg.confirmado) return { classe: 'pago', longo: '✅ Já pago no Pix — não cobrar', curto: '✅ Pago no Pix' };
   return { classe: 'pend', longo: `⚠️ Pix NÃO confirmado — ligue para a loja antes de entregar (${t})`, curto: `⚠️ Pix não confirmado ${t}` };
 }

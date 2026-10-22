@@ -74,7 +74,8 @@ window.Clientes = (function () {
     const mapa = {}, balcao = { pedidos: 0, total: 0, cancelados: 0 };
     let cancelados = 0, valorCancelado = 0, naoEntregues = 0;
     const bairros = {};   // chave → { nome, nomes, clientes:Set, pedidos, total }
-    const ordem = pedidos.slice().sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
+    // consumo interno (refeição de funcionário, cortesia…) não é compra de cliente
+    const ordem = pedidos.filter(p => !p.consumoInterno).sort((a, b) => (a.criadoEm || 0) - (b.criadoEm || 0));
 
     ordem.forEach(p => {
       if (p.status === 'cancelado') { cancelados++; valorCancelado += p.total || 0; }

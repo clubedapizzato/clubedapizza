@@ -77,7 +77,10 @@ window.FinCalc = (function () {
   }
 
   /* ---------------- VENDAS (pedidos → entradas por forma) ---------------- */
-  const valido = p => p.status !== 'cancelado' && p.status !== 'nao_entregue';
+  // Venda de verdade: fora cancelado, não entregue e consumo interno (refeição de funcionário, cortesia… não é receita)
+  const ativo = p => p.status !== 'cancelado' && p.status !== 'nao_entregue';
+  const valido = p => ativo(p) && !p.consumoInterno;
+  const ehConsumo = p => ativo(p) && !!p.consumoInterno;
   const FORMAS_VENDA = ['dinheiro', 'pix', 'cartao'];
   /* pedidos → { dias: { data: { dinheiro, pix, cartao, fiado, outros, total, taxaCartao, qtd } }, ... }
      excluirFiado: Set de 'data#numero' de pedidos lançados como fiado (saem da forma original e viram "fiado") */
@@ -88,7 +91,7 @@ window.FinCalc = (function () {
       const d = dias[p.data] = dias[p.data] || { dinheiro: 0, pix: 0, cartao: 0, fiado: 0, outros: 0, total: 0, taxaCartao: 0, qtd: 0, taxasEntrega: 0 };
       const v = Number(p.total) || 0, f = (p.pagamento || {}).forma;
       d.qtd++; d.total += v; d.taxasEntrega += Number(p.taxaEntrega) || 0;
-      if (excluirFiado && excluirFiado.has(p.data + '#' + p.numero)) d.fiado += v;
+      if (f === 'fiado' || (excluirFiado && excluirFiado.has(p.data + '#' + p.numero))) d.fiado += v;
       else if (FORMAS_VENDA.includes(f)) d[f] += v;
       else d.outros += v;
     });
@@ -119,7 +122,7 @@ window.FinCalc = (function () {
   // Pedidos de "data#numero" lançados como fiado (para não contar a venda 2x)
   function chavesFiado(fiados) {
     const s = new Set();
-    (fiados || []).forEach(f => (f.movimentos || []).forEach(m => { if (m.tipo === 'compra' && m.pedido && m.pedidoData) s.add(m.pedidoData + '#' + m.pedido); }));
+    (fiados || []).forEach(f => (f.movimentos || []).forEach(m => { if (m.tipo === 'compra' && !m.cancelado && m.pedido && m.pedidoData) s.add(m.pedidoData + '#' + m.pedido); }));
     return s;
   }
 
@@ -199,7 +202,7 @@ window.FinCalc = (function () {
   /* ---------------- FIADOS ---------------- */
   // f.movimentos: [{ tipo: 'compra'|'pagamento', valor, data, vencimento }] → saldo, aberto (FIFO), atraso
   function resumoFiado(f, hoje) {
-    const movs = (f.movimentos || []).slice().sort((a, b) => a.data.localeCompare(b.data) || (a.em || 0) - (b.em || 0));
+    const movs = (f.movimentos || []).filter(m => !m.cancelado).slice().sort((a, b) => a.data.localeCompare(b.data) || (a.em || 0) - (b.em || 0));
     const compras = movs.filter(m => m.tipo === 'compra').map(m => Object.assign({}, m, { resta: Number(m.valor) || 0 }));
     let pago = movs.filter(m => m.tipo === 'pagamento').reduce((s, m) => s + (Number(m.valor) || 0), 0);
     const totalCompras = compras.reduce((s, m) => s + m.resta, 0), totalPago = pago;
@@ -273,6 +276,36 @@ window.FinCalc = (function () {
     return r2(t);
   }
 
+  /* ---------------- CONSUMO INTERNO ----------------
+     Pedido do balcão com consumoInterno: { tipo, quem, funcionarioId, motivo, descontar, descontarModo } — total cobrado 0,
+     valorReferencia = preço de venda. Custo: o gravado no item (ou custoItem(it)); sem custo, o preço de venda de referência. */
+  const TIPOS_CONSUMO = {
+    funcionario: { nome: 'Funcionário', dre: 'Alimentação de funcionários' }, dono: { nome: 'Dono', dre: 'Consumo do dono (retirada)' },
+    cortesia: { nome: 'Cortesia/brinde', dre: 'Cortesias (marketing)' }, degustacao: { nome: 'Degustação', dre: 'Degustação (marketing)' },
+    perda: { nome: 'Perda', dre: 'Perdas' }
+  };
+  function custoConsumo(p, custoItem) {
+    let custo = 0, semCusto = 0, venda = 0;
+    (p.itens || []).forEach(it => {
+      const q = it.qtd || 1, pv = (Number(it.preco) || 0) * q, c = custoItem ? custoItem(it) : (it.custoUnitario != null ? it.custoUnitario + (it.custoExtras || 0) : null);
+      venda += pv;
+      if (c != null && c > 0) custo += c * q; else { custo += pv; semCusto += pv; }
+    });
+    return { custo: r2(custo), venda: r2(p.valorReferencia != null ? p.valorReferencia : venda), semCusto: r2(semCusto) };
+  }
+  // pedidos → { total: { custo, venda, n }, porTipo: { tipo: {...} }, porPessoa: { nome: {...} }, lista }
+  function resumoConsumo(pedidos, custoItem) {
+    const r = { total: { custo: 0, venda: 0, n: 0, semCusto: 0 }, porTipo: {}, porPessoa: {}, lista: [] };
+    const soma = (o, k, c) => { const x = o[k] = o[k] || { custo: 0, venda: 0, n: 0, semCusto: 0 }; x.custo = r2(x.custo + c.custo); x.venda = r2(x.venda + c.venda); x.semCusto = r2(x.semCusto + c.semCusto); x.n++; };
+    (pedidos || []).filter(ehConsumo).forEach(p => {
+      const c = custoConsumo(p, custoItem), ci = p.consumoInterno;
+      soma(r, 'total', c);
+      soma(r.porTipo, ci.tipo || 'funcionario', c); soma(r.porPessoa, ci.quem || '—', c);
+      r.lista.push(Object.assign({ p }, c));
+    });
+    return r;
+  }
+
   /* ---------------- CATEGORIAS / DRE ---------------- */
   // grupo: cmv | variavel | fixa | folha | retirada | taxa (saídas) — venda | receita | aporte | fiado (entradas)
   const CATEGORIAS = {
@@ -323,12 +356,20 @@ window.FinCalc = (function () {
     const margemBruta = r2(receitaLiquida - (cmv || 0));
     const soma = b => r2(Object.values(b).reduce((s, v) => s + v, 0));
     const variaveis = soma(desp.variavel), fixas = soma(desp.fixa), folha = soma(desp.folha);
-    const lucro = r2(margemBruta - variaveis - fixas - folha + outras);
+    // consumo interno (custo): funcionário/cortesia/degustação/perda saem do lucro; o do dono vira retirada
+    const consumoDre = {}; let consumoTotal = 0, consumoDono = 0;
+    Object.entries((o.consumo && o.consumo.porTipo) || {}).forEach(([t, x]) => {
+      if (t === 'dono') { consumoDono += x.custo; return; }
+      const n = (TIPOS_CONSUMO[t] || { dre: t }).dre; consumoDre[n] = r2((consumoDre[n] || 0) + x.custo); consumoTotal += x.custo;
+    });
+    consumoTotal = r2(consumoTotal); consumoDono = r2(consumoDono); retiradas += consumoDono;
+    const lucro = r2(margemBruta - consumoTotal - variaveis - fixas - folha + outras);
     return {
       vendasPedidos: vendasPed, vendasManuais: r2(vendasManuais), fiadosSemPedido: r2(o.fiadosSemPedido || 0), receita, cartao, taxaCartao, taxasBanco: r2(taxasBanco), taxas, receitaLiquida,
       cmv, cmvFonte, cmvCobertura: o.cmvPedidos ? o.cmvPedidos.cobertura : null, comprasCmv: r2(comprasCmv), margemBruta,
       despesas: { variavel: desp.variavel, fixa: desp.fixa, folha: desp.folha }, variaveis, fixas, folha, outrasReceitas: r2(outras),
-      lucro, margem: receita > 0 ? lucro / receita * 100 : null, retiradas: r2(retiradas), aportes: r2(aportes), recebimentoFiado: r2(recFiado)
+      lucro, margem: receita > 0 ? lucro / receita * 100 : null, retiradas: r2(retiradas), aportes: r2(aportes), recebimentoFiado: r2(recFiado),
+      consumo: consumoDre, consumoTotal, consumoDono
     };
   }
 
@@ -336,7 +377,7 @@ window.FinCalc = (function () {
      MC % = (receita − taxas − CMV − variáveis) ÷ receita. pizzas/dia pelo valor médio por pizza. */
   function pontoEquilibrio(d, o) {
     const fixos = r2((o.fixos != null ? o.fixos : d.fixas + d.folha));
-    const mc = d.receita > 0 ? (d.receita - d.taxas - (d.cmv || 0) - d.variaveis) / d.receita : null;
+    const mc = d.receita > 0 ? (d.receita - d.taxas - (d.cmv || 0) - (d.consumoTotal || 0) - d.variaveis) / d.receita : null;
     const fat = mc && mc > 0 ? r2(fixos / mc) : null;
     const porPizza = o.pizzas > 0 ? d.receita / o.pizzas : null;
     const diasAbertos = o.diasAbertos || 26;
@@ -382,7 +423,7 @@ window.FinCalc = (function () {
 
   return {
     r2, addDias, addMeses, diasEntre, mesDe, inicioMes, fimDoMes, addMes, RECORRENCIAS, proxima, proximaOcorrencia, projetar, parcelas, situacao,
-    valido, vendasPorDia, lancamentosVendas, chavesFiado, efeito, saldos, totais, fluxo, fluxoMensal, esperadoCaixa, diferencas,
+    valido, ehConsumo, TIPOS_CONSUMO, custoConsumo, resumoConsumo, vendasPorDia, lancamentosVendas, chavesFiado, efeito, saldos, totais, fluxo, fluxoMensal, esperadoCaixa, diferencas,
     resumoFiado, TIPOS_PAG, periodoFolha, entregasDe, calcularFolha, folhaEstimada, CATEGORIAS, GRUPOS, grupoDe, dre, pontoEquilibrio, previsao, csv
   };
 })();

@@ -72,5 +72,34 @@ window.Fin = (function () {
   const substituir = (col, id, dados) => lote([{ op: 'replace', col, id, dados }]);
   const apagar = (col, id) => lote([{ op: 'delete', col, id }]);
 
-  return { init, COLECOES, observar, lote, salvar, substituir, apagar, novoId, usuario };
+  async function ler(col, id) {
+    await init();
+    if (DB.modo() === 'demo') return lerLS(col)[id] || null;
+    const d = await comCaminho(col + '/' + id, fs.getDoc(fs.doc(db, col, id)));
+    return d.exists() ? Object.assign({}, d.data(), { id: d.id }) : null;
+  }
+
+  /* Pedido cancelado: estorna o que ele gerou no financeiro (uma vez só)
+     - fiado: a compra "ped-{pedidoId}" fica cancelada (sai do saldo devedor)
+     - consumo interno com desconto na folha: apaga "ci-{pedidoId}" se ainda não entrou numa folha */
+  async function estornarPedido(p) {
+    const r = { fiado: false, desconto: false, descontoNaFolha: false };
+    const pg = p.pagamento || {};
+    if (pg.forma === 'fiado' && pg.fiadoId) {
+      const f = await ler('fin_fiados', pg.fiadoId), mid = 'ped-' + p.id;
+      if (f && (f.movimentos || []).some(m => m.id === mid && !m.cancelado)) {
+        const movimentos = f.movimentos.map(m => m.id === mid ? Object.assign({}, m, { cancelado: true, canceladoEm: Date.now(), canceladoPor: usuario() }) : m);
+        await lote([{ op: 'set', col: 'fin_fiados', id: f.id, dados: { movimentos } }]);
+        r.fiado = true;
+      }
+    }
+    if (p.consumoInterno && p.consumoInterno.descontar) {
+      const d = await ler('fin_folha', 'ci-' + p.id);
+      if (d && d.folhaId) r.descontoNaFolha = true;
+      else if (d) { await apagar('fin_folha', d.id); r.desconto = true; }
+    }
+    return r;
+  }
+
+  return { init, COLECOES, observar, lote, salvar, substituir, apagar, novoId, usuario, ler, estornarPedido };
 })();

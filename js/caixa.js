@@ -108,8 +108,19 @@ async function carregarPedidos(de) {
   try {
     pedidos = await DB.listarPedidos(ini, F.addDias(hoje(), 1));
     pedidosDe = ini; pedErro = null;
+    ouvirPedidosHoje();
   } catch (e) { pedErro = e; console.error(e); }
   invalidar(); agendarRender();
+}
+// Pedidos do turno atual em tempo real (vendas novas, fiado e consumo entram sem recarregar)
+let pararHoje = null;
+async function ouvirPedidosHoje() {
+  if (pararHoje) return;
+  const dia = diaCaixa();
+  pararHoje = await DB.observarPedidosDoDia(dia, l => {
+    pedidos = pedidos.filter(p => p.data !== dia).concat(l);
+    invalidar(); agendarRender();
+  }, e => { pedErro = e; agendarRender(); });
 }
 // Antes de usar um período antigo nos relatórios
 async function garantirPedidos(de) { if (pedidosDe && de < pedidosDe) await carregarPedidos(de); }
@@ -752,11 +763,11 @@ function extratoFiado(id) {
   const f = S.fiados.find(x => x.id === id); if (!f) return;
   const r = F.resumoFiado(f, hoje());
   let s = 0;
-  const movs = (f.movimentos || []).slice().sort((a, b) => a.data.localeCompare(b.data) || a.em - b.em).map(m => { s += m.tipo === 'compra' ? m.valor : -m.valor; return Object.assign({ saldo: r2(s) }, m); });
+  const movs = (f.movimentos || []).slice().sort((a, b) => a.data.localeCompare(b.data) || a.em - b.em).map(m => { s += m.cancelado ? 0 : m.tipo === 'compra' ? m.valor : -m.valor; return Object.assign({ saldo: r2(s) }, m); });
   $('verBox').innerHTML = `<div class="barraTopo"><h2>📄 Extrato — ${esc(f.nome)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
     <div class="muted">${f.telefone ? Clientes.fmtTel(f.telefone) : ''} • limite ${r.limite ? dinheiro(r.limite) : 'sem limite'} • comprou ${dinheiro(r.totalCompras)} • pagou ${dinheiro(r.totalPago)}</div>
     <div class="rolar" style="margin-top:8px"><table><tr><th>Data</th><th>Lançamento</th><th class="r">Valor</th><th class="r">Saldo</th><th></th></tr>
-    ${movs.map(m => `<tr><td>${br(m.data)}</td><td>${m.tipo === 'compra' ? `🛒 ${esc(m.descricao || 'Compra')}${m.pedido ? ` <span class="tag">pedido #${m.pedido}</span>` : ''}${m.vencimento ? `<div class="muted">vence ${br(m.vencimento)}</div>` : ''}` : `💵 Pagamento ${FORMAS[m.forma] || ''}${m.obs ? `<div class="muted">${esc(m.obs)}</div>` : ''}`}</td>
+    ${movs.map(m => `<tr><td>${br(m.data)}</td><td>${m.tipo === 'compra' ? `🛒 ${esc(m.descricao || 'Compra')}${m.pedido ? ` <span class="tag">pedido #${m.pedido}</span>` : ''}${m.cancelado ? ' <span class="tag verm">estornado (pedido cancelado)</span>' : ''}${m.vencimento ? `<div class="muted">vence ${br(m.vencimento)}</div>` : ''}` : `💵 Pagamento ${FORMAS[m.forma] || ''}${m.obs ? `<div class="muted">${esc(m.obs)}</div>` : ''}`}</td>
       <td class="r">${sinal(m.valor, m.tipo === 'compra' ? 'saida' : 'entrada')}</td><td class="r"><b>${dinheiro(m.saldo)}</b></td><td><button class="btn sm sec" title="Excluir (lançado errado)" onclick="excluirMovFiado('${id}','${m.id}')">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Sem movimentos.</td></tr>'}
     <tr class="tot"><td colspan="3">Saldo devedor</td><td class="r">${dinheiro(r.saldo)}</td><td></td></tr></table></div>
     ${f.telefone ? `<div style="display:flex;gap:8px;margin-top:12px"><button class="btn wa sm" onclick="whatsFiado('${id}','cobranca')">💬 Cobrar</button><button class="btn wa sm" onclick="whatsFiado('${id}','extrato')">💬 Enviar extrato</button></div>` : ''}`;
@@ -1017,7 +1028,7 @@ async function renderRel() {
   if (!$('rMes').value) $('rMes').value = mesAtual();
   if (pedidosDe && de < pedidosDe) { $('rStatus').textContent = 'Carregando pedidos do período...'; await garantirPedidos(de); return; }
   $('rStatus').textContent = `${br(de)} a ${br(ate)} • vendas dos pedidos a partir de ${br(desdeVendas())}`;
-  renderFluxo(); renderDre(); renderCat(); renderPrev(); render6m(); renderFolhaRel(); renderIdade();
+  renderFluxo(); renderDre(); renderCat(); renderPrev(); render6m(); renderFolhaRel(); renderIdade(); renderConsumo();
 }
 function saldoAntes(de) { const s = F.saldos(contasFin(), todosLanc(), F.addDias(de, -1)); return saldoTotal(s); }
 function graficoBarras(pontos, series) {   // pontos: [{ rot, vals: [..], dica }]
@@ -1071,8 +1082,8 @@ function cmvPedidos(ped) {
 function dreMes(m) {
   const de = F.inicioMes(m), ate = F.fimDoMes(m), ped = pedidos.filter(p => p.data >= de && p.data <= ate);
   const fiadosSem = S.fiados.reduce((t, f) => t + (f.movimentos || []).filter(x => x.tipo === 'compra' && !x.pedido && x.data >= de && x.data <= ate).reduce((a, x) => a + x.valor, 0), 0);
-  const cm = cmvPedidos(ped);
-  const d = F.dre({ pedidos: ped.filter(p => p.data >= desdeVendas()), lanc: S.lanc.filter(l => l.data >= de && l.data <= ate), cats: cfg().categorias, taxaCartaoPct: taxaCartao(), cmvPedidos: cm, fiadosSemPedido: fiadosSem });
+  const cm = cmvPedidos(ped), consumo = F.resumoConsumo(ped, custoItem);
+  const d = F.dre({ pedidos: ped.filter(p => p.data >= desdeVendas()), lanc: S.lanc.filter(l => l.data >= de && l.data <= ate), cats: cfg().categorias, taxaCartaoPct: taxaCartao(), cmvPedidos: cm, fiadosSemPedido: fiadosSem, consumo });
   d.pizzas = cm.pizzas;
   return d;
 }
@@ -1087,12 +1098,13 @@ function renderDre() {
     ${row('(=) Receita líquida', d.receitaLiquida, 'res', p(d.receitaLiquida))}
     ${row(`(−) CMV <span class="muted">${d.cmvFonte === 'pedidos' ? `(custo gravado nos pedidos/fichas; ${pct(d.cmvCobertura)} das vendas com custo)` : d.cmvFonte === 'compras' ? '(pelas compras de insumos/bebidas/embalagens lançadas)' : ''}</span>`, d.cmv == null ? null : -d.cmv, '', d.cmv == null ? '' : p(d.cmv))}
     ${row('(=) Margem bruta', d.margemBruta, 'res', p(d.margemBruta))}
+    ${d.consumoTotal ? row('(−) Consumo interno (custo)', -d.consumoTotal, '', p(d.consumoTotal)) + linhasGrupo(d.consumo) : ''}
     ${row('(−) Despesas variáveis', -d.variaveis, '', p(d.variaveis))}${linhasGrupo(d.despesas.variavel)}
     ${row('(−) Despesas fixas', -d.fixas, '', p(d.fixas))}${linhasGrupo(d.despesas.fixa)}
     ${row('(−) Folha', -d.folha, '', p(d.folha))}${linhasGrupo(d.despesas.folha)}
     ${d.outrasReceitas ? row('(+) Outras receitas', d.outrasReceitas, '', p(d.outrasReceitas)) : ''}
     ${row('(=) LUCRO LÍQUIDO', `<span class="${d.lucro < 0 ? 'neg' : 'pos'}">${dinheiro(d.lucro)}</span>`, 'res', d.margem == null ? '' : `margem ${pct(d.margem)}`)}
-    ${row('Retiradas do dono (pró-labore)', -d.retiradas, 'sub')}${d.aportes ? row('Aportes do dono', d.aportes, 'sub') : ''}${d.recebimentoFiado ? row('Fiados recebidos (já contados na venda)', d.recebimentoFiado, 'sub') : ''}</table>
+    ${row(`Retiradas do dono (pró-labore)${d.consumoDono ? ` <span class="muted">— inclui ${dinheiro(d.consumoDono)} de consumo do dono</span>` : ''}`, -d.retiradas, 'sub')}${d.aportes ? row('Aportes do dono', d.aportes, 'sub') : ''}${d.recebimentoFiado ? row('Fiados recebidos (já contados na venda)', d.recebimentoFiado, 'sub') : ''}</table>
     ${d.cmvFonte === 'pedidos' && d.comprasCmv ? `<div class="muted" style="margin-top:6px">Compras de insumos/bebidas/embalagens no mês: ${dinheiro(d.comprasCmv)} (não somadas de novo: o CMV vem do custo dos itens vendidos).</div>` : ''}
     ${d.retiradas > Math.max(0, d.lucro) ? `<div class="alertas" style="margin-top:8px"><div class="al-verm">💸 Retiradas (${dinheiro(d.retiradas)}) maiores que o lucro (${dinheiro(d.lucro)}): o dono está tirando mais do que a pizzaria gera.</div></div>` : ''}`;
   renderPe(m, d);
@@ -1114,6 +1126,7 @@ function csvDre() {
   const m = $('rMes').value || mesAtual(), d = dreMes(m);
   const l = [['DRE ' + m, 'R$'], ['Receita de vendas', d.receita], ['(-) Taxas', -d.taxas], ['(=) Receita líquida', d.receitaLiquida], ['(-) CMV', d.cmv == null ? 'não disponível' : -d.cmv], ['(=) Margem bruta', d.margemBruta]];
   ['variavel', 'fixa', 'folha'].forEach(g => Object.entries(d.despesas[g]).forEach(([k, v]) => l.push([`(-) ${k}`, -v])));
+  Object.entries(d.consumo || {}).forEach(([k, v]) => l.push([`(-) Consumo interno: ${k}`, -v]));
   l.push(['(+) Outras receitas', d.outrasReceitas], ['(=) Lucro líquido', d.lucro], ['Margem %', d.margem == null ? '' : r2(d.margem)], ['Retiradas do dono', d.retiradas]);
   baixarCSV(`dre_${m}.csv`, l);
 }
@@ -1158,6 +1171,18 @@ function renderPrev() {
     <h3 style="margin-top:10px">Próximos 30 dias</h3>
     <div class="rolar" style="max-height:240px;overflow-y:auto">${ev.filter(e => e.d <= F.addDias(h, 30)).map(e => `<div class="linha"><span>${br(e.d)} • ${esc(e.c.descricao)}${e.proj ? ' <span class="tag azul">🔁 prevista</span>' : ''}</span>${sinal(e.v, e.c.natureza === 'pagar' ? 'saida' : 'entrada')}</div>`).join('') || '<div class="vazio">Nenhuma conta nos próximos 30 dias.</div>'}</div>`;
 }
+function renderConsumo() {
+  const [de, ate] = intervaloRel(), r = F.resumoConsumo(pedidos.filter(p => p.data >= de && p.data <= ate), custoItem);
+  const tab = (o, t, nome) => `<table><tr><th>${t}</th><th class="r">Pedidos</th><th class="r">Custo</th><th class="r">Valor de venda</th></tr>${Object.entries(o).sort((a, b) => b[1].custo - a[1].custo)
+    .map(([k, x]) => `<tr><td>${esc(nome ? nome(k) : k)}</td><td class="r">${x.n}</td><td class="r"><b>${dinheiro(x.custo)}</b></td><td class="r">${dinheiro(x.venda)}</td></tr>`).join('')}
+    <tr class="tot"><td>Total</td><td class="r">${r.total.n}</td><td class="r">${dinheiro(r.total.custo)}</td><td class="r">${dinheiro(r.total.venda)}</td></tr></table>`;
+  $('rConsumo').innerHTML = r.total.n ? `<div class="grade"><div class="rolar">${tab(r.porTipo, 'Tipo', k => (F.TIPOS_CONSUMO[k] || {}).dre || k)}</div><div class="rolar">${tab(r.porPessoa, 'Pessoa')}</div></div>
+    <details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Ver pedidos (${r.lista.length})</summary><div class="rolar"><table><tr><th>Dia</th><th>Pedido</th><th>Tipo</th><th>Quem</th><th>Motivo</th><th class="r">Custo</th><th class="r">Venda</th><th>Folha</th></tr>
+    ${r.lista.sort((a, b) => b.p.data.localeCompare(a.p.data)).map(x => { const ci = x.p.consumoInterno; return `<tr><td>${br(x.p.data)}</td><td>#${x.p.numero}</td><td>${esc(ci.tipoNome || ci.tipo)}</td><td>${esc(ci.quem || '')}</td><td>${esc(ci.motivo || '')}</td>
+      <td class="r">${dinheiro(x.custo)}</td><td class="r">${dinheiro(x.venda)}</td><td>${ci.descontar ? `<span class="tag amar">desconto (${ci.descontarModo === 'venda' ? 'venda' : 'custo'})</span>` : ''}</td></tr>`; }).join('')}</table></div></details>
+    <div class="muted" style="margin-top:6px">Custo pela ficha técnica/cadastro gravado na baixa; item sem custo conta pelo preço de venda. No DRE: funcionário → alimentação de funcionários, cortesia/degustação → marketing, perda → perdas, dono → retirada.</div>`
+    : '<div class="vazio">Nenhum consumo interno no período.</div>';
+}
 function renderFolhaRel() {
   const [de, ate] = intervaloRel(), o = {};
   S.folha.forEach(x => {
@@ -1197,6 +1222,7 @@ function renderCfg() {
   $('cTaxa').value = c.taxaCartao != null && c.taxaCartao !== '' ? String(c.taxaCartao).replace('.', ',') : '';
   $('cTaxaPadrao').textContent = pct(Number((CARDAPIO.loja || {}).taxaMaquininha) || 0);
   $('cMeta').value = c.meta ? String(c.meta).replace('.', ',') : '';
+  $('cFiadoDias').value = c.fiadoDiasPadrao || ''; $('cLimCons').value = c.limiteConsumoDia ? String(c.limiteConsumoDia).replace('.', ',') : ''; $('cModoDesc').value = c.consumoDescontoModo === 'venda' ? 'venda' : 'custo';
   ['saida', 'entrada'].forEach(t => {
     const grupos = t === 'saida' ? ['cmv', 'variavel', 'fixa', 'folha', 'retirada', 'taxa'] : ['venda', 'receita', 'aporte', 'fiado'];
     $(t === 'saida' ? 'cfgCatSaida' : 'cfgCatEntrada').innerHTML = c.categorias[t].map((k, i) => `<div class="cfgCat">
@@ -1217,6 +1243,7 @@ async function salvarCfg() {
   const c = cfgRascunho;
   c.contaVendas = { dinheiro: $('cCtDin').value, pix: $('cCtPix').value, cartao: $('cCtCar').value };
   c.vendasDesde = $('cVendasDesde').value; c.taxaCartao = $('cTaxa').value.trim() === '' ? null : num($('cTaxa').value); c.meta = num($('cMeta').value) || 0;
+  c.fiadoDiasPadrao = Math.floor(num($('cFiadoDias').value) || 0) || 30; c.limiteConsumoDia = num($('cLimCons').value) || 0; c.consumoDescontoModo = $('cModoDesc').value;
   if (c.contas.some(k => !k.nome.trim())) return toast('Dê um nome para todas as contas.');
   ['saida', 'entrada'].forEach(t => { c.categorias[t] = c.categorias[t].filter(k => k.nome.trim()).map(k => ({ nome: k.nome.trim(), grupo: k.grupo })); });
   try {
