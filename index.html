@@ -203,7 +203,7 @@ function alterarProduto(id, d) {
 /* ---------------- MODAL PIZZA ---------------- */
 let montagem = null;
 function abrirPizza(iSabor) {
-  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicional: false, qtd: 1, obs: '' };
+  montagem = { tamanho: 'G', sabores: [C.sabores[iSabor].nome], adicionais: [], qtd: 1, obs: '' };
   renderModal();
   document.getElementById('modalPizza').classList.add('on');
 }
@@ -211,7 +211,7 @@ function fecharModal() { document.getElementById('modalPizza').classList.remove(
 
 function renderModal() {
   const m = montagem, t = Preco.tamanho(m.tamanho);
-  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicional);
+  const preco = Preco.pizza(m.tamanho, m.sabores, m.adicionais);
   document.getElementById('modalConteudo').innerHTML = `
     <h2>Monte sua pizza</h2>
     <h3>Tamanho</h3>
@@ -219,10 +219,7 @@ function renderModal() {
     <h3 style="margin-top:14px">Sabores <span class="muted">(${m.sabores.length}/${t.maxSabores})</span></h3>
     <div class="chips">${Catalogo.saboresAtivos().map(({ s }) => `<span class="chip ${m.sabores.includes(s.nome) ? 'on' : ''}" onclick="mSabor('${s.nome.replace(/'/g, "\\'")}')">${esc(s.nome)} • ${dinheiro(s[m.tamanho])}</span>`).join('')}</div>
     ${t.maxSabores > 1 ? `<div class="muted" style="margin-top:6px">Meio a meio: preço pela ${CONFIG.meioAMeio === 'maior' ? 'pizza de maior valor' : 'média dos sabores'}.</div>` : ''}
-    <label style="display:flex;gap:8px;align-items:center;margin-top:14px;font-weight:600">
-      <input type="checkbox" style="width:auto" ${m.adicional ? 'checked' : ''} onchange="montagem.adicional=this.checked;renderModal()">
-      Adicional ${esc(C.nomeAdicional)} (+${dinheiro(t.adicional)})
-    </label>
+    ${Catalogo.htmlAdicionais(m)}
     <label for="mObs">Observação desta pizza</label>
     <input id="mObs" value="${esc(m.obs)}" placeholder="Ex.: sem cebola" oninput="montagem.obs=this.value">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;gap:10px">
@@ -245,9 +242,10 @@ function mSabor(nome) {
   else m.sabores.push(nome);
   renderModal();
 }
+function mAdic(id) { Catalogo.alternarAdicional(montagem, id); renderModal(); }
 function adicionarPizza() {
   if (!montagem.sabores.length) return;
-  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { obs: montagem.obs.trim() }));
+  carrinho.push(Object.assign({ uid: uid(), tipo: 'pizza' }, montagem, { adicionais: Catalogo.adicionaisItem(montagem), obs: montagem.obs.trim() }));
   fecharModal();
   atualizar();
   toast('Pizza adicionada!');
