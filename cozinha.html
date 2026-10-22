@@ -196,7 +196,7 @@ async function assinar() {
     render();
     verificarImpressao();
     publicarFila();
-  }, () => toast('Sem permissão para ler pedidos. Verifique o login/regras do Firebase.'));
+  }, e => toast(DB.mensagemErro(e)));
 }
 
 // Agendado que chegou a ANTES min do horário: entra em "Novos" com alarme (e auto-impressão)
@@ -330,7 +330,7 @@ async function mudarStatus(id, status, extra) {
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
   } catch (e) {
     if (jan) jan.close();
-    console.error(e); toast('Erro ao atualizar. Verifique a internet.');
+    DB.logErro(e); toast(DB.mensagemErro(e));
   }
 }
 async function alternarPix(id, confirmado) {
@@ -373,7 +373,7 @@ function renderMovimento() {
 }
 async function setMovimento(m) {
   try { await DB.salvarFila({ ajusteMin: m, atualizadoEm: Date.now() }); toast(m ? `Previsão dos clientes +${m} min.` : 'Previsão normal.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 DB.observarFila(f => { ajusteMin = (f && Number(f.ajusteMin)) || 0; renderMovimento(); });
 
@@ -390,7 +390,7 @@ function renderEmergencia() {
 async function reabrirLoja() {
   if (!confirm('Reabrir a loja online agora?')) return;
   try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), { fechadoAgora: null }) }); toast('🟢 Loja reaberta.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* ---------------- IMPRESSÃO ---------------- */

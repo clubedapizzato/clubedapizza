@@ -209,6 +209,7 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 
     <!-- ================= FICHA TÉCNICA ================= -->
     <section id="aba-fichas" class="hide">
+      <div id="fichaErro" class="alerta hide"></div>
       <div id="fichaVazio" class="aviso hide">Importe o cardápio em <b>📦 Produtos & Estoque</b> para montar as fichas dos sabores.</div>
       <div class="card" id="cardInsumos">
         <h2>🧂 Insumos <span class="muted" style="font-weight:400">(custos privados — só quem está logado vê)</span></h2>
@@ -614,7 +615,7 @@ function renderProdutos() {
 async function importar() {
   if (!confirm('Importar o cardápio atual (sabores, bebidas e sachês) para o banco de dados?')) return;
   try { const n = await DB.importarProdutos(Catalogo.listaImportacao()); toast(`✅ ${n} itens importados.`); }
-  catch (e) { console.error(e); toast(e.message || 'Erro ao importar.'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 async function salvarCfg() {
   const c = numero(val('cfgCortesia')), t = numero(val('cfgTaxa'));
@@ -627,7 +628,7 @@ async function salvarCfg() {
     tempos[k] = v;
   }
   try { await DB.salvarConfig(Object.assign({ cortesiaSachesPorPizza: c, taxaMaquininha: t }, tempos)); toast('✅ Configurações salvas.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* ---------------- HORÁRIO (config/loja.horario) ---------------- */
@@ -667,7 +668,7 @@ function previaHorario() {
 }
 async function gravarHorario(mudancas, msg) {
   try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), mudancas) }); toast(msg); return true; }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); return false; }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); return false; }
 }
 async function salvarHorario() {
   const semana = lerSemana(), prim = val('hPrimeiro');
@@ -778,7 +779,7 @@ async function salvarProdutoForm() {
     Object.assign(campos, { estoqueAtual: 0, ordem: mesmaCat.length ? Math.max(...mesmaCat.map(x => x.ordem || 0)) + 0.5 : Catalogo.todos().length + 1 });
   }
   try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Produto salvo.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 function editarSabor(id) {
@@ -810,7 +811,7 @@ async function salvarSaborForm() {
   if (nome.length < 2) return toast('Informe o nome.');
   if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
   try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* =========================================================
@@ -825,6 +826,9 @@ const dataBr = ms => ms ? new Date(ms).toLocaleDateString('pt-BR') : '—';
 function renderAbaFichas() {
   if (aba !== 'fichas') return;
   document.getElementById('fichaVazio').classList.toggle('hide', Catalogo.doBanco());
+  const er = Ficha.erro(), elE = document.getElementById('fichaErro');
+  elE.classList.toggle('hide', !er);
+  if (er) elE.innerHTML = `🔴 <b>Não foi possível ler os insumos/fichas:</b> ${esc(DB.mensagemErro(er))}`;
   renderInsumos(); renderBase(); renderTabelaFichas();
 }
 
@@ -848,7 +852,7 @@ function renderInsumos() {
 async function carregarExemplo() {
   if (!confirm('Cadastrar os insumos de exemplo (muçarela, bacon, frango, gás, caixa, milho, azeitona, creme de leite, massa, molho)? Depois você edita ou desativa.')) return;
   try { for (const i of Ficha.listaExemplo()) if (!Ficha.insumo(i.id)) await DB.salvarInsumo(i.id, i); toast('✅ Insumos de exemplo cadastrados.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 let insEditando = null;
 function editarInsumo(id) {
@@ -893,7 +897,7 @@ async function salvarInsumoForm() {
     Object.assign(campos, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico: [] });
   }
   try { await DB.salvarInsumo(id, campos); fecharModal(); toast('✅ Insumo salvo.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 function atualizarPreco(id) {
   insEditando = id;
@@ -917,7 +921,7 @@ async function salvarPreco() {
   if (!(qtd > 0)) return toast('Informe a quantidade da embalagem.');
   const historico = (d.historico || []).concat([{ em: d.atualizadoEm || Date.now(), precoCompra: d.precoCompra, qtdEmbalagem: d.qtdEmbalagem }]);
   try { await DB.salvarInsumo(d.id, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico }); fecharModal(); toast('✅ Preço atualizado — fichas recalculadas.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* ---------- base comum, CMV alvo e visão geral ---------- */
@@ -930,7 +934,7 @@ function renderBase() {
 async function salvarCmvAlvo() {
   const v = numero(val('cmvAlvo'));
   if (!(v >= 5 && v <= 90)) return toast('CMV alvo entre 5 e 90%.');
-  try { await DB.salvarFicha('_base', { cmvAlvo: v }); toast('✅ CMV alvo salvo.'); } catch (e) { console.error(e); toast('Erro ao salvar.'); }
+  try { await DB.salvarFicha('_base', { cmvAlvo: v }); toast('✅ CMV alvo salvo.'); } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 // Linhas da visão geral: sabores e adicionais × P/M/G
 function linhasFichas() {
@@ -1092,7 +1096,7 @@ async function feSalvar() {
   const dados = {};
   TAMS.forEach(t => { dados[t] = fe.linhas[t].map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
   try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* ---------------- ADICIONAIS DA PIZZA ---------------- */
@@ -1100,7 +1104,7 @@ async function criarAdicionaisPadrao() {
   try {
     for (const a of Catalogo.adicionaisPadrao(Catalogo.todos().length + 1)) { const { id, ...dados } = a; await DB.salvarProduto(id, dados); }
     toast('✅ Catupiry e Cheddar criados.');
-  } catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 function editarAdicional(id) {
   editando = id;
@@ -1134,7 +1138,7 @@ async function salvarAdicionalForm() {
     if (campos.ordem == null) campos.ordem = Catalogo.todos().length + 1;
   }
   try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Adicional salvo.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 /* ---------------- MOVIMENTAÇÕES ---------------- */
@@ -1200,7 +1204,7 @@ async function salvarMov() {
     m = { tipo: 'ajuste', produtoId, qtd: contagem ? q : -q, contagem, motivo, obs: val('mObs'), data };
   }
   try { await DB.lancarMovimento(m); fecharModal(); toast('✅ Movimentação lançada.'); carregarMov(); }
-  catch (e) { console.error(e); toast(e.message || 'Erro ao lançar.'); }
+  catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 const TIPOS_MOV = { entrada: '➕ Compra', ajuste: '➖ Ajuste', venda: '🛒 Venda', estorno: '↩️ Estorno' };
 async function carregarMov() {

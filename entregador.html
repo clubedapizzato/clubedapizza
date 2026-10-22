@@ -142,7 +142,7 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 async function assinar() {
   if (pararLista) pararLista();
   pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => { pedidos = lista; render(); },
-    () => toast('Sem permissão para ler pedidos. Verifique o login.'));
+    e => toast(DB.mensagemErro(e)));
 }
 setInterval(() => { if (eu && Horario.dataTurno() !== assinar.dia) { assinar.dia = Horario.dataTurno(); assinar(); } }, 60000);
 assinar.dia = Horario.dataTurno();
@@ -228,7 +228,7 @@ async function iniciarRota() {
     marcados.clear();
     toast('Rota pronta! Avise cada cliente no botão 💬 Avisar saída.');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  } catch (e) { console.error(e); toast('Erro ao salvar a rota. Verifique a internet.'); }
+  } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
   finally { b.disabled = false; render(); }
 }
 
@@ -322,7 +322,7 @@ async function entregue(id) {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status: 'entregue' }), 'entregue'));
     toast(`✅ #${p.numero} entregue!`);
-  } catch (e) { if (jan) jan.close(); console.error(e); toast('Erro ao salvar. Verifique a internet.'); }
+  } catch (e) { if (jan) jan.close(); DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 function abrirNao(id) { naoPedido = achar(id); naoMotivo = null; renderNao(); document.getElementById('modalNao').classList.add('on'); }
@@ -354,7 +354,7 @@ async function salvarNao() {
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { naoEntregue }), 'nao_entregue'));
     fecharNao();
     toast(`Pedido #${p.numero} marcado como NÃO entregue. Leve de volta à loja.`);
-  } catch (e) { if (jan) jan.close(); console.error(e); toast('Erro ao salvar. Verifique a internet.'); }
+  } catch (e) { if (jan) jan.close(); DB.logErro(e); toast(DB.mensagemErro(e)); }
 }
 
 function toast(t) {

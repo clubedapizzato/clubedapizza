@@ -402,8 +402,7 @@ async function finalizar() {
     ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now() });
     mostrarSucesso();
   } catch (e) {
-    console.error(e);
-    toast('Não foi possível enviar. Verifique a internet/login e tente de novo.');
+    DB.logErro(e); toast(DB.mensagemErro(e));
     renderTotal();
   } finally { enviando = false; }
 }
