@@ -3,13 +3,14 @@
    - insumos/{id}: { nome, categoria, unidade, precoCompra, qtdEmbalagem, perda %, fornecedor, atualizadoEm, ativo, historico }
    - fichas/{saborId|adicionalId}: { P: [{ insumoId, qtd }], M: [...], G: [...] }
    - fichas/_base: { P, M, G (base comum de toda pizza: massa, caixa, gás...), cmvAlvo }
-   Custos são privados (coleções só para logado). Não baixa estoque de insumo nesta fase.
+   - estoque do insumo (opcional): controlaEstoque, estoqueAtual, estoqueMinimo, estoqueIdeal (na unidade do insumo)
+   Custos são privados (coleções só para logado). Baixa de insumos por pedido: DB.baixarInsumos.
    ========================================================= */
 window.Ficha = (function () {
   const UNIDADES = ['kg', 'g', 'L', 'ml', 'un'];
   const CATEGORIAS = ['Queijos', 'Carnes', 'Vegetais', 'Molhos', 'Massa', 'Embalagens', 'Gás/Energia', 'Outros'];
   const TAMANHOS = ['P', 'M', 'G'];
-  let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null;
+  let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null, carregado = false;
   const r2 = v => Math.round(v * 100) / 100;
 
   // R$ por unidade do insumo (R$/kg, R$/L, R$/un), já com a perda: custo ÷ (1 − perda)
@@ -60,8 +61,74 @@ window.Ficha = (function () {
     }
     return Math.round(v * 100000) / 100000;
   }
+  // Converte entre unidades compatíveis (g↔kg, ml↔L); null se não dá
+  function converter(v, de, para) {
+    const a = String(de || '').toLowerCase(), b = String(para || '').toLowerCase();
+    if (!a || !b || a === b) return v;
+    const f = { 'g>kg': 1 / 1000, 'kg>g': 1000, 'ml>l': 1 / 1000, 'l>ml': 1000 }[a + '>' + b];
+    return f ? v * f : null;
+  }
+  const r5 = v => Math.round(v * 100000) / 100000;
+
+  /* ---------- estoque de insumos ---------- */
+  // Custo médio de compra por unidade (sem a perda) — vale para estoque, compras e baixas
+  const custoMedio = ins => ins && Number(ins.qtdEmbalagem) > 0 ? (Number(ins.precoCompra) || 0) / Number(ins.qtdEmbalagem) : 0;
+  // 'off' (não controla) | 'neg' | 'baixo' (no mínimo ou abaixo) | 'perto' (até 1,5 × mínimo) | 'ok'
+  function estado(ins) {
+    if (!ins || !ins.controlaEstoque) return 'off';
+    const a = Number(ins.estoqueAtual) || 0, m = Number(ins.estoqueMinimo) || 0;
+    return a < 0 ? 'neg' : a <= m && m > 0 ? 'baixo' : a <= m * 1.5 && m > 0 ? 'perto' : a <= 0 ? 'baixo' : 'ok';
+  }
+  // Insumos ativos que controlam estoque e estão no mínimo ou abaixo (inclui negativos)
+  const acabando = () => Object.values(insumos).filter(i => i.ativo !== false && ['neg', 'baixo'].includes(estado(i)));
+
+  /* Quanto comprar: ideal − atual (ideal vazio = 2 × mínimo), arredondado para embalagens inteiras.
+     { qtd (na unidade), embalagens, custo (estimado pelo custo médio) } ou null se não precisa */
+  function sugestaoCompra(ins) {
+    const a = Number(ins.estoqueAtual) || 0, ideal = Number(ins.estoqueIdeal) || (Number(ins.estoqueMinimo) || 0) * 2;
+    const falta = ideal - a, emb = Number(ins.qtdEmbalagem) || 1;
+    if (!(falta > 0)) return null;
+    const embalagens = Math.ceil(falta / emb - 1e-9);
+    return { qtd: r5(embalagens * emb), embalagens, custo: Math.round(embalagens * emb * custoMedio(ins) * 100) / 100 };
+  }
+
+  /* Consumo de insumos de um pedido pelas fichas (meio a meio = fração de cada sabor; + base comum + adicionais).
+     fs/is: mapas de fichas e insumos (padrão: os carregados). Quantidade BRUTA na unidade do insumo:
+     qtd da ficha ÷ (1 − perda), a mesma conta do custo. Retorna { qtd: { insumoId: n }, semFicha: ['CALABRESA (G)'] } */
+  function consumoPedido(pedido, fs = fichas, is = insumos) {
+    const qtd = {}, semFicha = [];
+    const soma = (linhas, fator) => (linhas || []).forEach(l => {
+      const ins = is[l.insumoId];
+      let q = (Number(l.qtd) || 0) * fator;
+      if (ins && l.un) { const c = converter(q, l.un, ins.unidade); if (c != null) q = c; }
+      const perda = ins ? Math.min(Math.max(Number(ins.perda) || 0, 0), 95) : 0;
+      qtd[l.insumoId] = (qtd[l.insumoId] || 0) + q / (1 - perda / 100);
+    });
+    const tem = (id, tam) => !!(fs[id] && (fs[id][tam] || []).length);
+    (pedido.itens || []).forEach(it => {
+      if (it.tipo !== 'pizza') return;
+      const q = it.qtd || 1, tam = it.tamanho, sab = it.sabores || [];
+      sab.forEach(n => {
+        const id = idSabor(n);
+        if (tem(id, tam)) soma(fs[id][tam], q / sab.length);
+        else semFicha.push(`${n} (${tam})`);
+      });
+      if (fs._base) soma(fs._base[tam], q);
+      (it.adicionais || []).forEach(a => {
+        if (tem(a.id, tam)) soma(fs[a.id][tam], q);
+        else semFicha.push(`+ ${a.nome || a.id} (${tam})`);
+      });
+    });
+    Object.keys(qtd).forEach(k => { qtd[k] = r5(qtd[k]); });
+    return { qtd, semFicha: [...new Set(semFicha)] };
+  }
+  // ids de fichas que um pedido pode usar (para ler dentro da transação)
+  const fichasDoPedido = pedido => [...new Set(['_base'].concat(...(pedido.itens || []).filter(it => it.tipo === 'pizza')
+    .map(it => (it.sabores || []).map(idSabor).concat((it.adicionais || []).map(a => a.id)))))];
+
   // Fichas (e a base) que usam o insumo
-  const usoInsumo = id => Object.keys(fichas).filter(k => TAMANHOS.some(t => (fichas[k][t] || []).some(l => l.insumoId === id))).length;
+  const fichasDoInsumo = id => Object.values(fichas).filter(f => TAMANHOS.some(t => (f[t] || []).some(l => l.insumoId === id)));
+  const usoInsumo = id => fichasDoInsumo(id).length;
 
   /* Resultado de venda: CMV %, taxa da maquininha, lucro e preço sugerido pelo CMV alvo */
   function resultado(venda, custo) {
@@ -90,13 +157,14 @@ window.Ficha = (function () {
     const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } };
     // erro de leitura (ex.: regras sem insumos/fichas) fica visível na Gestão
     const falhou = e => { erroLeitura = e; avisar(); };
-    DB.observarInsumos(l => { erroLeitura = null; insumos = {}; l.forEach(i => { insumos[i.id] = i; }); avisar(); }, falhou);
+    DB.observarInsumos(l => { erroLeitura = null; carregado = true; insumos = {}; l.forEach(i => { insumos[i.id] = i; }); avisar(); }, falhou);
     DB.observarFichas(l => { fichas = {}; l.forEach(f => { fichas[f.id] = f; }); avisar(); }, falhou);
   }
 
   return {
     UNIDADES, CATEGORIAS, TAMANHOS, iniciar, custoUnit, custoLinha, custoLinhas, custoBase, custoFicha, custoSabor, custoItem,
     temFicha, idSabor, lerQtd, usoInsumo, resultado, corCmv, cmvAlvo, listaExemplo, fichaExemplo,
+    fichasDoInsumo, converter, custoMedio, estado, acabando, sugestaoCompra, consumoPedido, fichasDoPedido, carregado: () => carregado,
     insumo: id => insumos[id] || null, insumos: () => Object.values(insumos).sort((a, b) => a.nome.localeCompare(b.nome)),
     ficha: id => fichas[id] || null, base, erro: () => erroLeitura
   };

@@ -428,6 +428,167 @@ window.DB = (function () {
     await comCaminho('fichas/' + id, fs.setDoc(fs.doc(db, 'fichas', id), campos, { merge: true }));
   }
 
+  /* ---------------- ESTOQUE DE INSUMOS (coleção movimentos com tipoItem: 'insumo') ----------------
+     Cada movimento é UM documento com itens: [{ insumoId, nome, unidade, qtd (+ entra / − sai), custoUnit, valor, saldoDepois }]
+     tipo: 'compra' (nota com vários insumos, custo médio ponderado) | 'ajuste' | 'inventario' (contagem) |
+           'consumo' (baixa pela ficha técnica, id fixo ins-consumo-{pedidoId}) | 'estorno' (pedido cancelado, ins-estorno-{pedidoId}) */
+  const r4 = v => Math.round(v * 10000) / 10000, r5i = v => Math.round(v * 100000) / 100000, r2 = v => Math.round(v * 100) / 100;
+  const idMov = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  /* m = { tipo: 'compra'|'ajuste'|'inventario', data, fornecedor, nota, motivo, obs,
+           itens: [{ insumoId, qtd (compra: comprada; ajuste: +/−; inventario: contada), valor (compra: total pago) }] }
+     ins = { id: insumo }. Retorna { upds: { id: campos }, mov } */
+  function aplicarMovInsumos(ins, m) {
+    const upds = {}, itens = [];
+    m.itens.forEach(x => {
+      const i = ins[x.insumoId];
+      if (!i) throw new Error('Insumo não encontrado.');
+      const atual = (upds[x.insumoId] && upds[x.insumoId].estoqueAtual != null ? upds[x.insumoId].estoqueAtual : Number(i.estoqueAtual)) || 0;
+      const custo = Ficha.custoMedio(Object.assign({}, i, upds[x.insumoId] || {}));
+      const emb = Number(i.qtdEmbalagem) > 0 ? Number(i.qtdEmbalagem) : 1;
+      const it = { insumoId: x.insumoId, nome: i.nome, unidade: i.unidade };
+      if (m.tipo === 'compra') {
+        const q = Number(x.qtd), v = Number(x.valor) || 0;
+        if (!(q > 0)) throw new Error(`Quantidade inválida (${i.nome}).`);
+        // custo médio ponderado (estoque zerado/negativo: vale o preço desta compra)
+        const medio = atual > 0 ? (atual * custo + v) / (atual + q) : v / q;
+        const u = upds[x.insumoId] = Object.assign(upds[x.insumoId] || {}, {
+          estoqueAtual: r5i(atual + q), precoCompra: r4(medio * emb), qtdEmbalagem: emb, atualizadoEm: Date.now(),
+          historico: ((upds[x.insumoId] || {}).historico || i.historico || []).concat([{ em: i.atualizadoEm || Date.now(), precoCompra: i.precoCompra, qtdEmbalagem: i.qtdEmbalagem }])
+        });
+        Object.assign(it, { qtd: q, custoUnit: r4(v / q), valor: r2(v), saldoDepois: u.estoqueAtual, custoMedioDepois: r4(medio), custoMedioAntes: r4(custo) });
+      } else if (m.tipo === 'inventario') {
+        const contado = Number(x.qtd);
+        if (!(contado >= 0)) throw new Error(`Contagem inválida (${i.nome}).`);
+        const d = r5i(contado - atual);
+        upds[x.insumoId] = Object.assign(upds[x.insumoId] || {}, { estoqueAtual: r5i(contado) });
+        Object.assign(it, { qtd: d, antes: r5i(atual), contado: r5i(contado), custoUnit: r4(custo), valor: r2(d * custo), valorContado: r2(contado * custo), saldoDepois: r5i(contado) });
+      } else {
+        const d = Number(x.qtd);
+        if (!d) throw new Error(`Quantidade inválida (${i.nome}).`);
+        upds[x.insumoId] = Object.assign(upds[x.insumoId] || {}, { estoqueAtual: r5i(atual + d) });
+        Object.assign(it, { qtd: r5i(d), custoUnit: r4(custo), valor: r2(d * custo), saldoDepois: r5i(atual + d) });
+      }
+      itens.push(it);
+    });
+    const mov = {
+      tipoItem: 'insumo', tipo: m.tipo, itens, valorTotal: r2(itens.reduce((s, x) => s + x.valor, 0)),
+      produtoNome: itens.length === 1 ? itens[0].nome : `${itens.length} insumos`,
+      fornecedor: m.fornecedor || '', nota: m.nota || '', motivo: m.motivo || '', obs: m.obs || '',
+      data: m.data || hojeISO(), em: Date.now(), usuario: usuario()
+    };
+    return { upds, mov };
+  }
+
+  async function lancarMovInsumos(m) {
+    await init();
+    if (!m.itens || !m.itens.length) throw new Error('Nenhum insumo informado.');
+    if (modo() === 'demo') {
+      const ins = lerLS(LS_INS, {});
+      const { upds, mov } = aplicarMovInsumos(ins, m);
+      Object.keys(upds).forEach(id => Object.assign(ins[id], upds[id]));
+      const movs = lerLS(LS_MOV, []); movs.push(Object.assign({ id: idMov() }, mov));
+      gravarLS(LS_INS, ins); gravarLS(LS_MOV, movs);
+      return mov;
+    }
+    const ids = [...new Set(m.itens.map(x => x.insumoId))];
+    return comCaminho('insumos + movimentos (' + m.tipo + ')', fs.runTransaction(db, async tx => {
+      const ins = {};
+      for (const id of ids) { const s = await tx.get(fs.doc(db, 'insumos', id)); if (s.exists()) ins[id] = Object.assign({ id }, s.data()); }
+      const { upds, mov } = aplicarMovInsumos(ins, m);
+      Object.keys(upds).forEach(id => tx.update(fs.doc(db, 'insumos', id), upds[id]));
+      tx.set(fs.doc(fs.collection(db, 'movimentos')), mov);
+      return mov;
+    }));
+  }
+
+  /* Baixa (sinal −1) dos insumos de um pedido pela ficha técnica, ou estorno (+1) — uma única vez.
+     Baixa: pedido.estoqueInsumosBaixado = true + movimentos/ins-consumo-{id}. Estorno devolve exatamente o que baixou.
+     Insumo sem controlaEstoque é ignorado; sem ficha → aviso (semFicha) no movimento. Falta de estoque nunca bloqueia. */
+  function planoConsumo(pedido, fichasM, ins) {
+    const c = Ficha.consumoPedido(pedido, fichasM, ins);
+    const itens = [], upds = {}, faltas = [];
+    Object.keys(c.qtd).forEach(id => {
+      const i = ins[id], q = c.qtd[id];
+      if (!i || !i.controlaEstoque || !(q > 0)) return;
+      const atual = Number(i.estoqueAtual) || 0, custo = Ficha.custoMedio(i);
+      if (atual < q) faltas.push(i.nome);
+      upds[id] = { estoqueAtual: r5i(atual - q) };
+      itens.push({ insumoId: id, nome: i.nome, unidade: i.unidade, qtd: -q, custoUnit: r4(custo), valor: r2(-q * custo), saldoDepois: r5i(atual - q) });
+    });
+    return { itens, upds, faltas, semFicha: c.semFicha };
+  }
+  function planoEstornoInsumos(consumo, ins) {
+    const itens = [], upds = {};
+    ((consumo && consumo.itens) || []).forEach(x => {
+      const i = ins[x.insumoId]; if (!i) return;
+      const atual = Number(i.estoqueAtual) || 0, q = -x.qtd;
+      upds[x.insumoId] = { estoqueAtual: r5i(atual + q) };
+      itens.push({ insumoId: x.insumoId, nome: i.nome, unidade: i.unidade, qtd: q, custoUnit: x.custoUnit, valor: r2(q * x.custoUnit), saldoDepois: r5i(atual + q) });
+    });
+    return { itens, upds };
+  }
+  const movPedido = (tipo, pedido, pedidoId, itens, extra) => Object.assign({
+    tipoItem: 'insumo', tipo, itens, valorTotal: r2(itens.reduce((s, x) => s + x.valor, 0)),
+    produtoNome: `Pedido #${pedido.numero || ''}`, pedidoId, pedidoNumero: pedido.numero || null,
+    data: pedido.data || hojeISO(), em: Date.now(), usuario: usuario()
+  }, extra || {});
+
+  async function moverInsumosPedido(id, sinal) {
+    await init();
+    if (!window.Ficha) return { feito: false, semFicha: [], faltas: [] };
+    const pode = p => sinal < 0 ? !p.estoqueInsumosBaixado && p.status !== 'cancelado' : !!p.estoqueInsumosBaixado;
+    const marca = sinal < 0 ? { estoqueInsumosBaixado: true } : { estoqueInsumosBaixado: false, estoqueInsumosEstornado: true };
+    const idC = 'ins-consumo-' + id, idE = 'ins-estorno-' + id;
+    if (modo() === 'demo') {
+      const todos = lerTodos(), p = todos[id];
+      if (!p || !pode(p)) return { feito: false, semFicha: [], faltas: [] };
+      const ins = lerLS(LS_INS, {}), movs = lerLS(LS_MOV, []);
+      let r = { semFicha: [], faltas: [] };
+      if (sinal < 0) {
+        r = planoConsumo(p, lerLS(LS_FIC, {}), ins);
+        Object.keys(r.upds).forEach(k => Object.assign(ins[k], r.upds[k]));
+        if (r.itens.length || r.semFicha.length) movs.push(Object.assign({ id: idC }, movPedido('consumo', p, id, r.itens, { semFicha: r.semFicha, faltas: r.faltas })));
+      } else {
+        const e = planoEstornoInsumos(movs.find(m => m.id === idC), ins);
+        Object.keys(e.upds).forEach(k => Object.assign(ins[k], e.upds[k]));
+        if (e.itens.length) movs.push(Object.assign({ id: idE }, movPedido('estorno', p, id, e.itens)));
+      }
+      Object.assign(p, marca);
+      gravarLS(LS_INS, ins); gravarLS(LS_MOV, movs); gravarTodos(todos);
+      return { feito: true, semFicha: r.semFicha, faltas: r.faltas };
+    }
+    const pedRef = fs.doc(db, 'pedidos', id);
+    return comCaminho('pedidos/' + id + ' (insumos)', fs.runTransaction(db, async tx => {
+      const ps = await tx.get(pedRef);
+      if (!ps.exists()) return { feito: false, semFicha: [], faltas: [] };
+      const p = ps.data();
+      if (!pode(p)) return { feito: false, semFicha: [], faltas: [] };
+      const ins = {}, lerIns = async ids => { for (const k of ids) { const s = await tx.get(fs.doc(db, 'insumos', k)); if (s.exists()) ins[k] = Object.assign({ id: k }, s.data()); } };
+      if (sinal < 0) {
+        const fichasM = {};
+        for (const k of Ficha.fichasDoPedido(p)) { const s = await tx.get(fs.doc(db, 'fichas', k)); if (s.exists()) fichasM[k] = s.data(); }
+        const ids = Object.keys(Ficha.consumoPedido(p, fichasM, {}).qtd);
+        await lerIns(ids);
+        const r = planoConsumo(p, fichasM, ins);
+        Object.keys(r.upds).forEach(k => tx.update(fs.doc(db, 'insumos', k), r.upds[k]));
+        if (r.itens.length || r.semFicha.length) tx.set(fs.doc(db, 'movimentos', idC), movPedido('consumo', p, id, r.itens, { semFicha: r.semFicha, faltas: r.faltas }));
+        tx.update(pedRef, marca);
+        return { feito: true, semFicha: r.semFicha, faltas: r.faltas };
+      }
+      const cs = await tx.get(fs.doc(db, 'movimentos', idC));
+      const consumo = cs.exists() ? cs.data() : null;
+      await lerIns(((consumo && consumo.itens) || []).map(x => x.insumoId));
+      const e = planoEstornoInsumos(consumo, ins);
+      Object.keys(e.upds).forEach(k => tx.update(fs.doc(db, 'insumos', k), e.upds[k]));
+      if (e.itens.length) tx.set(fs.doc(db, 'movimentos', idE), movPedido('estorno', p, id, e.itens));
+      tx.update(pedRef, marca);
+      return { feito: true, semFicha: [], faltas: [] };
+    }));
+  }
+  const baixarInsumos = id => moverInsumosPedido(id, -1);
+  const estornarInsumos = id => moverInsumosPedido(id, 1);
+
   async function login(email, senha) {
     await init();
     if (modo() === 'demo') return;
@@ -444,6 +605,7 @@ window.DB = (function () {
     init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, atualizarPedido,
     observarInsumos, observarFichas, salvarInsumo, salvarFicha, mensagemErro, logErro,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
-    lancarMovimento, listarMovimentos, login, sair, observarUsuario
+    lancarMovimento, listarMovimentos, login, sair, observarUsuario,
+    lancarMovInsumos, baixarInsumos, estornarInsumos
   };
 })();

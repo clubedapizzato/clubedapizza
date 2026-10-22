@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Cozinha • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261022">
+<link rel="stylesheet" href="css/app.css?v=20261023">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px;flex-wrap:wrap}
@@ -91,6 +91,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
   <div id="painel" class="hide">
     <div id="emergencia" class="hide" style="background:#7f1d1d;color:#fff;border-radius:14px;padding:12px 14px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"></div>
     <div id="futuros" class="aviso hide"></div>
+    <a id="avisoInsumos" class="hide" href="relatorios.html#insumos" target="_blank" style="display:inline-block;font-size:13px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:999px;padding:4px 10px;margin:0 0 10px;text-decoration:none"></a>
     <div id="naoEntregues" class="naoEntregues hide"></div>
     <div id="agendados" class="agendados hide"></div>
     <div class="colunas" id="colunas"></div>
@@ -100,12 +101,12 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261022"></script>
-<script src="js/cardapio.js?v=20261022"></script>
-<script src="js/db.js?v=20261022"></script>
-<script src="js/catalogo.js?v=20261022"></script>
-<script src="js/ficha.js?v=20261022"></script>
-<script src="js/impressora.js?v=20261022"></script>
+<script src="js/config.js?v=20261023"></script>
+<script src="js/cardapio.js?v=20261023"></script>
+<script src="js/db.js?v=20261023"></script>
+<script src="js/catalogo.js?v=20261023"></script>
+<script src="js/ficha.js?v=20261023"></script>
+<script src="js/impressora.js?v=20261023"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -164,7 +165,7 @@ DB.observarUsuario(u => {
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   logadoCoz = logado;
-  if (logado) { assinar(); assinarFuturos(); Ficha.iniciar(); }   // ficha técnica: custo gravado na baixa do pedido
+  if (logado) { assinar(); assinarFuturos(); Ficha.iniciar(avisoInsumos); }   // ficha técnica: custo gravado e baixa dos insumos
   else {
     if (pararLista) { pararLista(); pararLista = null; }
     if (pararFuturos) { pararFuturos(); pararFuturos = null; }
@@ -327,11 +328,27 @@ async function mudarStatus(id, status, extra) {
     if (status === 'producao') await DB.baixarEstoque(id);
     await DB.atualizarPedido(id, Object.assign({ status }, extra || {}), status);
     if (status === 'cancelado') await DB.estornarEstoque(id);
+    // insumos pela ficha técnica: nunca bloqueia a produção (só avisa)
+    if (status === 'producao') moverInsumos(id, -1, p.numero);
+    if (status === 'cancelado') moverInsumos(id, 1, p.numero);
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
   } catch (e) {
     if (jan) jan.close();
     avisarErro(e);
   }
+}
+// Baixa (−1) / estorno (+1) dos insumos do pedido pela ficha técnica, em segundo plano
+async function moverInsumos(id, sinal, numero) {
+  try {
+    const r = await (sinal < 0 ? DB.baixarInsumos(id) : DB.estornarInsumos(id));
+    if (r.feito && r.semFicha.length) toast(`📋 Pedido #${numero}: sem ficha técnica (${r.semFicha.join(', ')}) — insumos não baixados.`);
+  } catch (e) { DB.logErro(e); toast(`Insumos do pedido #${numero} não ${sinal < 0 ? 'baixados' : 'devolvidos'}: ${DB.mensagemErro(e)}`); }
+}
+// "⚠️ 3 insumos acabando" (link para a Gestão)
+function avisoInsumos() {
+  const n = Ficha.acabando().length, el = document.getElementById('avisoInsumos');
+  el.classList.toggle('hide', !n);
+  el.textContent = `⚠️ ${n} insumo${n > 1 ? 's' : ''} acabando — ver na Gestão`;
 }
 async function alternarPix(id, confirmado) {
   const p = achar(id); if (!p) return;

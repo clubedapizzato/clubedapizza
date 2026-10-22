@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261022">
+<link rel="stylesheet" href="css/app.css?v=20261023">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px}
@@ -148,13 +148,13 @@ main{max-width:1400px;padding-bottom:30px}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261022"></script>
-<script src="js/cardapio.js?v=20261022"></script>
-<script src="js/db.js?v=20261022"></script>
-<script src="js/catalogo.js?v=20261022"></script>
-<script src="js/ficha.js?v=20261022"></script>
-<script src="js/endereco.js?v=20261022"></script>
-<script src="js/impressora.js?v=20261022"></script>
+<script src="js/config.js?v=20261023"></script>
+<script src="js/cardapio.js?v=20261023"></script>
+<script src="js/db.js?v=20261023"></script>
+<script src="js/catalogo.js?v=20261023"></script>
+<script src="js/ficha.js?v=20261023"></script>
+<script src="js/endereco.js?v=20261023"></script>
+<script src="js/impressora.js?v=20261023"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const C = CARDAPIO;
@@ -398,7 +398,10 @@ async function finalizar() {
   b.disabled = true; b.textContent = 'Enviando...';
   try {
     // balcão: baixa o estoque na hora, junto com a criação do pedido
-    const { numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true });
+    const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true });
+    // insumos pela ficha técnica (em segundo plano: nunca trava o caixa)
+    DB.baixarInsumos(id).then(r => { if (r.feito && r.semFicha.length) toast(`📋 Sem ficha técnica: ${r.semFicha.join(', ')} — insumos não baixados.`); })
+      .catch(e => { DB.logErro(e); toast('Insumos não baixados: ' + DB.mensagemErro(e)); });
     ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now() });
     mostrarSucesso();
   } catch (e) {
