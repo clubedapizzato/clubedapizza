@@ -9,7 +9,7 @@ window.Ficha = (function () {
   const UNIDADES = ['kg', 'g', 'L', 'ml', 'un'];
   const CATEGORIAS = ['Queijos', 'Carnes', 'Vegetais', 'Molhos', 'Massa', 'Embalagens', 'Gás/Energia', 'Outros'];
   const TAMANHOS = ['P', 'M', 'G'];
-  let insumos = {}, fichas = {}, iniciado = false;
+  let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null;
   const r2 = v => Math.round(v * 100) / 100;
 
   // R$ por unidade do insumo (R$/kg, R$/L, R$/un), já com a perda: custo ÷ (1 − perda)
@@ -88,14 +88,16 @@ window.Ficha = (function () {
   function iniciar(onChange) {
     if (iniciado) return; iniciado = true;
     const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } };
-    DB.observarInsumos(l => { insumos = {}; l.forEach(i => { insumos[i.id] = i; }); avisar(); }, () => {});
-    DB.observarFichas(l => { fichas = {}; l.forEach(f => { fichas[f.id] = f; }); avisar(); }, () => {});
+    // erro de leitura (ex.: regras sem insumos/fichas) fica visível na Gestão
+    const falhou = e => { erroLeitura = e; avisar(); };
+    DB.observarInsumos(l => { erroLeitura = null; insumos = {}; l.forEach(i => { insumos[i.id] = i; }); avisar(); }, falhou);
+    DB.observarFichas(l => { fichas = {}; l.forEach(f => { fichas[f.id] = f; }); avisar(); }, falhou);
   }
 
   return {
     UNIDADES, CATEGORIAS, TAMANHOS, iniciar, custoUnit, custoLinha, custoLinhas, custoBase, custoFicha, custoSabor, custoItem,
     temFicha, idSabor, lerQtd, usoInsumo, resultado, corCmv, cmvAlvo, listaExemplo, fichaExemplo,
     insumo: id => insumos[id] || null, insumos: () => Object.values(insumos).sort((a, b) => a.nome.localeCompare(b.nome)),
-    ficha: id => fichas[id] || null, base
+    ficha: id => fichas[id] || null, base, erro: () => erroLeitura
   };
 })();

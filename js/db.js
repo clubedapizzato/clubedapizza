@@ -38,6 +38,25 @@ window.DB = (function () {
     fn();
     return () => { window.removeEventListener('storage', h); window.removeEventListener('cdp-local', h); };
   }
+  // Guarda no erro o documento que falhou (aparece no console: "[Firebase] permission-denied em insumos/ins-x")
+  const comCaminho = (caminho, promessa) => promessa.catch(e => { if (e && typeof e === 'object') e.caminho = caminho; throw e; });
+
+  /* Mensagem clara para o toast a partir do código do erro do Firebase */
+  function mensagemErro(e) {
+    const code = String((e && e.code) || '').replace(/^(firestore|auth)\//, '');
+    const campo = String((e && e.message) || '').match(/in field ([\w.\[\]-]+)/);
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'Sem internet, tente de novo.';
+    if (code === 'permission-denied') return 'Sem permissão: entre de novo ou publique as regras do Firebase (Firestore → Regras).';
+    if (code === 'unauthenticated' || code === 'user-token-expired') return 'Sessão expirada: entre de novo.';
+    if (code === 'unavailable' || code === 'deadline-exceeded' || code === 'network-request-failed') return 'Sem internet, tente de novo.';
+    if (code === 'invalid-argument') return `Dado inválido${campo ? ' no campo ' + campo[1] : ''}. Confira e tente de novo.`;
+    // página nova com script antigo em cache (ex.: "DB.salvarInsumo is not a function")
+    if (e instanceof TypeError && /is not a function|undefined/.test(e.message)) return 'Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).';
+    if (!code && e && e.message) return e.message;   // mensagens do próprio sistema (ex.: "Produto não encontrado.")
+    return `Erro ao salvar${code ? ' (' + code + ')' : ''}. Tente de novo.`;
+  }
+  const logErro = e => console.error('[Firebase]', (e && e.code) || '', e && e.caminho ? 'em ' + e.caminho : '', e);
+
   const usuario = () => (modo() === 'demo' ? 'demo' : (auth && auth.currentUser && auth.currentUser.email) || '');
 
   /* ---------------- ESTOQUE (regras comuns aos dois modos) ---------------- */
@@ -154,7 +173,7 @@ window.DB = (function () {
     const contRef = fs.doc(db, 'contadores', data);
     const pedRef = fs.doc(fs.collection(db, 'pedidos'));
     let faltas = [], codigo = null;
-    const numero = await fs.runTransaction(db, async tx => {
+    const numero = await comCaminho('pedidos/' + pedRef.id, fs.runTransaction(db, async tx => {
       const snap = await tx.get(contRef);
       const n = snap.exists() ? snap.data().n + 1 : 1;
       let doc = Object.assign({}, pedido, { numero: n, criadoEmServidor: fs.serverTimestamp() });
@@ -185,7 +204,7 @@ window.DB = (function () {
       tx.set(pedRef, doc);
       if (rasRef) tx.set(rasRef, { pedidoId: pedRef.id, criadoEm: Date.now() });
       return n;
-    });
+    }));
     return { id: pedRef.id, numero, faltas, codigo };
   }
 
@@ -207,7 +226,7 @@ window.DB = (function () {
       return { faltas: plano.faltas, feito: true };
     }
     const pedRef = fs.doc(db, 'pedidos', id);
-    return fs.runTransaction(db, async tx => {
+    return comCaminho('pedidos/' + id + ' (estoque)', fs.runTransaction(db, async tx => {
       const ps = await tx.get(pedRef);
       if (!ps.exists()) return { faltas: [], feito: false };
       const p = ps.data();
@@ -221,7 +240,7 @@ window.DB = (function () {
       });
       tx.update(pedRef, sinal < 0 ? Object.assign({ itens: itensComCusto(p.itens, prods) }, marca) : marca);
       return { faltas: plano.faltas, feito: true };
-    });
+    }));
   }
   const baixarEstoque = id => moverEstoquePedido(id, -1);
   const estornarEstoque = id => moverEstoquePedido(id, 1);
@@ -267,7 +286,7 @@ window.DB = (function () {
   async function salvarFila(campos) {
     await init();
     if (modo() === 'demo') { gravarLS(LS_FILA, Object.assign(lerLS(LS_FILA, {}), campos)); return; }
-    await fs.setDoc(fs.doc(db, 'config', 'fila'), campos, { merge: true });
+    await comCaminho('config/fila', fs.setDoc(fs.doc(db, 'config', 'fila'), campos, { merge: true }));
   }
 
   // Último pedido (mais recente) com este telefone — só dígitos; delivery do balcão (logado)
@@ -302,7 +321,7 @@ window.DB = (function () {
     }
     const upd = Object.assign({}, campos);
     if (novoStatus) upd.historico = fs.arrayUnion({ status: novoStatus, em: Date.now() });
-    await fs.updateDoc(fs.doc(db, 'pedidos', id), upd);
+    await comCaminho('pedidos/' + id, fs.updateDoc(fs.doc(db, 'pedidos', id), upd));
   }
 
   /* ---------------- PRODUTOS / CONFIG / MOVIMENTOS ---------------- */
@@ -320,7 +339,7 @@ window.DB = (function () {
       gravarLS(LS_PROD, prods);
       return;
     }
-    await fs.setDoc(fs.doc(db, 'produtos', id), campos, { merge: true });
+    await comCaminho('produtos/' + id, fs.setDoc(fs.doc(db, 'produtos', id), campos, { merge: true }));
   }
   // Cria os produtos a partir do cardápio fixo — só se a coleção estiver vazia
   async function importarProdutos(lista) {
@@ -336,7 +355,7 @@ window.DB = (function () {
     if (!atual.empty) throw new Error('A coleção de produtos já tem itens.');
     const b = fs.writeBatch(db);
     lista.forEach(p => { const { id, ...dados } = p; b.set(fs.doc(db, 'produtos', id), dados); });
-    await b.commit();
+    await comCaminho('produtos (importação)', b.commit());
     return lista.length;
   }
 
@@ -348,7 +367,7 @@ window.DB = (function () {
   async function salvarConfig(campos) {
     await init();
     if (modo() === 'demo') { gravarLS(LS_CFG, Object.assign(lerLS(LS_CFG, {}), campos)); return; }
-    await fs.setDoc(fs.doc(db, 'config', 'loja'), campos, { merge: true });
+    await comCaminho('config/loja', fs.setDoc(fs.doc(db, 'config', 'loja'), campos, { merge: true }));
   }
 
   // m = { tipo: 'entrada'|'ajuste', produtoId, qtd, valorTotal, fornecedor, data, motivo, obs, contagem, ligarControle }
@@ -365,14 +384,14 @@ window.DB = (function () {
       return upd;
     }
     const ref = fs.doc(db, 'produtos', m.produtoId);
-    return fs.runTransaction(db, async tx => {
+    return comCaminho('produtos/' + m.produtoId + ' + movimentos', fs.runTransaction(db, async tx => {
       const s = await tx.get(ref);
       if (!s.exists()) throw new Error('Produto não encontrado.');
       const { upd, mov } = aplicarMovimento(s.data(), m);
       tx.update(ref, upd);
       tx.set(fs.doc(fs.collection(db, 'movimentos')), mov);
       return upd;
-    });
+    }));
   }
   // Movimentos com data (YYYY-MM-DD) entre "de" e "ate", mais recentes primeiro
   async function listarMovimentos(de, ate) {
@@ -397,7 +416,7 @@ window.DB = (function () {
     await init();
     if (modo() === 'demo') { const o = lerLS(chaveLS, {}); o[id] = Object.assign(o[id] || {}, campos, { id }); gravarLS(chaveLS, o); return; }
     const { id: _, ...dados } = campos;
-    await fs.setDoc(fs.doc(db, nome, id), dados, { merge: true });
+    await comCaminho(nome + '/' + id, fs.setDoc(fs.doc(db, nome, id), dados, { merge: true }));
   }
   const observarInsumos = (cb, erro) => observarColecao('insumos', LS_INS, cb, erro);
   const observarFichas = (cb, erro) => observarColecao('fichas', LS_FIC, cb, erro);
@@ -406,7 +425,7 @@ window.DB = (function () {
   async function salvarFicha(id, campos) {
     await init();
     if (modo() === 'demo') { const o = lerLS(LS_FIC, {}); o[id] = Object.assign({}, o[id] || {}, campos, { id }); gravarLS(LS_FIC, o); return; }
-    await fs.setDoc(fs.doc(db, 'fichas', id), campos, { merge: true });
+    await comCaminho('fichas/' + id, fs.setDoc(fs.doc(db, 'fichas', id), campos, { merge: true }));
   }
 
   async function login(email, senha) {
@@ -423,7 +442,7 @@ window.DB = (function () {
 
   return {
     init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, atualizarPedido,
-    observarInsumos, observarFichas, salvarInsumo, salvarFicha,
+    observarInsumos, observarFichas, salvarInsumo, salvarFicha, mensagemErro, logErro,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario
   };

@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=20261022">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px}
@@ -148,13 +148,13 @@ main{max-width:1400px;padding-bottom:30px}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/cardapio.js"></script>
-<script src="js/db.js"></script>
-<script src="js/catalogo.js"></script>
-<script src="js/ficha.js"></script>
-<script src="js/endereco.js"></script>
-<script src="js/impressora.js"></script>
+<script src="js/config.js?v=20261022"></script>
+<script src="js/cardapio.js?v=20261022"></script>
+<script src="js/db.js?v=20261022"></script>
+<script src="js/catalogo.js?v=20261022"></script>
+<script src="js/ficha.js?v=20261022"></script>
+<script src="js/endereco.js?v=20261022"></script>
+<script src="js/impressora.js?v=20261022"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const C = CARDAPIO;
@@ -402,8 +402,7 @@ async function finalizar() {
     ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now() });
     mostrarSucesso();
   } catch (e) {
-    console.error(e);
-    toast('Não foi possível enviar. Verifique a internet/login e tente de novo.');
+    avisarErro(e);
     renderTotal();
   } finally { enviando = false; }
 }
@@ -494,6 +493,11 @@ function novoPedido() {
   window.scrollTo(0, 0);
 }
 
+// Erro ao gravar: mensagem clara (funciona mesmo se o db.js em cache for de outra versão)
+function avisarErro(e) {
+  if (window.DB && DB.mensagemErro) { DB.logErro(e); toast(DB.mensagemErro(e)); return; }
+  console.error(e); toast('Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).');
+}
 function toast(t) {
   const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
   clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 2800);

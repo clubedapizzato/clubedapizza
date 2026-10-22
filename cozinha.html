@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Cozinha • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css">
+<link rel="stylesheet" href="css/app.css?v=20261022">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px;flex-wrap:wrap}
@@ -100,12 +100,12 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js"></script>
-<script src="js/cardapio.js"></script>
-<script src="js/db.js"></script>
-<script src="js/catalogo.js"></script>
-<script src="js/ficha.js"></script>
-<script src="js/impressora.js"></script>
+<script src="js/config.js?v=20261022"></script>
+<script src="js/cardapio.js?v=20261022"></script>
+<script src="js/db.js?v=20261022"></script>
+<script src="js/catalogo.js?v=20261022"></script>
+<script src="js/ficha.js?v=20261022"></script>
+<script src="js/impressora.js?v=20261022"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -196,7 +196,7 @@ async function assinar() {
     render();
     verificarImpressao();
     publicarFila();
-  }, () => toast('Sem permissão para ler pedidos. Verifique o login/regras do Firebase.'));
+  }, e => avisarErro(e));
 }
 
 // Agendado que chegou a ANTES min do horário: entra em "Novos" com alarme (e auto-impressão)
@@ -330,7 +330,7 @@ async function mudarStatus(id, status, extra) {
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status }), status));
   } catch (e) {
     if (jan) jan.close();
-    console.error(e); toast('Erro ao atualizar. Verifique a internet.');
+    avisarErro(e);
   }
 }
 async function alternarPix(id, confirmado) {
@@ -373,7 +373,7 @@ function renderMovimento() {
 }
 async function setMovimento(m) {
   try { await DB.salvarFila({ ajusteMin: m, atualizadoEm: Date.now() }); toast(m ? `Previsão dos clientes +${m} min.` : 'Previsão normal.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { avisarErro(e); }
 }
 DB.observarFila(f => { ajusteMin = (f && Number(f.ajusteMin)) || 0; renderMovimento(); });
 
@@ -390,7 +390,7 @@ function renderEmergencia() {
 async function reabrirLoja() {
   if (!confirm('Reabrir a loja online agora?')) return;
   try { await DB.salvarConfig({ horario: Object.assign({}, Horario.config(), { fechadoAgora: null }) }); toast('🟢 Loja reaberta.'); }
-  catch (e) { console.error(e); toast('Erro ao salvar (login/regras do Firebase).'); }
+  catch (e) { avisarErro(e); }
 }
 
 /* ---------------- IMPRESSÃO ---------------- */
@@ -442,6 +442,11 @@ function tocar() {
   });
 }
 
+// Erro ao gravar: mensagem clara (funciona mesmo se o db.js em cache for de outra versão)
+function avisarErro(e) {
+  if (window.DB && DB.mensagemErro) { DB.logErro(e); toast(DB.mensagemErro(e)); return; }
+  console.error(e); toast('Página desatualizada: aperte Ctrl+F5 (no celular, feche e abra o navegador).');
+}
 function toast(t) {
   const e = document.getElementById('toast'); e.textContent = t; e.style.display = 'block';
   clearTimeout(toast.t); toast.t = setTimeout(() => e.style.display = 'none', 3500);
