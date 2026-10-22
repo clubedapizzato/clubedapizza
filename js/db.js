@@ -96,11 +96,11 @@ window.DB = (function () {
       return it;
     });
   }
-  const movimentoVenda = (m, sinal, pedidoId, pedido) => ({
+  const movimentoVenda = (m, sinal, pedidoId, pedido) => Object.assign({
     tipo: sinal < 0 ? 'venda' : 'estorno', produtoId: m.id, produtoNome: m.nome, qtd: m.qtd,
     custoUnitario: m.custo, estoqueDepois: m.estoque, pedidoId, pedidoNumero: pedido.numero || null,
     data: pedido.data || hojeISO(), em: Date.now(), usuario: usuario()
-  });
+  }, pedido.consumoInterno ? { consumoInterno: pedido.consumoInterno.tipo || true } : {});
 
   // Entrada de compra (custo médio ponderado) ou ajuste (perda, avaria, consumo, contagem)
   function aplicarMovimento(prod, m) {
@@ -131,15 +131,20 @@ window.DB = (function () {
   // Pedido do site e delivery do balcão ganham código de acompanhamento (rastreio/{codigo})
   const precisaCodigo = p => p.origem === 'site' || (p.entrega && p.entrega.tipo === 'entrega');
 
-  // opcoes.baixarEstoque: baixa o estoque na mesma operação (balcão)
+  /* opcoes.baixarEstoque: baixa o estoque na mesma operação (balcão)
+     opcoes.entregue: balcão sem pizza — já nasce entregue (não vai para a fila da cozinha)
+     opcoes.vinculos(pedidoId, numero) → [{ col, id, dados, uniao: { campo: [itens] } }]: documentos gravados
+       na MESMA transação do pedido (ex.: compra no fiado, desconto na folha). "uniao" acrescenta itens a uma lista. */
   async function criarPedido(pedido, opcoes = {}) {
     await init();
     // data = dia do turno de ENTREGA (agendado para outro dia entra na fila daquele dia)
-    const data = pedido.data || hojeISO();
+    const data = pedido.data || hojeISO(), agora = Date.now();
     pedido = Object.assign({}, pedido, {
-      data, status: 'novo', impresso: false, criadoEm: Date.now(),
-      historico: [{ status: 'novo', em: Date.now() }]
+      data, status: 'novo', impresso: false, criadoEm: agora,
+      historico: [{ status: 'novo', em: agora }]
     });
+    if (opcoes.entregue) Object.assign(pedido, { status: 'entregue', entregueEm: agora, historico: [{ status: 'novo', em: agora }, { status: 'entregue', em: agora }] });
+    const vinculos = (id, n) => (opcoes.vinculos ? opcoes.vinculos(id, n) : []) || [];
 
     if (modo() === 'demo') {
       const kc = 'cdp_cont_' + data;
@@ -164,6 +169,11 @@ window.DB = (function () {
         pedido.estoqueBaixado = true;
         gravarLS(LS_PROD, prods); gravarLS(LS_MOV, movs);
       }
+      vinculos(id, numero).forEach(v => {
+        const k = 'cdp_' + v.col, o = lerLS(k, {}), d = o[v.id] = Object.assign(o[v.id] || {}, v.dados, { id: v.id });
+        Object.entries(v.uniao || {}).forEach(([c, l]) => { d[c] = (d[c] || []).concat(l.filter(x => !(d[c] || []).some(y => JSON.stringify(y) === JSON.stringify(x)))); });
+        gravarLS(k, o);
+      });
       const todos = lerTodos();
       todos[id] = pedido;
       gravarTodos(todos);
@@ -203,6 +213,11 @@ window.DB = (function () {
       }
       tx.set(pedRef, doc);
       if (rasRef) tx.set(rasRef, { pedidoId: pedRef.id, criadoEm: Date.now() });
+      vinculos(pedRef.id, n).forEach(v => {
+        const extra = {};
+        Object.entries(v.uniao || {}).forEach(([c, l]) => { extra[c] = fs.arrayUnion(...l); });
+        tx.set(fs.doc(db, v.col, v.id), Object.assign({}, v.dados, extra), { merge: true });
+      });
       return n;
     }));
     return { id: pedRef.id, numero, faltas, codigo };
@@ -530,9 +545,9 @@ window.DB = (function () {
   }
   const movPedido = (tipo, pedido, pedidoId, itens, extra) => Object.assign({
     tipoItem: 'insumo', tipo, itens, valorTotal: r2(itens.reduce((s, x) => s + x.valor, 0)),
-    produtoNome: `Pedido #${pedido.numero || ''}`, pedidoId, pedidoNumero: pedido.numero || null,
+    produtoNome: `Pedido #${pedido.numero || ''}${pedido.consumoInterno ? ' (consumo interno)' : ''}`, pedidoId, pedidoNumero: pedido.numero || null,
     data: pedido.data || hojeISO(), em: Date.now(), usuario: usuario()
-  }, extra || {});
+  }, pedido.consumoInterno ? { consumoInterno: pedido.consumoInterno.tipo || true } : {}, extra || {});
 
   async function moverInsumosPedido(id, sinal) {
     await init();

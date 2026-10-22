@@ -18,8 +18,12 @@ service cloud.firestore {
 
       // Pedido do SITE: qualquer cliente cria, sempre "novo", não impresso e com pagamento NÃO confirmado.
       // Pedido do BALCÃO: só usuário logado (atendente). Comer aqui/levar (tipo 'balcao') ou
-      // delivery por WhatsApp/telefone (tipo 'entrega'), pago ou a cobrar na entrega.
-      allow create: if request.resource.data.status == 'novo'
+      // delivery por WhatsApp/telefone (tipo 'entrega'), pago, a cobrar na entrega ou fiado.
+      // Balcão sem pizza (só bebidas/produtos) já nasce "entregue" (não passa pela cozinha).
+      allow create: if (request.resource.data.status == 'novo'
+                        || (request.auth != null
+                            && request.resource.data.origem == 'balcao'
+                            && request.resource.data.status == 'entregue'))
                     && request.resource.data.impresso == false
                     && request.resource.data.itens is list
                     && request.resource.data.itens.size() > 0

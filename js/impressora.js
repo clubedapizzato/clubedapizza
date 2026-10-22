@@ -25,6 +25,7 @@ window.Impressora = (function () {
     let s = centro(semAcento(CONFIG.loja.nome).toUpperCase());
     s += linha('=');
     s += centro(`PEDIDO #${p.numero}`);
+    if (p.consumoInterno) s += linha('*') + centro('CONSUMO INTERNO') + centro('SEM COBRANCA') + linha('*');
     const tipo = p.entrega.tipo;
     s += centro(tipo === 'balcao' ? `*** BALCAO - ${p.entrega.consumo === 'local' ? 'COMER AQUI' : 'PARA LEVAR'} ***`
       : tipo === 'retirada' ? '*** RETIRADA ***' : p.origem === 'balcao' ? '*** BALCAO/DELIVERY ***' : '*** ENTREGA ***');
@@ -60,9 +61,24 @@ window.Impressora = (function () {
       const km = p.entrega.distanciaKm != null ? ` ${String(p.entrega.distanciaKm).replace('.', ',')}KM` : '';
       s += duasColunas('ENTREGA' + km, p.taxaEntrega == null ? 'A COMBINAR' : p.taxaEntrega ? dinheiro(p.taxaEntrega) : 'GRATIS');
     }
-    s += duasColunas('TOTAL', dinheiro(p.total));
     const pg = p.pagamento;
+    if (p.consumoInterno) {
+      const ci = p.consumoInterno;
+      s += duasColunas('VALOR DE REFERENCIA', dinheiro(p.valorReferencia != null ? p.valorReferencia : p.subtotal));
+      s += duasColunas('TOTAL A COBRAR', dinheiro(0));
+      s += `CONSUMO INTERNO: ${String(ci.tipoNome || ci.tipo || '').toUpperCase()}${ci.quem ? ' - ' + ci.quem : ''}\n`;
+      if (ci.motivo) s += `MOTIVO: ${ci.motivo}\n`;
+      return semAcento(s + linha('=') + '\n\n\n').replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[^\n\x20-\x7E]/g, '');
+    }
+    s += duasColunas('TOTAL', dinheiro(p.total));
     let fp = ({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: tipo === 'balcao' ? 'CARTAO' : 'CARTAO NA ENTREGA' })[pg.forma] || pg.forma;
+    if (pg.forma === 'fiado') {
+      s += `PAGAMENTO: FIADO - ${p.cliente.nome || ''}\n`;
+      if (pg.fiadoVencimento) s += `VENCIMENTO: ${pg.fiadoVencimento.split('-').reverse().join('/')}\n`;
+      if (pg.fiadoSaldo != null) s += duasColunas('SALDO DEVEDOR ATUAL', dinheiro(pg.fiadoSaldo));
+      s += '\n\nASSINATURA: ' + '_'.repeat(Math.max(10, col() - 12)) + '\n';
+      return semAcento(s + linha('=') + '\n\n\n').replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[^\n\x20-\x7E]/g, '');
+    }
     if (tipo === 'balcao') fp += ' (PAGO)';
     else if (pg.forma === 'pix') fp += pg.confirmado ? ' (CONFIRMADO)' : ' (AGUARDANDO)';
     s += `PAGAMENTO: ${fp}\n`;

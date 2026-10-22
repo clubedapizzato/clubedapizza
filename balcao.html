@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261023">
+<link rel="stylesheet" href="css/app.css?v=20261025">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px}
@@ -52,6 +52,13 @@ main{max-width:1400px;padding-bottom:30px}
 #opConsumo{grid-template-columns:repeat(3,1fr)}
 #opConsumo .opcao{padding:14px 4px;font-size:15px}
 #barraMob{display:none}
+.alertaF{background:#fef2f2;border:2px solid #f87171;color:#7f1d1d;border-radius:12px;padding:10px;font-size:14px;font-weight:700;margin-top:8px}
+.infoF{background:#f5f5f4;border-radius:12px;padding:10px;font-size:14px;margin-top:8px}
+.chk{display:flex;gap:8px;align-items:center;font-weight:700;font-size:15px;margin-top:10px}
+.chk input{width:auto;transform:scale(1.3)}
+.linhaF{display:flex;gap:8px;align-items:end}.linhaF>*{flex:1}
+#opTipoCI{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+#opTipoCI .opcao{padding:10px 4px;font-size:14px}
 @media(max-width:900px){#barraMob{display:block}main{padding-bottom:100px}.painel{position:static}}
 </style>
 </head>
@@ -118,6 +125,37 @@ main{max-width:1400px;padding-bottom:30px}
           <div class="rapidos" id="rapidos"></div>
           <div class="troco" id="troco"></div>
         </div>
+        <!-- 📒 Fiado: cliente do crediário (fin_fiados), saldo, limite e vencimento -->
+        <div id="blocoFiado" class="hide">
+          <label for="fBusca">📒 Cliente do fiado</label>
+          <div class="linhaF"><input id="fBusca" list="dlFiado" autocomplete="off" placeholder="Nome ou telefone" oninput="buscarFiado()">
+            <button class="btn sm sec" style="flex:0 0 auto" onclick="novoFiado()">➕ Novo</button></div>
+          <datalist id="dlFiado"></datalist>
+          <div id="fiadoNovoBox" class="hide">
+            <div class="linhaF"><div><label for="fNome">Nome</label><input id="fNome" autocomplete="off"></div>
+              <div><label for="fTel">Telefone</label><input id="fTel" type="tel" inputmode="tel" autocomplete="off" placeholder="(63) 99999-9999"></div></div>
+            <label for="fLimite">Limite de crédito (R$, vazio = sem limite)</label><input id="fLimite" inputmode="decimal">
+          </div>
+          <div id="fiadoInfo"></div>
+          <div class="linhaF" style="margin-top:4px"><div><label for="fVencTipo">Vencimento</label><select id="fVencTipo" onchange="renderFiado()"><option value="dias">Em dias</option><option value="data">Data específica</option></select></div>
+            <div id="fDiasBox"><label for="fDias">Dias</label><input id="fDias" inputmode="numeric" oninput="renderFiado()"></div>
+            <div id="fDataBox" class="hide"><label for="fData">Data</label><input id="fData" type="date" onchange="renderFiado()"></div></div>
+          <div id="fiadoAlerta"></div>
+        </div>
+        <!-- 🍽️ Consumo interno: funcionário, dono, cortesia, degustação, perda (R$ 0) -->
+        <div id="blocoConsumo" class="hide">
+          <h3 style="margin-top:12px">🍽️ Consumo interno</h3>
+          <div class="opcoes" id="opTipoCI"></div>
+          <label for="ciQuem">Quem</label>
+          <select id="ciQuem" onchange="renderConsumoCI()"></select>
+          <input id="ciQuemTxt" class="hide" style="margin-top:6px" placeholder="Nome" oninput="renderConsumoCI()">
+          <label for="ciMotivo">Motivo (opcional)</label><input id="ciMotivo" placeholder="Ex.: janta do turno, brinde aniversário">
+          <div id="ciDescBox" class="hide">
+            <label class="chk"><input type="checkbox" id="ciDescontar" onchange="renderConsumoCI()"> Descontar do funcionário na folha</label>
+            <select id="ciModo" style="margin-top:6px" onchange="renderConsumoCI()"><option value="custo">a preço de custo</option><option value="venda">a preço de venda</option></select>
+          </div>
+          <div id="ciInfo"></div>
+        </div>
         <label for="obs">Observação</label>
         <input id="obs" placeholder="Ex.: sem cebola na metade calabresa">
       </div>
@@ -148,13 +186,16 @@ main{max-width:1400px;padding-bottom:30px}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261023"></script>
-<script src="js/cardapio.js?v=20261023"></script>
-<script src="js/db.js?v=20261023"></script>
-<script src="js/catalogo.js?v=20261023"></script>
-<script src="js/ficha.js?v=20261023"></script>
-<script src="js/endereco.js?v=20261023"></script>
-<script src="js/impressora.js?v=20261023"></script>
+<script src="js/config.js?v=20261025"></script>
+<script src="js/cardapio.js?v=20261025"></script>
+<script src="js/db.js?v=20261025"></script>
+<script src="js/catalogo.js?v=20261025"></script>
+<script src="js/ficha.js?v=20261025"></script>
+<script src="js/endereco.js?v=20261025"></script>
+<script src="js/impressora.js?v=20261025"></script>
+<script src="js/clientes.js?v=20261025"></script>
+<script src="js/fincalc.js?v=20261025"></script>
+<script src="js/financeiro.js?v=20261025"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const C = CARDAPIO;
@@ -181,7 +222,7 @@ DB.observarUsuario(u => {
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   document.getElementById('barraMob').classList.toggle('hide', !logado);
-  if (logado) { assinar(); Ficha.iniciar(); } else if (pararLista) { pararLista(); pararLista = null; }
+  if (logado) { assinar(); Ficha.iniciar(); ouvirFin(); } else if (pararLista) { pararLista(); pararLista = null; }
 });
 async function entrar() {
   document.getElementById('erroLogin').textContent = '';
@@ -194,6 +235,7 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 async function assinar() {
   if (pararLista) pararLista();
   pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => {
+    pedidosHoje = lista;
     const ativos = lista.filter(p => p.origem === 'balcao' && p.entrega.tipo === 'balcao' && ['novo', 'producao', 'saiu'].includes(p.status)).sort((a, b) => a.numero - b.numero);
     document.getElementById('andamento').classList.toggle('hide', !ativos.length);
     document.getElementById('prontos').innerHTML = ativos.map(p =>
@@ -312,15 +354,19 @@ function renderItens() {
     </div>`).join('') + (sc.qtd ? `<div class="linha" style="font-weight:700"><span>Sachês: ${sc.qtd}${sc.gratis ? ` (${sc.gratis} cortesia)` : ''}</span><span>${dinheiro(sc.valor)}</span></div>` : '')
     : '<div class="muted" style="padding:10px 0">Toque nos produtos para adicionar.</div>';
 }
-const FORMAS = [{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão' }];
+const FORMAS = [{ id: 'pix', nome: '⚡ Pix' }, { id: 'dinheiro', nome: '💵 Dinheiro' }, { id: 'cartao', nome: '💳 Cartão' }, { id: 'fiado', nome: '📒 Fiado' }, { id: 'consumo_interno', nome: '🍽️ Consumo interno' }];
 // Delivery: só "Pix já recebido" sai como pago; o resto a cozinha confirma / o entregador cobra
-const FORMAS_DELIVERY = [{ id: 'pix_ok', nome: '✅ Pix já recebido' }, { id: 'pix', nome: '⚡ Pix a confirmar' }, { id: 'dinheiro', nome: '💵 Dinheiro na entrega' }, { id: 'cartao', nome: '💳 Cartão na entrega' }];
+const FORMAS_DELIVERY = [{ id: 'pix_ok', nome: '✅ Pix já recebido' }, { id: 'pix', nome: '⚡ Pix a confirmar' }, { id: 'dinheiro', nome: '💵 Dinheiro na entrega' }, { id: 'cartao', nome: '💳 Cartão na entrega' }, { id: 'fiado', nome: '📒 Fiado' }];
 const delivery = () => consumo === 'delivery';
 function renderOpcoes() {
   const opc = (lista, atual, fn) => lista.map(o => `<div class="opcao ${atual === o.id ? 'on' : ''}" onclick="${fn}('${o.id}')">${o.nome}</div>`).join('');
   document.getElementById('opConsumo').innerHTML = opc([{ id: 'local', nome: '🍽️ Comer aqui' }, { id: 'levar', nome: '🥡 Para levar' }, { id: 'delivery', nome: '🛵 Delivery' }], consumo, 'setConsumo');
   document.getElementById('opPagamento').innerHTML = opc(delivery() ? FORMAS_DELIVERY : FORMAS, forma, 'setForma');
   document.getElementById('blocoDinheiro').classList.toggle('hide', forma !== 'dinheiro');
+  document.getElementById('blocoFiado').classList.toggle('hide', forma !== 'fiado');
+  document.getElementById('blocoConsumo').classList.toggle('hide', forma !== 'consumo_interno');
+  if (forma === 'fiado') renderFiado();
+  if (forma === 'consumo_interno') renderConsumoCI();
   document.getElementById('blocoDelivery').classList.toggle('hide', !delivery());
   document.getElementById('nomeObs').textContent = delivery() ? '(obrigatório)' : '(opcional — para chamar)';
   document.getElementById('rotRecebido').textContent = delivery() ? 'Troco para quanto? (vazio = sem troco)' : 'Valor recebido';
@@ -335,13 +381,15 @@ function setRecebido(v) { document.getElementById('recebido').value = v ? String
 
 // Delivery: taxa pelo pino (null = a combinar). Outros: 0
 const taxaAtual = () => delivery() ? Endereco.taxa() : 0;
-const totalAtual = () => Preco.subtotal(carrinho) + (taxaAtual() || 0);
+const totalAtual = () => forma === 'consumo_interno' ? 0 : Preco.subtotal(carrinho) + (taxaAtual() || 0);
 function renderTotal() {
   const total = totalAtual(), n = carrinho.reduce((s, x) => s + x.qtd, 0);
   const lt = document.getElementById('linhaTaxa');
   lt.classList.toggle('hide', !delivery());
   if (delivery()) lt.innerHTML = `<span>🛵 Taxa de entrega${Endereco.km() != null ? ` (${String(Endereco.km()).replace('.', ',')} km)` : ''}</span><b>${Endereco.textoTaxa(taxaAtual())}</b>`;
-  document.getElementById('total').textContent = dinheiro(total);
+  document.getElementById('total').textContent = dinheiro(total) + (forma === 'consumo_interno' && n ? ` (ref. ${dinheiro(Preco.subtotal(carrinho))})` : '');
+  if (forma === 'fiado') renderFiado();
+  if (forma === 'consumo_interno') renderConsumoCI();
   document.getElementById('btnFinalizar').textContent = `Finalizar pedido • ${dinheiro(total)}`;
   document.getElementById('btnFinalizar').disabled = !n;
   document.getElementById('btnMob').textContent = n ? `Ver pedido (${n}) • ${dinheiro(total)}` : 'Toque nos produtos';
@@ -371,9 +419,15 @@ async function finalizar() {
     if (erro) return foco(erro.id, erro.msg);
   }
   if (!forma) return toast('Escolha a forma de pagamento.');
+  if (forma === 'consumo_interno' && delivery()) return toast('Consumo interno é só para comer aqui ou levar.');
   const falta = Catalogo.faltas(carrinho)[0];
   if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}.` : `${falta.nome} sem estoque.`);
-  const subtotal = Preco.subtotal(carrinho), taxa = taxaAtual(), total = subtotal + (taxa || 0);
+  const ci = forma === 'consumo_interno';
+  const subtotalRef = Preco.subtotal(carrinho), subtotal = ci ? 0 : subtotalRef, taxa = taxaAtual(), total = subtotal + (taxa || 0);
+  // fiado: cliente, limite, atraso e vencimento
+  let fiado = null, consumoInt = null;
+  if (forma === 'fiado') { fiado = dadosFiado(total); if (!fiado) return; }
+  if (ci) { consumoInt = dadosConsumoCI(subtotalRef); if (!consumoInt) return; }
   let trocoPara = null;
   if (forma === 'dinheiro' && val('recebido')) {
     trocoPara = numero(val('recebido'));
@@ -384,13 +438,25 @@ async function finalizar() {
     origem: 'balcao',
     data: Horario.dataTurno(),
     agendadoPara: null,
-    cliente: { nome: val('nome'), telefone: delivery() ? tel : '' },
+    cliente: { nome: val('nome') || (fiado ? fiado.nome : ''), telefone: delivery() ? tel : (fiado ? fiado.telefone : '') },
     entrega: delivery() ? Endereco.dados() : { tipo: 'balcao', consumo },
     itens: Catalogo.itensPedido(carrinho),
     cortesiaPorPizza: C.loja.cortesiaSachesPorPizza || 0,
     subtotal, taxaEntrega: taxa, total,
-    pagamento: { forma: forma === 'pix_ok' ? 'pix' : forma, trocoPara, confirmado: !delivery() || forma === 'pix_ok' },
+    pagamento: { forma: forma === 'pix_ok' ? 'pix' : forma, trocoPara, confirmado: fiado ? false : !delivery() || forma === 'pix_ok' },
     obs: val('obs')
+  };
+  if (fiado) Object.assign(pedido.pagamento, { fiadoId: fiado.id, fiadoNome: fiado.nome, fiadoVencimento: fiado.vencimento, fiadoSaldo: fiado.saldoDepois });
+  if (ci) Object.assign(pedido, { consumoInterno: consumoInt.info, valorReferencia: subtotalRef });
+  // balcão (comer aqui / levar) sem pizza: já sai entregue, não vai para a cozinha
+  const semPizza = !delivery() && !carrinho.some(it => it.tipo === 'pizza');
+  const vinculos = (pid, n) => {
+    const l = [];
+    if (fiado) l.push({ col: 'fin_fiados', id: fiado.id, dados: fiado.novo ? { nome: fiado.nome, telefone: fiado.telefone, limite: fiado.limite || 0, criadoEm: Date.now(), atualizadoEm: Date.now() } : { atualizadoEm: Date.now() },
+      uniao: { movimentos: [{ id: 'ped-' + pid, tipo: 'compra', valor: total, data: pedido.data, descricao: `Pedido #${n} (balcão)`, pedido: n, pedidoData: pedido.data, pedidoId: pid, vencimento: fiado.vencimento, em: Date.now(), por: Fin.usuario() }] } });
+    if (consumoInt && consumoInt.desconto) l.push({ col: 'fin_folha', id: 'ci-' + pid, dados: { tipo: 'desconto', funcionarioId: consumoInt.info.funcionarioId, nome: consumoInt.info.quem, valor: consumoInt.desconto,
+      data: pedido.data, descricao: `Consumo interno #${n} (${consumoInt.info.descontarModo === 'venda' ? 'preço de venda' : 'preço de custo'})`, folhaId: null, pedidoId: pid, criadoEm: Date.now(), atualizadoEm: Date.now() } });
+    return l;
   };
 
   enviando = true;
@@ -398,11 +464,11 @@ async function finalizar() {
   b.disabled = true; b.textContent = 'Enviando...';
   try {
     // balcão: baixa o estoque na hora, junto com a criação do pedido
-    const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true });
+    const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true, entregue: semPizza, vinculos });
     // insumos pela ficha técnica (em segundo plano: nunca trava o caixa)
     DB.baixarInsumos(id).then(r => { if (r.feito && r.semFicha.length) toast(`📋 Sem ficha técnica: ${r.semFicha.join(', ')} — insumos não baixados.`); })
       .catch(e => { DB.logErro(e); toast('Insumos não baixados: ' + DB.mensagemErro(e)); });
-    ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now() });
+    ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now(), status: semPizza ? 'entregue' : 'novo' });
     mostrarSucesso();
   } catch (e) {
     avisarErro(e);
@@ -413,6 +479,8 @@ async function finalizar() {
 // Forma de pagamento por extenso (delivery: na entrega / Pix recebido ou a confirmar)
 function textoPagamento(p) {
   const pg = p.pagamento;
+  if (pg.forma === 'fiado') return `📒 Fiado — ${pg.fiadoNome || p.cliente.nome || ''}`;
+  if (pg.forma === 'consumo_interno') return `🍽️ Consumo interno — ${(p.consumoInterno || {}).tipoNome || ''}${(p.consumoInterno || {}).quem ? ': ' + p.consumoInterno.quem : ''}`;
   if (p.entrega.tipo !== 'entrega') return ({ pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' })[pg.forma];
   if (pg.forma === 'pix') return pg.confirmado ? '✅ Pix já recebido' : '⚡ Pix a confirmar';
   return pg.forma === 'dinheiro' ? `💵 Dinheiro na entrega${pg.trocoPara ? ` (troco para ${dinheiro(pg.trocoPara)})` : ''}` : '💳 Cartão na entrega';
@@ -423,7 +491,7 @@ function mensagemConfirmacao(p) {
   const linhas = p.itens.filter(it => !Preco.ehSache(it)).map(it => `• ${it.qtd}x ${Preco.descricao(it)}${it.obs ? ` (${it.obs})` : ''}`);
   const sc = Preco.listaSaches(p.itens);
   if (sc) linhas.push(`• Sachês: ${sc}`);
-  let pagto = textoPagamento(p).replace(/^\S+ /, '');
+  let pagto = pg.forma === 'fiado' ? `Fiado (crediário) — vencimento ${pg.fiadoVencimento.split('-').reverse().join('/')}` : textoPagamento(p).replace(/^\S+ /, '');
   if (pg.forma === 'pix' && !pg.confirmado && CONFIG.pix.chave) pagto += ` — chave Pix: ${CONFIG.pix.chave} (mande o comprovante aqui)`;
   return `Olá ${(p.cliente.nome || '').split(' ')[0]}! 🍕 Seu pedido *#${p.numero}* no ${CONFIG.loja.nome} foi registrado:\n\n${linhas.join('\n')}\n\n` +
     `🛵 Entrega: ${e.rua}, ${e.numero} - ${e.bairro}${e.complemento ? ' (' + e.complemento + ')' : ''}\n` +
@@ -433,7 +501,9 @@ function mensagemConfirmacao(p) {
 function mostrarSucesso() {
   const p = ultimo, pg = p.pagamento, del = p.entrega.tipo === 'entrega';
   document.getElementById('sucessoConteudo').innerHTML = `
-    <div class="muted" style="font-size:16px">✅ Pedido enviado para a cozinha</div>
+    <div class="muted" style="font-size:16px">${p.status === 'entregue' ? '✅ Venda registrada — já entregue (sem cozinha)' : '✅ Pedido enviado para a cozinha'}</div>
+    ${p.consumoInterno ? `<div class="tag" style="font-size:16px;font-weight:900;color:#7f1d1d;background:#fee2e2;border-radius:10px;padding:6px 10px;display:inline-block">🍽️ CONSUMO INTERNO — SEM COBRANÇA (ref. ${dinheiro(p.valorReferencia)})</div>` : ''}
+    ${pg.forma === 'fiado' ? `<div class="infoF">📒 Saldo devedor de ${esc(pg.fiadoNome)} agora: <b>${dinheiro(pg.fiadoSaldo)}</b> • vence ${pg.fiadoVencimento.split('-').reverse().join('/')}<br>Imprima o comprovante para o cliente assinar.</div>` : ''}
     <div class="numero">#${p.numero}</div>
     ${p.cliente.nome ? `<div style="font-size:20px;font-weight:800">${esc(p.cliente.nome)}</div>` : ''}
     <div style="font-size:16px;margin:6px 0">${del ? '🛵 Delivery' : p.entrega.consumo === 'local' ? '🍽️ Comer aqui' : '🥡 Para levar'} • ${textoPagamento(p)}</div>
@@ -444,13 +514,15 @@ function mostrarSucesso() {
     ${del && pg.forma === 'dinheiro' && pg.trocoPara ? `<div class="troco" style="font-size:20px">Entregador leva troco de ${dinheiro(pg.trocoPara - p.total)}</div>` : ''}
     ${del ? `<a class="btn wa full grande" style="display:block;text-decoration:none;margin-top:12px" target="_blank" id="btnConfirmacao" href="${linkWhats(p.cliente.telefone, mensagemConfirmacao(p))}">💬 Enviar confirmação no WhatsApp</a>` : ''}
     <button class="btn full grande" style="margin-top:16px" onclick="novoPedido()">➕ Novo pedido</button>
-    <button class="btn sec full" style="margin-top:8px" onclick="Impressora.imprimir(ultimo)">🖨️ Imprimir cópia aqui</button>`;
+    <button class="btn sec full" style="margin-top:8px" onclick="Impressora.imprimir(ultimo)">🖨️ ${p.status === 'entregue' || pg.forma === 'fiado' ? 'Imprimir comprovante' : 'Imprimir cópia aqui'}</button>`;
   document.getElementById('sucesso').classList.add('on');
 }
 
 function limpar() {
-  carrinho = []; consumo = null; forma = null; ultimoDoCliente = null;
-  ['nome', 'obs', 'recebido', 'telefone'].forEach(id => document.getElementById(id).value = '');
+  carrinho = []; consumo = null; forma = null; ultimoDoCliente = null; fiadoSel = null; fiadoNovo = false; tipoCI = 'funcionario';
+  ['nome', 'obs', 'recebido', 'telefone', 'fBusca', 'fNome', 'fTel', 'fLimite', 'fDias', 'fData', 'ciMotivo', 'ciQuemTxt'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('fVencTipo').value = 'dias'; document.getElementById('ciDescontar').checked = false;
+  document.getElementById('fiadoNovoBox').classList.add('hide');
   document.getElementById('sugestao').innerHTML = '';
   Endereco.limpar();
   renderOpcoes(); atualizar();
@@ -489,6 +561,121 @@ function usarUltimo() {
   document.getElementById('sugestao').innerHTML = '';
   renderTotal();
 }
+/* ---------------- 📒 FIADO e 🍽️ CONSUMO INTERNO (financeiro: fin_fiados, fin_funcionarios, fin_config) ---------------- */
+let FIADOS = [], FUNCS = [], FINCFG = {}, pedidosHoje = [], fiadoSel = null, fiadoNovo = false, tipoCI = 'funcionario', finOuvindo = false;
+function ouvirFin() {
+  if (finOuvindo) return; finOuvindo = true;
+  const erro = e => toast('Financeiro: ' + DB.mensagemErro(e));
+  Fin.observar('fin_fiados', l => { FIADOS = l; if (fiadoSel) fiadoSel = l.find(f => f.id === fiadoSel.id) || fiadoSel; listaFiados(); if (forma === 'fiado') renderFiado(); }, erro);
+  Fin.observar('fin_funcionarios', l => { FUNCS = l.filter(f => f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)); if (forma === 'consumo_interno') renderConsumoCI(); }, erro);
+  Fin.observar('fin_config', l => { FINCFG = l.find(d => d.id === 'geral') || {}; }, erro);
+}
+const diasFiadoPadrao = () => Number(FINCFG.fiadoDiasPadrao) || 30;
+const rotFiado = f => `${f.nome}${f.telefone ? ' — ' + Clientes.fmtTel(f.telefone) : ''}`;
+function listaFiados() { document.getElementById('dlFiado').innerHTML = FIADOS.map(f => `<option value="${esc(rotFiado(f))}">`).join(''); }
+function buscarFiado() {
+  const t = val('fBusca'), dig = t.replace(/\D/g, ''), tel = Clientes.normTel(dig), chave = Clientes.chaveTexto(t);
+  fiadoSel = FIADOS.find(f => rotFiado(f) === t) || (tel && FIADOS.find(f => f.telefone === tel)) || null;
+  // um só cliente combinando com o nome (ou parte do telefone) → já seleciona
+  if (!fiadoSel && (chave.length >= 3 || dig.length >= 4)) {
+    const m = FIADOS.filter(f => (chave.length >= 3 && !dig.length && Clientes.chaveTexto(f.nome).includes(chave)) || (dig.length >= 4 && (f.telefone || '').includes(dig)));
+    if (m.length === 1) fiadoSel = m[0];
+  }
+  if (fiadoSel) { fiadoNovo = false; document.getElementById('fiadoNovoBox').classList.add('hide'); }
+  renderFiado();
+}
+function novoFiado() {
+  fiadoNovo = true; fiadoSel = null;
+  const box = document.getElementById('fiadoNovoBox'); box.classList.remove('hide');
+  const t = val('fBusca'); if (t && !/\d{4}/.test(t)) document.getElementById('fNome').value = t; else if (t) document.getElementById('fTel').value = t;
+  document.getElementById('fNome').focus(); renderFiado();
+}
+function vencFiado() {
+  if (document.getElementById('fVencTipo').value === 'data') return val('fData');
+  const d = parseInt(val('fDias'), 10) || diasFiadoPadrao(), x = new Date(Horario.dataTurno() + 'T12:00'); x.setDate(x.getDate() + d); return isoDe(x);
+}
+// Situação do cliente com esta compra → { saldo, saldoDepois, limite, atraso, problemas: [] }
+function situacaoFiado(f, total) {
+  const r = FinCalc.resumoFiado(f || { movimentos: [] }, hojeISO()), limite = f ? Number(f.limite) || 0 : num(val('fLimite')) || 0;
+  const saldoDepois = Math.round((r.saldo + total) * 100) / 100, problemas = [];
+  if (limite && saldoDepois > limite + 0.004) problemas.push(`Passa do limite de ${dinheiro(limite)} (ficará ${dinheiro(saldoDepois)})`);
+  if (r.atraso > 0) problemas.push(`Tem ${dinheiro(r.saldo)} em atraso há ${r.atraso} dia(s) (venceu ${r.vencimento.split('-').reverse().join('/')})`);
+  return { saldo: r.saldo, saldoDepois, limite, atraso: r.atraso, problemas };
+}
+const num = t => { const v = parseFloat(String(t || '').replace(/[^\d,.]/g, '').replace(',', '.')); return isNaN(v) ? 0 : v; };
+function renderFiado() {
+  const tipo = document.getElementById('fVencTipo').value;
+  document.getElementById('fDiasBox').classList.toggle('hide', tipo !== 'dias');
+  document.getElementById('fDataBox').classList.toggle('hide', tipo !== 'data');
+  document.getElementById('fDias').placeholder = String(diasFiadoPadrao());
+  const info = document.getElementById('fiadoInfo'), al = document.getElementById('fiadoAlerta'), total = totalAtual();
+  if (!fiadoSel && !fiadoNovo) { info.innerHTML = FIADOS.length ? '<div class="muted" style="margin-top:6px">Digite o nome ou telefone e escolha na lista, ou toque em ➕ Novo.</div>' : '<div class="muted" style="margin-top:6px">Nenhum cliente de fiado ainda — toque em ➕ Novo.</div>'; al.innerHTML = ''; return; }
+  const s = situacaoFiado(fiadoSel, total), aut = document.getElementById('fAutorizar');
+  const marcado = aut && aut.checked;
+  info.innerHTML = `<div class="infoF">${fiadoSel ? `👤 <b>${esc(fiadoSel.nome)}</b>${fiadoSel.telefone ? ' • ' + Clientes.fmtTel(fiadoSel.telefone) : ''}<br>` : '🆕 Cliente novo<br>'}
+    Saldo devedor: <b>${dinheiro(s.saldo)}</b> • Limite: <b>${s.limite ? dinheiro(s.limite) : 'sem limite'}</b>${s.limite ? ` • Livre: ${dinheiro(Math.max(0, s.limite - s.saldo))}` : ''}<br>
+    Com esta compra: <b>${dinheiro(s.saldoDepois)}</b> • vence ${vencFiado() ? vencFiado().split('-').reverse().join('/') : '—'}</div>`;
+  al.innerHTML = s.problemas.length ? `<div class="alertaF">⛔ ${s.problemas.map(esc).join('<br>⛔ ')}
+    <label class="chk"><input type="checkbox" id="fAutorizar" ${marcado ? 'checked' : ''}> Autorizar mesmo assim</label></div>` : '';
+}
+// Valida e devolve { id, novo, nome, telefone, limite, vencimento, saldoDepois } (null = parar)
+function dadosFiado(total) {
+  let f;
+  if (fiadoSel) f = { id: fiadoSel.id, novo: false, nome: fiadoSel.nome, telefone: fiadoSel.telefone || '' };
+  else if (fiadoNovo) {
+    const nome = val('fNome'), tel = Clientes.normTel(val('fTel'));
+    if (nome.length < 2) { foco('fNome', 'Informe o nome do cliente do fiado.'); return null; }
+    if (!tel) { foco('fTel', 'Informe o telefone do cliente do fiado (DDD + número).'); return null; }
+    const ja = FIADOS.find(x => x.telefone === tel);
+    if (ja) { fiadoSel = ja; fiadoNovo = false; document.getElementById('fiadoNovoBox').classList.add('hide'); document.getElementById('fBusca').value = rotFiado(ja); renderFiado(); toast(`Já existe cliente de fiado com este telefone: ${ja.nome}. Confira e finalize de novo.`); return null; }
+    f = { id: tel, novo: true, nome, telefone: tel, limite: num(val('fLimite')) };
+  } else { foco('fBusca', 'Escolha o cliente do fiado (ou ➕ Novo).'); return null; }
+  const venc = vencFiado();
+  if (!venc || venc < Horario.dataTurno()) { foco(document.getElementById('fVencTipo').value === 'data' ? 'fData' : 'fDias', 'Informe um vencimento válido.'); return null; }
+  const s = situacaoFiado(fiadoSel, total);
+  if (s.problemas.length && !(document.getElementById('fAutorizar') || {}).checked) { renderFiado(); foco('fiadoAlerta', '⛔ Fiado bloqueado: marque "Autorizar mesmo assim" para continuar.'); return null; }
+  return Object.assign(f, { vencimento: venc, saldoDepois: s.saldoDepois, autorizado: s.problemas.length ? s.problemas : null });
+}
+const TIPOS_CI = FinCalc.TIPOS_CONSUMO;
+function setTipoCI(t) { tipoCI = t; renderConsumoCI(); }
+// custo estimado do item (o gravado na baixa pode variar um pouco)
+function custoEstimado(it) {
+  if (it.tipo === 'produto') { const d = Catalogo.doc(it.id); return d && (d.custoUnitario || d.custosExtras) ? (d.custoUnitario || 0) + (d.custosExtras || 0) : null; }
+  let f = null; try { f = Ficha.custoItem(it); } catch (e) { }
+  const c = f != null ? f : Catalogo.custoPizza(it); return c || null;
+}
+function custoCarrinho() { return FinCalc.custoConsumo({ itens: Catalogo.itensPedido(carrinho.map(x => Object.assign({}, x))) }, custoEstimado); }
+function renderConsumoCI() {
+  document.getElementById('opTipoCI').innerHTML = Object.entries(TIPOS_CI).map(([k, t]) => `<div class="opcao ${k === tipoCI ? 'on' : ''}" onclick="setTipoCI('${k}')">${t.nome}</div>`).join('');
+  const sel = document.getElementById('ciQuem'), atual = sel.value;
+  const ops = tipoCI === 'dono' ? [['dono', 'Dono']] : tipoCI === 'funcionario' ? FUNCS.map(f => [f.id, f.nome]).concat([['_outro', 'Outro (digitar)']]) : [['_outro', 'Digitar nome (opcional)']];
+  sel.innerHTML = ops.map(([v, n]) => `<option value="${esc(v)}">${esc(n)}</option>`).join('');
+  if (ops.some(o => o[0] === atual)) sel.value = atual;
+  document.getElementById('ciQuemTxt').classList.toggle('hide', sel.value !== '_outro');
+  const func = tipoCI === 'funcionario' && FUNCS.find(f => f.id === sel.value);
+  document.getElementById('ciDescBox').classList.toggle('hide', !func);
+  if (!document.getElementById('ciModo').dataset.ok) { document.getElementById('ciModo').value = FINCFG.consumoDescontoModo === 'venda' ? 'venda' : 'custo'; document.getElementById('ciModo').dataset.ok = 1; }
+  const c = custoCarrinho(), ref = Preco.subtotal(carrinho), lim = Number(FINCFG.limiteConsumoDia) || 0;
+  const quem = func ? func.nome : sel.value === 'dono' ? 'Dono' : val('ciQuemTxt');
+  const hojeQuem = consumoHoje(quem);
+  document.getElementById('ciInfo').innerHTML = `<div class="infoF">Valor de venda (referência): <b>${dinheiro(ref)}</b> • custo estimado: <b>${dinheiro(c.custo)}</b>${c.semCusto ? ` <span class="muted">(${dinheiro(c.semCusto)} sem custo cadastrado → conta pelo preço)</span>` : ''}<br>Cobrado: <b>R$ 0,00</b> • não entra no caixa nem no faturamento.
+    ${func && document.getElementById('ciDescontar').checked ? `<br>Desconto na folha de ${esc(func.nome)}: <b>${dinheiro(document.getElementById('ciModo').value === 'venda' ? ref : c.custo)}</b>` : ''}</div>
+    ${lim && tipoCI === 'funcionario' && quem && hojeQuem + ref > lim + 0.004 ? `<div class="alertaF">⚠️ ${esc(quem)} já consumiu ${dinheiro(hojeQuem)} hoje; com este passa do limite diário de ${dinheiro(lim)}.</div>` : ''}`;
+}
+const consumoHoje = quem => pedidosHoje.filter(p => p.consumoInterno && p.status !== 'cancelado' && (p.consumoInterno.quem || '') === quem).reduce((t, p) => t + (p.valorReferencia || 0), 0);
+// Valida e devolve { info, desconto } (null = parar)
+function dadosConsumoCI(ref) {
+  const sel = document.getElementById('ciQuem').value, func = tipoCI === 'funcionario' && FUNCS.find(f => f.id === sel);
+  const quem = func ? func.nome : sel === 'dono' ? 'Dono' : val('ciQuemTxt');
+  if (tipoCI === 'funcionario' && !quem) { foco('ciQuemTxt', 'Informe o funcionário.'); return null; }
+  const lim = Number(FINCFG.limiteConsumoDia) || 0;
+  if (lim && tipoCI === 'funcionario' && consumoHoje(quem) + ref > lim + 0.004 && !confirm(`${quem} passa do limite diário de consumo (${dinheiro(lim)}). Registrar mesmo assim?`)) return null;
+  const descontar = !!func && document.getElementById('ciDescontar').checked, modo = document.getElementById('ciModo').value;
+  const info = { tipo: tipoCI, tipoNome: TIPOS_CI[tipoCI].nome, quem, funcionarioId: func ? func.id : null, motivo: val('ciMotivo'), descontar, descontarModo: descontar ? modo : null };
+  const c = custoCarrinho();
+  return { info, desconto: descontar ? Math.round((modo === 'venda' ? ref : c.custo) * 100) / 100 : 0 };
+}
+
 function novoPedido() {
   document.getElementById('sucesso').classList.remove('on');
   limpar();

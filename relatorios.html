@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Gestão • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261023">
+<link rel="stylesheet" href="css/app.css?v=20261025">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -313,17 +313,18 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261023"></script>
-<script src="js/cardapio.js?v=20261023"></script>
-<script src="js/db.js?v=20261023"></script>
-<script src="js/catalogo.js?v=20261023"></script>
-<script src="js/ficha.js?v=20261023"></script>
+<script src="js/config.js?v=20261025"></script>
+<script src="js/cardapio.js?v=20261025"></script>
+<script src="js/db.js?v=20261025"></script>
+<script src="js/catalogo.js?v=20261025"></script>
+<script src="js/ficha.js?v=20261025"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
 let aba = location.hash === '#insumos' ? 'insumos' : (() => { try { return localStorage.getItem('cdp_gestao_aba') || 'relatorios'; } catch { return 'relatorios'; } })();
 const PERIODOS = [{ id: 'hoje', nome: 'Hoje' }, { id: '7d', nome: '7 dias' }, { id: 'mes', nome: 'Este mês' }, { id: 'mesPassado', nome: 'Mês passado' }];
-const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
+const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão', fiado: '📒 Fiado' };
+const TIPOS_CI = { funcionario: 'Funcionário', dono: 'Dono', cortesia: 'Cortesia/brinde', degustacao: 'Degustação', perda: 'Perda' };
 const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
 const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 const pct = v => v == null ? '—' : v.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
@@ -418,7 +419,7 @@ function calcular(lista, de, ate) {
     faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, naoEntregues: 0, taxas: 0,
     dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}, adicionais: {},
     lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {},
-    cmvPizzas: 0, receitaPizzas: 0, pizzasComCusto: 0, estPizzas: false
+    cmvPizzas: 0, receitaPizzas: 0, pizzasComCusto: 0, estPizzas: false, consumo: []
   };
   // todos os dias do período (dias sem venda aparecem zerados)
   for (let d = new Date(de + 'T12:00'); isoDe(d) <= ate; d.setDate(d.getDate() + 1)) r.dias[isoDe(d)] = { valor: 0, qtd: 0 };
@@ -436,6 +437,7 @@ function calcular(lista, de, ate) {
 
     if (p.status === 'cancelado') { r.cancelados++; r.valorCancelado += p.total || 0; return; }
     if (p.status === 'nao_entregue') { r.naoEntregues++; return; }   // pendente: fora do faturamento
+    if (p.consumoInterno) { r.consumo.push(p); return; }              // consumo interno (R$ 0): relatório próprio, fora do faturamento
     const total = p.total || 0;
     r.pedidos++; r.faturamento += total;
     r.taxas += p.taxaEntrega || 0;
@@ -532,6 +534,8 @@ function render(r) {
       : '<div class="muted">Nenhuma venda de produto com custo cadastrado no período. Lance as compras em 📦 Produtos & Estoque.</div>'}
     </div>
 
+    ${cardConsumo(r.consumo)}
+
     <div class="card" id="cardEntregas">
       <h2>🛵 Entregas por entregador</h2>
       ${ents.length ? `<div class="rolar"><table>
@@ -564,12 +568,31 @@ document.addEventListener('pointerover', e => {
   tip.style.top = (b.top - tip.offsetHeight - 6 + Math.max(0, b.height - 180)) + 'px';
 });
 
+/* Consumo interno (funcionário, dono, cortesia, degustação, perda): custo pela ficha/cadastro; sem custo, o preço de venda */
+function cardConsumo(lista) {
+  if (!lista.length) return '';
+  const T = { custo: 0, venda: 0, n: 0 }, tipo = {}, pessoa = {};
+  const soma = (o, k, c, v) => { const x = o[k] = o[k] || { custo: 0, venda: 0, n: 0 }; x.custo += c; x.venda += v; x.n++; };
+  lista.forEach(p => {
+    let c = 0, v = 0;
+    (p.itens || []).forEach(it => { const q = it.qtd || 1, pv = (it.preco != null ? it.preco : Preco.unitario(it)) * q, ci = custoItem(it); v += pv; c += ci ? ci.v * q : pv; });
+    if (p.valorReferencia != null) v = p.valorReferencia;
+    T.custo += c; T.venda += v; T.n++;
+    soma(tipo, TIPOS_CI[p.consumoInterno.tipo] || p.consumoInterno.tipo, c, v); soma(pessoa, p.consumoInterno.quem || '—', c, v);
+  });
+  const tab = (o, t) => `<table><tr><th>${t}</th><th class="r">Pedidos</th><th class="r">Custo</th><th class="r">Valor de venda</th></tr>${Object.entries(o).sort((a, b) => b[1].custo - a[1].custo)
+    .map(([k, x]) => `<tr><td>${esc(k)}</td><td class="r">${x.n}</td><td class="r">${dinheiro(x.custo)}</td><td class="r">${dinheiro(x.venda)}</td></tr>`).join('')}</table>`;
+  return `<div class="card"><h2>🍽️ Consumo interno <span class="muted" style="font-weight:400">(fora do faturamento)</span></h2>
+    <div class="muted" style="margin-bottom:8px">${T.n} pedido(s) • custo <b>${dinheiro(T.custo)}</b> • valor de venda equivalente ${dinheiro(T.venda)}. Detalhes e efeito no lucro: 💰 Caixa → DRE.</div>
+    <div class="grade"><div class="rolar">${tab(tipo, 'Tipo')}</div><div class="rolar">${tab(pessoa, 'Pessoa')}</div></div></div>`;
+}
+
 /* ---------------- CSV ---------------- */
 function exportarCSV() {
   if (!pedidos.length) return toast('Nenhum pedido no período.');
   const n = v => (Number(v) || 0).toFixed(2).replace('.', ',');
   const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago', 'Entregador']];
+  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago', 'Entregador', 'Consumo interno', 'Valor referência']];
   pedidos.forEach(p => linhas.push([
     br(p.data), p.numero, p.criadoEm ? new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5) : '',
     p.origem || 'site', p.status, p.cliente.nome, p.cliente.telefone, p.entrega.tipo,
@@ -577,7 +600,9 @@ function exportarCSV() {
     p.agendadoPara ? Horario.formatar(p.agendadoPara) : '',
     (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}`).join(' | '),
     n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao',
-    p.entregador ? p.entregador.nome : ''
+    p.entregador ? p.entregador.nome : '',
+    p.consumoInterno ? `${TIPOS_CI[p.consumoInterno.tipo] || p.consumoInterno.tipo}${p.consumoInterno.quem ? ': ' + p.consumoInterno.quem : ''}` : '',
+    p.consumoInterno ? n(p.valorReferencia) : ''
   ]));
   const csv = '﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
   const a = document.createElement('a');
