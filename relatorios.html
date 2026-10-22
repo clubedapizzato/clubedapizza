@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Gestão • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261022">
+<link rel="stylesheet" href="css/app.css?v=20261023">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -91,6 +91,31 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 .emerg.on{background:#7f1d1d;color:#fff}
 .emerg.off{background:#f0fdf4;border:1px solid #bbf7d0}
 .resumoHor{background:#f5f5f4;border-radius:10px;padding:10px;margin-top:10px;font-weight:700}
+/* estoque de insumos */
+.est{white-space:nowrap;font-variant-numeric:tabular-nums}
+.est.neg{background:#dc2626;color:#fff;border-radius:6px;padding:1px 6px;font-weight:900}
+.est.baixo{color:#b91c1c;font-weight:800}
+.est.perto{color:#92400e;font-weight:700}
+.est.ok{color:#166534}
+.notaTab td{vertical-align:middle;padding:4px}
+.notaTab select,.notaTab input{padding:7px}
+.notaTab input.q{width:80px;text-align:right}
+.notaTab input.v{width:100px;text-align:right}
+.invTab input{width:110px;padding:6px;text-align:right}
+.fornec{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.fornec .cab{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.avisoIns{display:block;text-decoration:none}
+.grid3c{display:grid;grid-template-columns:repeat(3,1fr);gap:0 12px}
+#tabMovIns td:nth-child(3){min-width:190px}
+@media(max-width:560px){
+  .grid3c{grid-template-columns:1fr 1fr}
+  .notaTab tr:first-child{display:none}
+  .notaTab tr{display:grid;grid-template-columns:1fr 1.2fr 1fr auto;gap:6px;align-items:center;border-bottom:1px solid var(--line);padding:8px 0}
+  .notaTab td{border:0;padding:0}
+  .notaTab td:first-child,.notaTab td:nth-child(5){grid-column:1/-1}
+  .notaTab select,.notaTab input.q,.notaTab input.v{width:100%}
+  .invTab input{width:80px}
+}
 </style>
 </head>
 <body>
@@ -131,6 +156,7 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
         </div>
         <div class="muted" id="status" style="margin-top:8px"></div>
       </div>
+      <a id="avisoInsRel" class="alerta avisoIns hide" href="#insumos" onclick="mostrarAba('insumos');return false"></a>
       <div id="resultado"></div>
     </section>
 
@@ -241,6 +267,40 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
         <div id="tabFichas" class="rolar" style="margin-top:10px"></div>
       </div>
     </section>
+
+    <!-- ================= ESTOQUE DE INSUMOS ================= -->
+    <section id="aba-insumos" class="hide">
+      <div id="insErro" class="alerta hide"></div>
+      <div id="cardAcabando"></div>
+      <div id="cardSemFicha"></div>
+      <div class="kpis" id="kpisIns"></div>
+      <div class="acoesTopo">
+        <button class="btn" onclick="abrirCompraIns()">➕ Entrada de compra</button>
+        <button class="btn dark" onclick="abrirAjusteIns()">➖ Ajuste</button>
+        <button class="btn dark" onclick="abrirInventario()">📋 Inventário (contagem)</button>
+        <button class="btn sec" onclick="document.getElementById('cardCompras').scrollIntoView({behavior:'smooth'})">🛒 Lista de compras</button>
+      </div>
+      <div class="card" id="cardEstoqueIns">
+        <h2>🧂 Estoque de insumos</h2>
+        <div id="tabEstoqueIns" class="rolar"></div>
+        <div class="muted" style="margin-top:6px">🔴 no mínimo ou abaixo • 🟡 até 1,5 × o mínimo • 🟢 ok • fundo vermelho = negativo. "Dura" = estoque ÷ consumo médio dos últimos 14 dias de funcionamento. Marque <b>Controla estoque</b> no ✏️ do insumo (aba 📋 Ficha técnica).</div>
+      </div>
+      <div class="card" id="cardCompras">
+        <h2>🛒 Lista de compras sugerida</h2>
+        <div id="listaCompras"></div>
+      </div>
+      <div class="card" id="cardRelIns">
+        <h2>📈 Relatório de insumos</h2>
+        <div class="filtros" id="filtrosIns"></div>
+        <div class="datas">
+          <label style="margin:0" for="insDe">De</label><input type="date" id="insDe">
+          <label style="margin:0" for="insAte">até</label><input type="date" id="insAte">
+          <button class="btn sm dark" onclick="perIns='livre';carregarRelIns()">Ver</button>
+          <button class="btn sm sec" onclick="exportarMovInsCSV()">⬇️ Exportar CSV</button>
+        </div>
+        <div id="relIns" style="margin-top:10px"></div>
+      </div>
+    </section>
   </div>
 </main>
 
@@ -251,15 +311,15 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261022"></script>
-<script src="js/cardapio.js?v=20261022"></script>
-<script src="js/db.js?v=20261022"></script>
-<script src="js/catalogo.js?v=20261022"></script>
-<script src="js/ficha.js?v=20261022"></script>
+<script src="js/config.js?v=20261023"></script>
+<script src="js/cardapio.js?v=20261023"></script>
+<script src="js/db.js?v=20261023"></script>
+<script src="js/catalogo.js?v=20261023"></script>
+<script src="js/ficha.js?v=20261023"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
-let aba = (() => { try { return localStorage.getItem('cdp_gestao_aba') || 'relatorios'; } catch { return 'relatorios'; } })();
+let aba = location.hash === '#insumos' ? 'insumos' : (() => { try { return localStorage.getItem('cdp_gestao_aba') || 'relatorios'; } catch { return 'relatorios'; } })();
 const PERIODOS = [{ id: 'hoje', nome: 'Hoje' }, { id: '7d', nome: '7 dias' }, { id: 'mes', nome: 'Este mês' }, { id: 'mesPassado', nome: 'Mês passado' }];
 const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão' };
 const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
@@ -284,7 +344,7 @@ DB.observarUsuario(u => {
     carregar();
     if (!iniciado) {
       iniciado = true;
-      const tudo = () => { renderProdutos(); renderAbaFichas(); if (fe) renderFicha(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); };
+      const tudo = () => { renderProdutos(); renderAbaFichas(); renderAbaInsumos(); avisoInsumosRel(); if (fe) renderFicha(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); };
       Catalogo.iniciar(tudo);
       Ficha.iniciar(tudo);   // insumos e fichas (privados)
     }
@@ -300,10 +360,11 @@ document.getElementById('senha').addEventListener('keydown', e => { if (e.key ==
 function mostrarAba(a) {
   aba = a;
   try { localStorage.setItem('cdp_gestao_aba', a); } catch { }
-  document.getElementById('abas').innerHTML = [['relatorios', '📊 Relatórios'], ['produtos', '📦 Produtos & Estoque'], ['fichas', '📋 Ficha técnica']]
+  document.getElementById('abas').innerHTML = [['relatorios', '📊 Relatórios'], ['produtos', '📦 Produtos & Estoque'], ['fichas', '📋 Ficha técnica'], ['insumos', '🧂 Estoque de insumos']]
     .map(([id, n]) => `<button class="tab ${id === a ? 'on' : ''}" onclick="mostrarAba('${id}')">${n}</button>`).join('');
-  ['relatorios', 'produtos', 'fichas'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
+  ['relatorios', 'produtos', 'fichas', 'insumos'].forEach(x => document.getElementById('aba-' + x).classList.toggle('hide', x !== a));
   if (a === 'fichas') renderAbaFichas();
+  if (a === 'insumos') { renderAbaInsumos(); carregarHistIns(); if (!document.getElementById('relIns').innerHTML) carregarRelIns(); }
   if (a === 'produtos') { renderProdutos(); if (!document.getElementById('movs').innerHTML) carregarMov(); }
 }
 
@@ -841,11 +902,11 @@ function renderInsumos() {
   document.getElementById('btnExemplo').classList.toggle('hide', lista.length > 0);
   const l = lista.filter(i => (!busca || i.nome.toLowerCase().includes(busca)) && (!atual || i.categoria === atual));
   document.getElementById('listaInsumos').innerHTML = !lista.length ? '<div class="muted">Nenhum insumo cadastrado. Cadastre ou carregue os de exemplo.</div>' : `<table>
-    <tr><th>Insumo</th><th>Categoria</th><th class="r">Embalagem</th><th class="r">Custo por unidade</th><th class="r">Perda</th><th>Fornecedor</th><th>Preço de</th><th class="r">Usado em</th><th></th></tr>
+    <tr><th>Insumo</th><th>Categoria</th><th class="r">Embalagem</th><th class="r">Custo por unidade</th><th class="r">Perda</th><th class="r">Estoque</th><th>Fornecedor</th><th>Preço de</th><th class="r">Usado em</th><th></th></tr>
     ${l.map(i => `<tr class="${i.ativo === false ? 'inativo' : ''}" data-ins="${esc(i.id)}"><td><b>${esc(i.nome)}</b></td><td>${esc(i.categoria || '')}</td>
       <td class="r">${dinheiro(i.precoCompra)} / ${qtdTxt(i.qtdEmbalagem)} ${esc(i.unidade)}</td>
       <td class="r"><b>${dinheiro(Ficha.custoUnit(i))}/${esc(i.unidade)}</b></td><td class="r">${i.perda ? pct1(Number(i.perda)) : '—'}</td>
-      <td>${esc(i.fornecedor || '')}</td><td>${dataBr(i.atualizadoEm)}</td><td class="r">${Ficha.usoInsumo(i.id)} ficha(s)</td>
+      <td class="r">${fmtEstIns(i)}</td><td>${esc(i.fornecedor || '')}</td><td>${dataBr(i.atualizadoEm)}</td><td class="r">${Ficha.usoInsumo(i.id)} ficha(s)</td>
       <td class="r" style="white-space:nowrap"><button class="btn sm" onclick="atualizarPreco('${i.id}')">💲 Atualizar preço</button> <button class="btn sm sec" onclick="editarInsumo('${i.id}')">✏️</button></td></tr>`).join('')}
   </table>`;
 }
@@ -869,6 +930,10 @@ function editarInsumo(id) {
     ${id ? '<div class="muted" style="margin-top:4px">Para mudar o preço use 💲 Atualizar preço (guarda o histórico).</div>' : '<div class="muted" style="margin-top:4px">Ex.: R$ 120 por botijão de 13 kg → preço 120, quantidade 13, unidade kg. Pacote de 50 caixas por R$ 63 → 63, 50, un.</div>'}
     <div class="grid2">${campo('iPerda', 'Perda / rendimento % (opcional)', d.perda || '', 'inputmode="decimal" placeholder="Ex.: 10" oninput="calcInsumo()"')}${campo('iForn', 'Fornecedor', d.fornecedor || '')}</div>
     ${caixa('iAtivo', 'Ativo', d.ativo !== false)}
+    <h3 style="margin-top:14px">📦 Estoque</h3>
+    ${caixa('iControla', 'Controla estoque (baixa pela ficha técnica quando a pizza entra em produção)', !!d.controlaEstoque)}
+    <div class="grid2">${campo('iMin', `Estoque mínimo (alerta) em ${esc(d.unidade)}`, d.estoqueMinimo ? qtdTxt(d.estoqueMinimo) : '', 'inputmode="decimal" placeholder="Ex.: 5"')}${campo('iIdeal', 'Estoque ideal (lista de compras, opcional)', d.estoqueIdeal ? qtdTxt(d.estoqueIdeal) : '', 'inputmode="decimal" placeholder="vazio = 2 × mínimo"')}</div>
+    ${id ? `<div class="muted" style="margin-top:6px">Estoque atual: <b>${qtdTxt(d.estoqueAtual || 0)} ${esc(d.unidade)}</b> — muda só por compra, ajuste, inventário ou baixa dos pedidos (aba 🧂 Estoque de insumos).</div>` : '<div class="muted" style="margin-top:6px">O estoque começa em 0: lance a compra ou faça o inventário na aba 🧂 Estoque de insumos.</div>'}
     <div class="calc" id="iCalc"></div>
     ${id && (d.historico || []).length ? `<details style="margin-top:8px"><summary>Histórico de preços</summary><table>${d.historico.slice().reverse().map(h => `<tr><td>${dataBr(h.em)}</td><td class="r">${dinheiro(h.precoCompra)} / ${qtdTxt(h.qtdEmbalagem)} ${esc(d.unidade)}</td></tr>`).join('')}</table></details>` : ''}
     <button class="btn full" style="margin-top:14px" onclick="salvarInsumoForm()">Salvar</button>
@@ -883,20 +948,47 @@ function calcInsumo() {
     : '<div class="muted">Informe preço e quantidade da embalagem.</div>';
 }
 async function salvarInsumoForm() {
-  const nome = val('iNome'), perda = numero(val('iPerda')) || 0;
+  const nome = val('iNome'), perda = numero(val('iPerda')) || 0, un = val('iUn');
   if (nome.length < 2) return toast('Informe o nome.');
   if (perda < 0 || perda >= 95) return toast('Perda deve ficar entre 0 e 95%.');
-  const campos = { nome, categoria: val('iCat'), unidade: val('iUn'), perda, fornecedor: val('iForn'), ativo: document.getElementById('iAtivo').checked };
-  let id = insEditando;
+  const d = insEditando ? Ficha.insumo(insEditando) : null, unAntes = d ? d.unidade : un;
+  // mínimo/ideal digitados na unidade que estava na tela (aceita "500g")
+  const lerEst = t => { if (!val(t)) return 0; const q = Ficha.lerQtd(val(t), unAntes); return q == null ? null : q; };
+  let min = lerEst('iMin'), ideal = lerEst('iIdeal');
+  if (min == null || min < 0) return toast('Estoque mínimo inválido.');
+  if (ideal == null || ideal < 0) return toast('Estoque ideal inválido.');
+  if (ideal && ideal < min) return toast('O estoque ideal deve ser maior que o mínimo.');
+  const campos = { nome, categoria: val('iCat'), unidade: un, perda, fornecedor: val('iForn'), ativo: document.getElementById('iAtivo').checked, controlaEstoque: document.getElementById('iControla').checked };
+  let id = insEditando, fichasConv = [];
+  if (d && un !== unAntes) {
+    // troca de unidade: converte embalagem, estoque e as fichas que usam o insumo (g↔kg, ml↔L)
+    const f = Ficha.converter(1, unAntes, un);
+    if (f == null && (Ficha.usoInsumo(id) || Number(d.estoqueAtual))) return toast(`Não dá para trocar ${unAntes} por ${un}: o insumo já está em fichas/estoque. Crie outro insumo.`);
+    if (f != null) {
+      if (!confirm(`Trocar a unidade de ${unAntes} para ${un}? Embalagem, estoque e fichas serão convertidos (× ${String(f).replace('.', ',')}).`)) return;
+      Object.assign(campos, { qtdEmbalagem: Math.round(d.qtdEmbalagem * f * 100000) / 100000, estoqueAtual: Math.round((Number(d.estoqueAtual) || 0) * f * 100000) / 100000 });
+      min *= f; ideal *= f;
+      fichasConv = Ficha.fichasDoInsumo(id).map(fi => {
+        const novo = {};
+        TAMS.forEach(t => { novo[t] = (fi[t] || []).map(l => l.insumoId !== id ? l : { insumoId: id, qtd: Math.round(Ficha.converter(l.qtd, l.un || unAntes, un) * 100000) / 100000, un }); });
+        return [fi.id, novo];
+      });
+    }
+  }
+  Object.assign(campos, { estoqueMinimo: Math.round(min * 100000) / 100000, estoqueIdeal: Math.round(ideal * 100000) / 100000 });
   if (!id) {
     const preco = numero(val('iPreco')), qtd = numero(val('iQtd'));
     if (preco == null || preco < 0) return toast('Informe o preço de compra.');
     if (!(qtd > 0)) return toast('Informe a quantidade da embalagem.');
     const base = 'ins-' + (Catalogo.slug(nome) || 'item');
     id = base; for (let i = 2; Ficha.insumo(id); i++) id = base + '-' + i;
-    Object.assign(campos, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico: [] });
+    Object.assign(campos, { precoCompra: preco, qtdEmbalagem: qtd, atualizadoEm: Date.now(), historico: [], estoqueAtual: 0 });
   }
-  try { await DB.salvarInsumo(id, campos); fecharModal(); toast('✅ Insumo salvo.'); }
+  try {
+    await DB.salvarInsumo(id, campos);
+    for (const [fid, linhas] of fichasConv) await DB.salvarFicha(fid, linhas);
+    fecharModal(); toast('✅ Insumo salvo.');
+  }
   catch (e) { avisarErro(e); }
 }
 function atualizarPreco(id) {
@@ -990,8 +1082,10 @@ function iniciarFicha(id, tam) {
   const f = id === '_base' ? Ficha.base() : (Ficha.ficha(id) || {});
   const tipo = id === '_base' ? 'base' : (Catalogo.doc(id) || {}).tipo === 'adicional' ? 'adicional' : 'sabor';
   fe = { id, tipo, tam: tam || 'G', linhas: {}, sujo: false };
-  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
 }
+// linha da ficha: quantidade + unidade em que foi digitada (a baixa converte g↔kg, ml↔L se o insumo mudar)
+const linhaFicha = l => Object.assign({ insumoId: l.insumoId, qtd: l.qtd }, l.un ? { un: l.un } : {});
 // abre direto na ficha (visão geral / base comum)
 function abrirFicha(id, tam) {
   if (id === '_base') {
@@ -1065,7 +1159,7 @@ function feQtd(i, txt) {
   const l = fe.linhas[fe.tam][i], ins = Ficha.insumo(l.insumoId) || {};
   const q = Ficha.lerQtd(txt, ins.unidade);
   if (q == null || q <= 0) { toast('Quantidade inválida.'); return renderFicha(); }
-  l.qtd = q; feMudou();
+  l.qtd = q; l.un = ins.unidade; feMudou();
 }
 function feRem(i) { fe.linhas[fe.tam].splice(i, 1); feMudou(); }
 function feAdd() {
@@ -1075,7 +1169,7 @@ function feAdd() {
   const q = Ficha.lerQtd(val('feQtdNova'), ins.unidade);
   if (q == null || q <= 0) return toast(`Quantidade inválida (em ${ins.unidade}${ins.unidade === 'kg' ? ' — ou digite em g, ex.: 280g' : ''}).`);
   const ja = fe.linhas[fe.tam].find(l => l.insumoId === ins.id);
-  if (ja) ja.qtd = Math.round((ja.qtd + q) * 100000) / 100000; else fe.linhas[fe.tam].push({ insumoId: ins.id, qtd: q });
+  if (ja) { ja.qtd = Math.round((ja.qtd + q) * 100000) / 100000; ja.un = ins.unidade; } else fe.linhas[fe.tam].push({ insumoId: ins.id, qtd: q, un: ins.unidade });
   feMudou();
   setTimeout(() => document.getElementById('feBusca').focus(), 0);
 }
@@ -1083,18 +1177,18 @@ function feCopiarTam() {
   const de = val('feDe'), fator = numero(val('feFator')) || 1;
   if (!fe.linhas[de].length) return toast(`A ficha ${de} está vazia.`);
   if (fe.linhas[fe.tam].length && !confirm(`Substituir a ficha ${fe.tam} pela ${de} × ${String(fator).replace('.', ',')}?`)) return;
-  fe.linhas[fe.tam] = fe.linhas[de].map(l => ({ insumoId: l.insumoId, qtd: Math.round(l.qtd * fator * 100000) / 100000 }));
+  fe.linhas[fe.tam] = fe.linhas[de].map(l => Object.assign(linhaFicha(l), { qtd: Math.round(l.qtd * fator * 100000) / 100000 }));
   feMudou();
 }
 function feCopiarOutro() {
   const f = Ficha.ficha(val('feOutro')) || {};
   if (TAMS.some(t => fe.linhas[t].length) && !confirm('Substituir a ficha (P, M e G) pela do item escolhido?')) return;
-  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
   feMudou();
 }
 async function feSalvar() {
   const dados = {};
-  TAMS.forEach(t => { dados[t] = fe.linhas[t].map(l => ({ insumoId: l.insumoId, qtd: l.qtd })); });
+  TAMS.forEach(t => { dados[t] = fe.linhas[t].map(linhaFicha); });
   try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); }
   catch (e) { avisarErro(e); }
 }
@@ -1215,7 +1309,7 @@ async function carregarMov() {
   el.innerHTML = '<div class="muted">Carregando...</div>';
   try {
     const prod = val('movProduto');
-    const l = (await DB.listarMovimentos(elDe.value, elAte.value)).filter(m => !prod || m.produtoId === prod);
+    const l = (await DB.listarMovimentos(elDe.value, elAte.value)).filter(m => m.tipoItem !== 'insumo' && (!prod || m.produtoId === prod));
     el.innerHTML = l.length ? `<table>
       <tr><th>Data</th><th>Tipo</th><th>Produto</th><th class="r">Qtd</th><th class="r">Valor</th><th class="r">Estoque após</th><th>Detalhe</th></tr>
       ${l.map(m => `<tr><td>${br(m.data)} <span class="muted">${new Date(m.em).toLocaleTimeString('pt-BR').slice(0, 5)}</span></td><td>${TIPOS_MOV[m.tipo] || m.tipo}</td><td>${esc(m.produtoNome)}</td>
@@ -1224,6 +1318,413 @@ async function carregarMov() {
         <td class="muted">${esc([m.fornecedor, m.motivo, m.obs, m.pedidoNumero ? 'pedido #' + m.pedidoNumero : ''].filter(Boolean).join(' • '))}</td></tr>`).join('')}
     </table>` : '<div class="muted">Nenhuma movimentação no período.</div>';
   } catch (e) { console.error(e); el.innerHTML = '<div class="muted">Erro ao carregar (login/regras do Firebase).</div>'; }
+}
+
+/* =========================================================
+   ESTOQUE DE INSUMOS (movimentos com tipoItem: 'insumo')
+   ========================================================= */
+const ESTADO_INS = { neg: ['🔴', 'negativo'], baixo: ['🔴', 'no mínimo ou abaixo'], perto: ['🟡', 'perto do mínimo'], ok: ['🟢', 'ok'] };
+function fmtEstIns(i) {
+  const e = Ficha.estado(i);
+  if (e === 'off') return '<span class="muted">não controla</span>';
+  return `<span class="est ${e}" title="${ESTADO_INS[e][1]}">${ESTADO_INS[e][0]} ${qtdTxt(i.estoqueAtual || 0)} ${esc(i.unidade)}</span>`;
+}
+const insControlados = () => Ficha.insumos().filter(i => i.controlaEstoque && i.ativo !== false);
+const custoMed = i => Ficha.custoMedio(i);
+const TIPOS_INS = { compra: '➕ Compra', ajuste: '➖ Ajuste', inventario: '📋 Inventário', consumo: '🍕 Consumo', estorno: '↩️ Estorno' };
+const movsIns = l => l.filter(m => m.tipoItem === 'insumo');
+
+// Histórico recente (60 dias): consumo médio ("dura ~N dias") e avisos de pizza sem ficha
+let histIns = null;
+async function carregarHistIns() {
+  const d = new Date(); d.setDate(d.getDate() - 60);
+  try { histIns = movsIns(await DB.listarMovimentos(isoDe(d), hojeISO())); } catch (e) { console.error(e); histIns = []; }
+  renderAbaInsumos();
+}
+// Consumo médio por dia de funcionamento (últimos 14 dias em que houve baixa): { insumoId: qtd/dia }
+function consumoMedio() {
+  const l = (histIns || []).filter(m => m.tipo === 'consumo' || m.tipo === 'estorno');
+  const dias = [...new Set(l.filter(m => m.tipo === 'consumo').map(m => m.data))].sort().slice(-14);
+  const med = {};
+  l.filter(m => dias.includes(m.data)).forEach(m => m.itens.forEach(x => { med[x.insumoId] = (med[x.insumoId] || 0) - x.qtd / dias.length; }));
+  return med;
+}
+function duraTxt(i, med) {
+  const c = med[i.id];
+  if (!(c > 0)) return '<span class="muted">—</span>';
+  const n = (Number(i.estoqueAtual) || 0) / c;
+  return n <= 0 ? '<span class="neg">acabou</span>' : `<span class="${n < 3 ? 'baixo' : ''}">~${n < 10 ? n.toLocaleString('pt-BR', { maximumFractionDigits: 1 }) : Math.round(n)} dia(s)</span>`;
+}
+
+// Aviso discreto na aba Relatórios
+function avisoInsumosRel() {
+  const n = Ficha.acabando().length, el = document.getElementById('avisoInsRel');
+  el.classList.toggle('hide', !n);
+  el.innerHTML = `⚠️ <b>${n} insumo(s) no mínimo ou abaixo</b> — ver estoque e lista de compras →`;
+}
+
+function renderAbaInsumos() {
+  if (aba !== 'insumos') return;
+  const er = Ficha.erro(), elE = document.getElementById('insErro');
+  elE.classList.toggle('hide', !er);
+  if (er) elE.innerHTML = `🔴 <b>Não foi possível ler os insumos:</b> ${esc(DB.mensagemErro(er))}`;
+  const ctrl = insControlados(), acab = Ficha.acabando(), med = consumoMedio();
+  const kpi = (t, v, s) => `<div class="kpi"><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+  const parado = ctrl.reduce((s, i) => s + Math.max(0, Number(i.estoqueAtual) || 0) * custoMed(i), 0);
+  const neg = ctrl.filter(i => Ficha.estado(i) === 'neg').length;
+  document.getElementById('kpisIns').innerHTML = kpi('💰 Valor parado em insumos', dinheiro(parado), 'pelo custo médio de compra')
+    + kpi('🧂 Insumos controlados', ctrl.length, `${Ficha.insumos().length} cadastrados`)
+    + kpi('⚠️ No mínimo ou abaixo', acab.length, neg ? `${neg} negativo(s)` : '');
+
+  document.getElementById('cardAcabando').innerHTML = acab.length ? `<div class="alerta" id="alertaInsumos"><b>⚠️ Insumos abaixo do mínimo (${acab.length}):</b>
+    ${acab.map(i => `${esc(i.nome)} ${fmtEstIns(i)} <span class="muted">mín. ${qtdTxt(i.estoqueMinimo || 0)}</span>`).join(' • ')}
+    <div style="margin-top:6px"><a href="#cardCompras" class="lnk" onclick="document.getElementById('cardCompras').scrollIntoView({behavior:'smooth'});return false">🛒 Ver lista de compras</a></div></div>` : '';
+
+  // pizzas sem ficha nos últimos 30 dias (baixa não aconteceu para elas)
+  const lim = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return isoDe(d); })();
+  const sem = {};
+  (histIns || []).filter(m => m.tipo === 'consumo' && m.data >= lim).forEach(m => (m.semFicha || []).forEach(n => {
+    sem[n] = sem[n] || { qtd: 0, ult: '' }; sem[n].qtd++; sem[n].ult = m.pedidoNumero ? `#${m.pedidoNumero} de ${br(m.data)}` : br(m.data);
+  }));
+  const semL = Object.entries(sem).sort((a, b) => b[1].qtd - a[1].qtd);
+  document.getElementById('cardSemFicha').innerHTML = semL.length ? `<div class="aviso" id="avisoSemFicha"><b>📋 Vendido sem ficha técnica (últimos 30 dias) — esses itens NÃO baixaram insumos:</b>
+    ${semL.map(([n, x]) => `${esc(n)} <span class="muted">(${x.qtd} pedido(s), último ${esc(x.ult)})</span>`).join(' • ')}
+    <div class="muted">Monte a ficha em 📋 Ficha técnica. Pedidos já feitos não são baixados de novo.</div></div>` : '';
+
+  const cats = Ficha.CATEGORIAS.filter(c => ctrl.some(i => i.categoria === c)).concat(ctrl.some(i => !Ficha.CATEGORIAS.includes(i.categoria)) ? ['Outros'] : []);
+  document.getElementById('tabEstoqueIns').innerHTML = !ctrl.length
+    ? '<div class="muted">Nenhum insumo controla estoque ainda. Na aba 📋 Ficha técnica, abra o ✏️ do insumo e marque <b>Controla estoque</b>; depois faça o 📋 Inventário (estoque inicial).</div>'
+    : `<table><tr><th>Insumo</th><th class="r">Estoque</th><th class="r">Mínimo</th><th class="r">Ideal</th><th class="r">Dura</th><th class="r">Custo médio</th><th class="r">Valor</th></tr>
+      ${cats.map(c => `<tr><td colspan="7" style="background:#fafaf9"><b>${esc(c)}</b></td></tr>` + ctrl.filter(i => (Ficha.CATEGORIAS.includes(i.categoria) ? i.categoria : 'Outros') === c).map(i => `<tr data-est="${esc(i.id)}">
+        <td>${esc(i.nome)}</td><td class="r">${fmtEstIns(i)}</td><td class="r">${qtdTxt(i.estoqueMinimo || 0)}</td><td class="r">${i.estoqueIdeal ? qtdTxt(i.estoqueIdeal) : '<span class="muted">—</span>'}</td>
+        <td class="r">${duraTxt(i, med)}</td><td class="r">${dinheiro(custoMed(i))}/${esc(i.unidade)}</td><td class="r">${dinheiro(Math.max(0, Number(i.estoqueAtual) || 0) * custoMed(i))}</td></tr>`).join('')).join('')}
+    </table>`;
+  renderListaCompras();
+}
+
+/* ---------- 🛒 lista de compras (agrupada por fornecedor) ---------- */
+function itensCompra() {
+  return Ficha.acabando().map(i => ({ i, s: Ficha.sugestaoCompra(i) })).filter(x => x.s);
+}
+const embTxt = i => `${qtdTxt(i.qtdEmbalagem)} ${i.unidade}`;
+function textoCompra(forn, l) {
+  return `Olá${forn ? ' ' + forn : ''}! Pedido do ${CONFIG.loja.nome}:\n\n` +
+    l.map(({ i, s }) => `• ${i.nome} — ${s.embalagens} x ${embTxt(i)} (${qtdTxt(s.qtd)} ${i.unidade})`).join('\n') + '\n\nObrigado!';
+}
+let gruposCompra = [];
+function renderListaCompras() {
+  const l = itensCompra(), g = {};
+  l.forEach(x => { const f = (x.i.fornecedor || '').trim() || 'Sem fornecedor'; (g[f] = g[f] || []).push(x); });
+  gruposCompra = Object.entries(g).sort((a, b) => a[0].localeCompare(b[0]));
+  const total = l.reduce((s, x) => s + x.s.custo, 0);
+  document.getElementById('listaCompras').innerHTML = !l.length ? '<div class="muted">Nada para comprar: nenhum insumo controlado está no mínimo.</div>'
+    : `<div class="muted">Quantidade = ideal − estoque atual (ideal vazio = 2 × mínimo), arredondada para embalagens inteiras. Custo estimado pelo custo médio.</div>
+      ${gruposCompra.map(([f, itens], k) => `<div class="fornec"><div class="cab"><b>🏪 ${esc(f)}</b><span>
+        <button class="btn sm sec" onclick="copiarCompra(${k})">📋 Copiar</button>
+        <a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats('', textoCompra(f === 'Sem fornecedor' ? '' : f, itens))}">💬 Enviar no WhatsApp</a></span></div>
+        <table>${itens.map(({ i, s }) => `<tr><td>${esc(i.nome)} <span class="muted">tem ${qtdTxt(i.estoqueAtual || 0)} • mín. ${qtdTxt(i.estoqueMinimo || 0)} • ideal ${qtdTxt(i.estoqueIdeal || (i.estoqueMinimo || 0) * 2)} ${esc(i.unidade)}</span></td>
+          <td class="r"><b>${s.embalagens} x ${esc(embTxt(i))}</b> = ${qtdTxt(s.qtd)} ${esc(i.unidade)}</td><td class="r">≈ ${dinheiro(s.custo)}</td></tr>`).join('')}
+          <tr><td colspan="2" class="r">Subtotal</td><td class="r"><b>${dinheiro(itens.reduce((s, x) => s + x.s.custo, 0))}</b></td></tr></table></div>`).join('')}
+      <div class="linha total"><span>Total estimado</span><span id="totalCompras">${dinheiro(total)}</span></div>`;
+}
+async function copiarCompra(k) {
+  const [f, itens] = gruposCompra[k];
+  const txt = textoCompra(f === 'Sem fornecedor' ? '' : f, itens);
+  try { await navigator.clipboard.writeText(txt); toast('📋 Lista copiada.'); }
+  catch { prompt('Copie a lista:', txt); }
+}
+
+/* ---------- unidades na digitação (embalagem, kg/g, L/ml, un) ---------- */
+const IRMA = { kg: 'g', g: 'kg', L: 'ml', ml: 'L' };
+const opcoesUn = i => [['emb', `embalagem (${embTxt(i)})`], [i.unidade, i.unidade]].concat(IRMA[i.unidade] ? [[IRMA[i.unidade], IRMA[i.unidade]]] : []);
+// quantidade digitada → unidade do insumo (null se inválida)
+function qtdNaUnidade(i, txt, un) {
+  const v = numero(txt);
+  if (v == null) return null;
+  if (un === 'emb') return Math.round(v * (Number(i.qtdEmbalagem) || 1) * 100000) / 100000;
+  const c = Ficha.converter(v, un, i.unidade);
+  return c == null ? null : Math.round(c * 100000) / 100000;
+}
+const optsInsumos = (sel, lista = Ficha.insumos().filter(i => i.ativo !== false)) => '<option value="">Escolha o insumo...</option>' +
+  lista.map(i => `<option value="${esc(i.id)}" ${i.id === sel ? 'selected' : ''}>${esc(i.nome)}${i.controlaEstoque ? ` (${qtdTxt(i.estoqueAtual || 0)} ${esc(i.unidade)})` : ''}</option>`).join('');
+
+/* ---------- ➕ entrada de compra (nota com vários insumos) ---------- */
+let nota = null;
+function abrirCompraIns() {
+  if (!Ficha.insumos().length) return toast('Cadastre os insumos na aba 📋 Ficha técnica.');
+  nota = { linhas: [{ insumoId: '', qtd: '', un: 'emb', valor: '' }] };
+  const forn = [...new Set(Ficha.insumos().map(i => i.fornecedor).filter(Boolean))];
+  abrirModal(`<h2>➕ Entrada de compra (nota do fornecedor)</h2>
+    <div class="grid3c">${campo('nData', 'Data', hojeISO(), 'type="date"')}${campo('nForn', 'Fornecedor', '', 'list="dlForn" placeholder="Ex.: Atacadão"')}${campo('nNota', 'Nº da nota (opcional)', '')}</div>
+    <datalist id="dlForn">${forn.map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+    <div class="rolar" style="margin-top:10px"><table class="notaTab" id="notaTab"></table></div>
+    <button class="btn sm sec" style="margin-top:8px" onclick="notaAdd()">➕ Mais um insumo</button>
+    <div class="calc" id="nCalc"></div>
+    <div class="muted" style="margin-top:6px">Quantidade em embalagens (ex.: 3 botijões, 2 pacotes de 50 caixas) ou direto em kg/g/L/ml/un. O custo do insumo passa a ser o <b>custo médio ponderado</b> e as fichas são recalculadas.</div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarCompraIns()">Lançar compra</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  document.getElementById('modalConteudo').classList.add('largo');
+  renderNota();
+}
+function renderNota() {
+  document.getElementById('notaTab').innerHTML = '<tr><th>Insumo</th><th class="r">Qtd</th><th>Unidade</th><th class="r">Valor total (R$)</th><th>Resultado</th><th></th></tr>' +
+    nota.linhas.map((l, k) => { const i = Ficha.insumo(l.insumoId);
+      return `<tr><td><select onchange="notaIns(${k},this.value)">${optsInsumos(l.insumoId)}</select></td>
+        <td><input class="q" value="${esc(l.qtd)}" inputmode="decimal" oninput="nota.linhas[${k}].qtd=this.value;calcNota()"></td>
+        <td>${i ? `<select onchange="nota.linhas[${k}].un=this.value;calcNota()">${opcoesUn(i).map(([v, n]) => `<option value="${v}" ${v === l.un ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>` : ''}</td>
+        <td><input class="v" value="${esc(l.valor)}" inputmode="decimal" oninput="nota.linhas[${k}].valor=this.value;calcNota()"></td>
+        <td class="muted" id="nRes${k}"></td><td><button class="btn sm sec" onclick="nota.linhas.splice(${k},1);if(!nota.linhas.length)notaAdd();else renderNota()">🗑️</button></td></tr>`; }).join('');
+  calcNota();
+}
+function notaAdd() { nota.linhas.push({ insumoId: '', qtd: '', un: 'emb', valor: '' }); renderNota(); }
+function notaIns(k, id) { nota.linhas[k].insumoId = id; nota.linhas[k].un = 'emb'; renderNota(); }
+function calcNota() {
+  let total = 0;
+  nota.linhas.forEach((l, k) => {
+    const i = Ficha.insumo(l.insumoId), el = document.getElementById('nRes' + k);
+    const v = numero(l.valor) || 0; total += v;
+    if (!i || !el) return;
+    const q = qtdNaUnidade(i, l.qtd, l.un), atual = Number(i.estoqueAtual) || 0;
+    if (!(q > 0) || !(v > 0)) { el.textContent = q > 0 ? `${qtdTxt(q)} ${i.unidade}` : ''; return; }
+    const medio = atual > 0 ? (atual * custoMed(i) + v) / (atual + q) : v / q;
+    el.innerHTML = `${qtdTxt(q)} ${esc(i.unidade)} a ${dinheiro(v / q)}/${esc(i.unidade)} • custo médio <b>${dinheiro(custoMed(i))} → ${dinheiro(medio)}</b> • estoque ${qtdTxt(atual)} → ${qtdTxt(atual + q)}`;
+  });
+  document.getElementById('nCalc').innerHTML = `<div class="linha total" style="margin:0;border:0;padding:0"><span>Total da nota</span><span id="nTotal">${dinheiro(total)}</span></div>`;
+}
+async function salvarCompraIns() {
+  const itens = [];
+  for (const l of nota.linhas) {
+    if (!l.insumoId && !l.qtd && !l.valor) continue;
+    const i = Ficha.insumo(l.insumoId);
+    if (!i) return toast('Escolha o insumo de cada linha.');
+    const q = qtdNaUnidade(i, l.qtd, l.un), v = numero(l.valor);
+    if (!(q > 0)) return toast(`Quantidade inválida: ${i.nome}.`);
+    if (v == null || v < 0) return toast(`Informe o valor pago: ${i.nome}.`);
+    itens.push({ insumoId: i.id, qtd: q, valor: v });
+  }
+  if (!itens.length) return toast('Informe pelo menos um insumo.');
+  try {
+    const mov = await DB.lancarMovInsumos({ tipo: 'compra', data: val('nData') || hojeISO(), fornecedor: val('nForn'), nota: val('nNota'), itens });
+    fecharModal(); toast(`✅ Compra lançada (${dinheiro(mov.valorTotal)}) — custos e fichas atualizados.`); posMovIns();
+  } catch (e) { avisarErro(e); }
+}
+
+/* ---------- ➖ ajuste ---------- */
+const MOTIVOS_INS = ['Perda / vencido', 'Avaria', 'Consumo interno', 'Correção'];
+function abrirAjusteIns() {
+  const ctrl = Ficha.insumos().filter(i => i.ativo !== false);
+  if (!ctrl.length) return toast('Cadastre os insumos na aba 📋 Ficha técnica.');
+  abrirModal(`<h2>➖ Ajuste de estoque de insumo</h2>
+    <label for="ajIns">Insumo</label><select id="ajIns" onchange="renderAjUn();calcAjuste()">${optsInsumos('', ctrl)}</select>
+    <div class="grid2"><div><label for="ajMotivo">Motivo</label><select id="ajMotivo" onchange="calcAjuste()">${MOTIVOS_INS.map(m => `<option>${m}</option>`).join('')}</select></div>
+      <div id="ajSinalBox" class="hide"><label for="ajSinal">Correção</label><select id="ajSinal" onchange="calcAjuste()"><option value="-1">➖ Retirar do estoque</option><option value="1">➕ Somar ao estoque</option></select></div></div>
+    <div class="grid3c">${campo('ajQtd', 'Quantidade', '', 'inputmode="decimal" oninput="calcAjuste()"')}<div><label for="ajUn">Unidade</label><select id="ajUn" onchange="calcAjuste()"></select></div>${campo('ajData', 'Data', hojeISO(), 'type="date"')}</div>
+    ${campo('ajObs', 'Observação', '', 'placeholder="Ex.: 1 pacote de muçarela estragou"')}
+    <div class="calc" id="ajCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarAjusteIns()">Lançar ajuste</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  renderAjUn(); calcAjuste();
+}
+function renderAjUn() {
+  const i = Ficha.insumo(val('ajIns'));
+  document.getElementById('ajUn').innerHTML = i ? opcoesUn(i).slice().reverse().map(([v, n]) => `<option value="${v}" ${v === i.unidade ? 'selected' : ''}>${esc(n)}</option>`).join('') : '';
+}
+function deltaAjuste(i) {
+  const q = qtdNaUnidade(i, val('ajQtd'), val('ajUn'));
+  if (!(q > 0)) return null;
+  return val('ajMotivo') === 'Correção' ? q * Number(val('ajSinal')) : -q;
+}
+function calcAjuste() {
+  document.getElementById('ajSinalBox').classList.toggle('hide', val('ajMotivo') !== 'Correção');
+  const i = Ficha.insumo(val('ajIns')), el = document.getElementById('ajCalc');
+  if (!i) { el.innerHTML = '<div class="muted">Escolha o insumo.</div>'; return; }
+  const d = deltaAjuste(i), atual = Number(i.estoqueAtual) || 0;
+  el.innerHTML = `<div class="linha"><span>Estoque atual</span><b>${qtdTxt(atual)} ${esc(i.unidade)}</b></div>` + (d == null ? '' :
+    `<div class="linha"><span>Ajuste</span><b class="${d < 0 ? 'neg' : ''}">${d > 0 ? '+' : ''}${qtdTxt(d)} ${esc(i.unidade)} = ${dinheiro(d * custoMed(i))}</b></div>
+     <div class="linha"><span>Novo estoque</span><b>${qtdTxt(atual + d)} ${esc(i.unidade)}</b></div>`);
+}
+async function salvarAjusteIns() {
+  const i = Ficha.insumo(val('ajIns'));
+  if (!i) return toast('Escolha o insumo.');
+  const d = deltaAjuste(i);
+  if (d == null) return toast('Informe a quantidade.');
+  try {
+    await DB.lancarMovInsumos({ tipo: 'ajuste', motivo: val('ajMotivo'), obs: val('ajObs'), data: val('ajData') || hojeISO(), itens: [{ insumoId: i.id, qtd: d }] });
+    fecharModal(); toast('✅ Ajuste lançado.'); posMovIns();
+  } catch (e) { avisarErro(e); }
+}
+
+/* ---------- 📋 inventário (contagem de todos de uma vez) ---------- */
+function abrirInventario() {
+  const ctrl = insControlados();
+  if (!ctrl.length) return toast('Marque "Controla estoque" nos insumos (aba 📋 Ficha técnica) primeiro.');
+  const cats = [...new Set(ctrl.map(i => i.categoria || 'Outros'))].sort((a, b) => Ficha.CATEGORIAS.indexOf(a) - Ficha.CATEGORIAS.indexOf(b));
+  abrirModal(`<h2>📋 Inventário (contagem)</h2>
+    <div class="muted">Digite o que tem de verdade (na unidade do insumo; aceita "500g"). Deixe vazio o que não contou. A diferença vira ajuste e o estoque fica igual ao contado.</div>
+    <div class="grid2">${campo('invData', 'Data', hojeISO(), 'type="date"')}${campo('invObs', 'Observação', '', 'placeholder="Ex.: inventário de fim de mês"')}</div>
+    <div class="rolar" style="margin-top:10px"><table class="invTab">
+      <tr><th>Insumo</th><th class="r">No sistema</th><th class="r">Contado</th><th class="r">Diferença</th><th class="r">R$</th></tr>
+      ${cats.map(c => `<tr><td colspan="5" style="background:#fafaf9"><b>${esc(c)}</b></td></tr>` + ctrl.filter(i => (i.categoria || 'Outros') === c).map(i => `<tr>
+        <td>${esc(i.nome)}</td><td class="r">${qtdTxt(i.estoqueAtual || 0)} ${esc(i.unidade)}</td>
+        <td class="r"><input data-inv="${esc(i.id)}" inputmode="decimal" placeholder="${esc(i.unidade)}" oninput="calcInventario()"></td>
+        <td class="r" id="invD-${esc(i.id)}"></td><td class="r" id="invV-${esc(i.id)}"></td></tr>`).join('')).join('')}
+    </table></div>
+    <div class="calc" id="invCalc"></div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarInventario()">Salvar inventário</button>
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>`);
+  document.getElementById('modalConteudo').classList.add('largo');
+  calcInventario();
+}
+function lerInventario() {
+  const itens = [], erros = [];
+  document.querySelectorAll('[data-inv]').forEach(el => {
+    if (!el.value.trim()) return;
+    const i = Ficha.insumo(el.dataset.inv), q = Ficha.lerQtd(el.value, i.unidade);
+    if (q == null || q < 0) erros.push(i.nome); else itens.push({ i, contado: q, dif: q - (Number(i.estoqueAtual) || 0) });
+  });
+  return { itens, erros };
+}
+function calcInventario() {
+  const { itens, erros } = lerInventario();
+  document.querySelectorAll('[data-inv]').forEach(el => { document.getElementById('invD-' + el.dataset.inv).textContent = ''; document.getElementById('invV-' + el.dataset.inv).textContent = ''; });
+  let tot = 0, perdas = 0;
+  itens.forEach(({ i, dif }) => {
+    const v = dif * custoMed(i); tot += v; if (v < 0) perdas += v;
+    const d = document.getElementById('invD-' + i.id);
+    d.innerHTML = `<span class="${dif < 0 ? 'neg' : ''}">${dif > 0 ? '+' : ''}${qtdTxt(dif)}</span>`;
+    document.getElementById('invV-' + i.id).innerHTML = `<span class="${v < 0 ? 'neg' : ''}">${dinheiro(v)}</span>`;
+  });
+  document.getElementById('invCalc').innerHTML = `<div class="linha"><span>Insumos contados</span><b>${itens.length}</b></div>
+    <div class="linha"><span>Faltas (sumiu do estoque)</span><b class="neg">${dinheiro(perdas)}</b></div>
+    <div class="linha"><span>Diferença total</span><b id="invTotal" class="${tot < 0 ? 'neg' : ''}">${dinheiro(tot)}</b></div>
+    ${erros.length ? `<div class="neg">Valor inválido: ${erros.map(esc).join(', ')}</div>` : ''}`;
+}
+async function salvarInventario() {
+  const { itens, erros } = lerInventario();
+  if (erros.length) return toast('Corrija: ' + erros.join(', '));
+  if (!itens.length) return toast('Digite a contagem de pelo menos um insumo.');
+  try {
+    const mov = await DB.lancarMovInsumos({ tipo: 'inventario', data: val('invData') || hojeISO(), obs: val('invObs'), motivo: 'Inventário', itens: itens.map(x => ({ insumoId: x.i.id, qtd: x.contado })) });
+    fecharModal(); toast(`✅ Inventário salvo (${itens.length} insumos, diferença ${dinheiro(mov.valorTotal)}).`); posMovIns();
+  } catch (e) { avisarErro(e); }
+}
+function posMovIns() { carregarHistIns(); carregarRelIns(); }
+
+/* ---------- 📈 relatório do período + CMV teórico × real ---------- */
+let perIns = 'mes', movsPer = [], movsRel = [];
+function renderFiltrosIns() {
+  document.getElementById('filtrosIns').innerHTML = PERIODOS.map(p =>
+    `<span class="chip ${p.id === perIns ? 'on' : ''}" onclick="perIns='${p.id}';carregarRelIns()">${p.nome}</span>`).join('');
+}
+function intervaloIns() {
+  return perIns === 'livre' ? [val('insDe'), val('insAte')] : intervalo(perIns);
+}
+async function carregarRelIns() {
+  renderFiltrosIns();
+  const [de, ate] = intervaloIns(), el = document.getElementById('relIns');
+  if (!de || !ate || de > ate) return toast('Período inválido.');
+  document.getElementById('insDe').value = de; document.getElementById('insAte').value = ate;
+  el.innerHTML = '<div class="muted">Carregando...</div>';
+  // busca 120 dias antes para achar o inventário inicial
+  const d0 = new Date(de + 'T12:00'); d0.setDate(d0.getDate() - 120);
+  try { movsRel = movsIns(await DB.listarMovimentos(isoDe(d0), ate)); }
+  catch (e) { console.error(e); el.innerHTML = '<div class="muted">Erro ao carregar (login/regras do Firebase).</div>'; return; }
+  movsPer = movsRel.filter(m => m.data >= de && m.data <= ate);
+  el.innerHTML = htmlRelIns(calcRelIns(movsRel, de, ate));
+}
+const chaveMov = m => m.data + '|' + String(m.em || 0).padStart(15, '0');
+
+/* Resumo do período por insumo + CMV teórico × real.
+   Teórico = consumo pelas fichas (− estornos). Real = estoque inicial + compras − estoque final,
+   entre dois inventários (o último antes do período, ou o 1º dentro dele, e o último dentro), por insumo contado nos dois. */
+function calcRelIns(movs, de, ate) {
+  const per = movs.filter(m => m.data >= de && m.data <= ate), por = {};
+  const o = x => por[x.insumoId] = por[x.insumoId] || { nome: x.nome, un: x.unidade, cQ: 0, cV: 0, eQ: 0, eV: 0, aQ: 0, aV: 0, iV: 0 };
+  per.forEach(m => (m.itens || []).forEach(x => {
+    const r = o(x);
+    if (m.tipo === 'consumo' || m.tipo === 'estorno') { r.cQ -= x.qtd; r.cV -= x.valor; }
+    else if (m.tipo === 'compra') { r.eQ += x.qtd; r.eV += x.valor; }
+    else if (m.tipo === 'ajuste') { r.aQ += x.qtd; r.aV += x.valor; }
+    else if (m.tipo === 'inventario') r.iV += x.valor;
+  }));
+  const ord = movs.slice().sort((a, b) => chaveMov(a) < chaveMov(b) ? -1 : 1), invs = ord.filter(m => m.tipo === 'inventario');
+  const ids = [...new Set(invs.flatMap(m => m.itens.map(x => x.insumoId)))];
+  const cmv = { teo: 0, real: 0, ini: 0, fim: 0, compras: 0, ajustes: 0, linhas: [], de: null, ate: null };
+  ids.forEach(id => {
+    const com = invs.filter(m => m.itens.some(x => x.insumoId === id));
+    const antes = com.filter(m => m.data < de), dentro = com.filter(m => m.data >= de && m.data <= ate);
+    const ini = antes.length ? antes[antes.length - 1] : dentro[0], fim = dentro[dentro.length - 1];
+    if (!ini || !fim || ini === fim) return;
+    const ki = chaveMov(ini), kf = chaveMov(fim), it = m => m.itens.find(x => x.insumoId === id);
+    const entre = ord.filter(m => chaveMov(m) > ki && chaveMov(m) < kf);
+    const soma = tipos => entre.filter(m => tipos.includes(m.tipo)).reduce((s, m) => s + (m.itens || []).filter(x => x.insumoId === id).reduce((a, x) => a + x.valor, 0), 0);
+    const l = { id, nome: it(fim).nome, ini: it(ini).valorContado || 0, fim: it(fim).valorContado || 0, compras: soma(['compra']), teo: -soma(['consumo', 'estorno']), ajustes: soma(['ajuste']) };
+    l.real = l.ini + l.compras - l.fim;
+    cmv.linhas.push(l);
+    ['teo', 'real', 'ini', 'fim', 'compras', 'ajustes'].forEach(k => { cmv[k] += l[k]; });
+    if (!cmv.de || ki < chaveMov(cmv.de)) cmv.de = ini;
+    if (!cmv.ate || kf > chaveMov(cmv.ate)) cmv.ate = fim;
+  });
+  const tot = k => Object.values(por).reduce((s, r) => s + r[k], 0);
+  const parado = insControlados().reduce((s, i) => s + Math.max(0, Number(i.estoqueAtual) || 0) * custoMed(i), 0);
+  return { por, cmv, consumo: tot('cV'), entradas: tot('eV'), ajustes: tot('aV'), perdas: per.filter(m => m.tipo === 'ajuste').reduce((s, m) => s + m.itens.filter(x => x.valor < 0).reduce((a, x) => a + x.valor, 0), 0), inventario: tot('iV'), parado, movs: per };
+}
+function htmlRelIns(r) {
+  const kpi = (t, v, s, id) => `<div class="kpi" ${id ? `id="${id}"` : ''}><small>${t}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+  const c = r.cmv, dif = c.real - c.teo, difPct = c.teo ? dif / c.teo * 100 : null;
+  const quando = m => `${br(m.data)} ${new Date(m.em).toLocaleTimeString('pt-BR').slice(0, 5)}`;
+  const linhas = Object.entries(r.por).sort((a, b) => b[1].cV - a[1].cV);
+  return `<div class="kpis">
+      ${kpi('🍕 Consumo pelas fichas', dinheiro(r.consumo), 'CMV teórico do período', 'kpiConsumoIns')}
+      ${kpi('➕ Compras (entradas)', dinheiro(r.entradas))}
+      ${kpi('➖ Perdas / ajustes', dinheiro(r.perdas), r.ajustes !== r.perdas ? `saldo dos ajustes ${dinheiro(r.ajustes)}` : 'perda, avaria, consumo interno')}
+      ${kpi('📋 Diferença de inventário', dinheiro(r.inventario), 'contado − sistema')}
+      ${kpi('💰 Valor parado agora', dinheiro(r.parado), 'estoque × custo médio')}
+    </div>
+    <div class="card" id="cardCmvIns" style="background:#fafaf9">
+      <h3>⚖️ CMV teórico × real</h3>
+      ${!c.linhas.length ? `<div class="muted">Precisa de <b>dois inventários</b>: um no início (ou antes) do período e outro no fim. Faça o 📋 Inventário hoje e repita no fim do período.</div>` : `
+      <div class="muted">Entre o inventário de <b>${quando(c.de)}</b> e o de <b>${quando(c.ate)}</b> • ${c.linhas.length} insumo(s) contados nos dois.</div>
+      <div class="linha"><span>Estoque inicial (contado)</span><b>${dinheiro(c.ini)}</b></div>
+      <div class="linha"><span>+ Compras</span><b>${dinheiro(c.compras)}</b></div>
+      <div class="linha"><span>− Estoque final (contado)</span><b>${dinheiro(c.fim)}</b></div>
+      <div class="linha" style="border-top:1px solid #d6d3d1"><span><b>CMV real</b> (o que saiu de verdade)</span><b id="cmvReal">${dinheiro(c.real)}</b></div>
+      <div class="linha"><span><b>CMV teórico</b> (o que as fichas mandam gastar)</span><b id="cmvTeo">${dinheiro(c.teo)}</b></div>
+      <div class="linha total"><span>Diferença (desperdício / divergência)</span><span id="cmvDif" class="${dif > 0.005 ? 'neg' : ''}">${dinheiro(dif)} • ${pct1(difPct)}</span></div>
+      ${c.ajustes ? `<div class="muted">Dessa diferença, ${dinheiro(-c.ajustes)} são perdas já lançadas como ajuste.</div>` : ''}
+      <div class="muted" style="margin-top:6px">Real maior que o teórico = saiu mais insumo do que as fichas preveem: porção acima da ficha, desperdício, perda não lançada, ficha desatualizada ou erro de contagem. Real menor = ficha exagerada ou compra não lançada. Até ~3% é normal.</div>
+      <details><summary>Por insumo</summary><div class="rolar"><table><tr><th>Insumo</th><th class="r">Inicial</th><th class="r">Compras</th><th class="r">Final</th><th class="r">Real</th><th class="r">Teórico</th><th class="r">Diferença</th></tr>
+        ${c.linhas.sort((a, b) => (b.real - b.teo) - (a.real - a.teo)).map(l => `<tr><td>${esc(l.nome)}</td><td class="r">${dinheiro(l.ini)}</td><td class="r">${dinheiro(l.compras)}</td><td class="r">${dinheiro(l.fim)}</td><td class="r">${dinheiro(l.real)}</td><td class="r">${dinheiro(l.teo)}</td><td class="r ${l.real - l.teo > 0.005 ? 'neg' : ''}">${dinheiro(l.real - l.teo)}</td></tr>`).join('')}
+      </table></div></details>`}
+    </div>
+    <h3 style="margin-top:12px">Por insumo no período</h3>
+    ${linhas.length ? `<div class="rolar"><table id="tabRelIns"><tr><th>Insumo</th><th class="r">Consumo</th><th class="r">Consumo R$</th><th class="r">Compras</th><th class="r">Compras R$</th><th class="r">Ajustes</th><th class="r">Ajustes R$</th></tr>
+      ${linhas.map(([id, x]) => `<tr data-rel="${esc(id)}"><td>${esc(x.nome)}</td><td class="r">${qtdTxt(x.cQ)} ${esc(x.un)}</td><td class="r">${dinheiro(x.cV)}</td><td class="r">${x.eQ ? qtdTxt(x.eQ) + ' ' + esc(x.un) : '—'}</td><td class="r">${x.eV ? dinheiro(x.eV) : '—'}</td>
+        <td class="r ${x.aQ < 0 ? 'neg' : ''}">${x.aQ ? qtdTxt(x.aQ) : '—'}</td><td class="r ${x.aV < 0 ? 'neg' : ''}">${x.aV ? dinheiro(x.aV) : '—'}</td></tr>`).join('')}
+    </table></div>` : '<div class="muted">Nenhuma movimentação de insumo no período.</div>'}
+    <h3 style="margin-top:12px">🧾 Movimentações</h3>
+    ${r.movs.length ? `<div class="rolar"><table id="tabMovIns"><tr><th>Data</th><th>Tipo</th><th>Itens</th><th class="r">Valor</th><th>Detalhe</th><th>Usuário</th></tr>
+      ${r.movs.slice().sort((a, b) => b.em - a.em).map(m => `<tr><td>${quando(m)}</td><td>${TIPOS_INS[m.tipo] || m.tipo}</td>
+        <td>${(m.itens || []).map(x => `${esc(x.nome)} <span class="${x.qtd < 0 ? 'neg' : ''}">${x.qtd > 0 ? '+' : ''}${qtdTxt(x.qtd)} ${esc(x.unidade)}</span> <span class="muted">→ ${qtdTxt(x.saldoDepois)}</span>`).join('<br>') || '<span class="muted">—</span>'}</td>
+        <td class="r">${dinheiro(m.valorTotal)}</td>
+        <td class="muted">${esc([m.fornecedor, m.nota ? 'NF ' + m.nota : '', m.tipo !== 'inventario' ? m.motivo : '', m.obs, m.pedidoNumero ? 'pedido #' + m.pedidoNumero : ''].filter(Boolean).join(' • '))}${(m.semFicha || []).length ? `<br><span class="semFicha">⚠️ sem ficha: ${esc(m.semFicha.join(', '))}</span>` : ''}</td>
+        <td class="muted">${esc(m.usuario || '')}</td></tr>`).join('')}
+    </table></div>` : '<div class="muted">Nenhuma movimentação no período.</div>'}`;
+}
+function exportarMovInsCSV() {
+  if (!movsPer.length) return toast('Nenhuma movimentação no período.');
+  const n = (v, d = 2) => v == null ? '' : (Number(v) || 0).toFixed(d).replace('.', ',');
+  const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
+  const linhas = [['Data', 'Hora', 'Tipo', 'Insumo', 'Unidade', 'Quantidade', 'Custo unitario', 'Valor', 'Saldo apos', 'Fornecedor', 'Nota', 'Motivo', 'Pedido', 'Usuario', 'Observacao']];
+  movsPer.slice().sort((a, b) => a.em - b.em).forEach(m => (m.itens || []).forEach(x => linhas.push([
+    br(m.data), new Date(m.em).toLocaleTimeString('pt-BR').slice(0, 5), m.tipo, x.nome, x.unidade, n(x.qtd, 3), n(x.custoUnit, 4), n(x.valor), n(x.saldoDepois, 3),
+    m.fornecedor, m.nota, m.motivo, m.pedidoNumero || '', m.usuario, m.obs
+  ])));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + linhas.map(l => l.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  const [de, ate] = intervaloIns();
+  a.download = `insumos_${de}_a_${ate}.csv`; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 // Erro ao gravar: mensagem clara (funciona mesmo se o db.js em cache for de outra versão)
