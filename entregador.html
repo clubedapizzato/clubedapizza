@@ -7,7 +7,10 @@
 <meta name="robots" content="noindex">
 <title>Entregador • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261026">
+<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
+<link rel="icon" type="image/jpeg" sizes="192x192" href="img/logo-192.jpg">
+<link rel="apple-touch-icon" href="img/logo-180.jpg">
+<link rel="stylesheet" href="css/app.css?v=20261027">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -50,7 +53,7 @@ main{max-width:720px;padding-bottom:40px}
 <body>
 <header class="topo">
   <div class="in">
-    <h1>🛵 Entregas <span id="quem" style="font-weight:400;font-size:14px;opacity:.85"></span></h1>
+    <div class="marca"><a class="logoTopo" href="#" onclick="scrollTo({top:0,behavior:'smooth'});return false" title="Clube da Pizza" aria-label="Clube da Pizza — voltar ao topo"><picture><source type="image/webp" srcset="img/logo-96.webp 96w, img/logo-128.webp 128w" sizes="(min-width: 768px) 56px, 44px"><img src="img/logo-96.jpg" srcset="img/logo-96.jpg 96w, img/logo-128.jpg 128w" sizes="(min-width: 768px) 56px, 44px" width="44" height="44" alt="Clube da Pizza"></picture></a><h1>🛵 Entregas <span id="quem" style="font-weight:400;font-size:14px;opacity:.85"></span></h1></div>
     <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
   </div>
 </header>
@@ -89,6 +92,7 @@ main{max-width:720px;padding-bottom:40px}
     </details>
   </div>
 </main>
+<footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 
 <!-- Não entregue -->
 <div class="modal" id="modalNao" onclick="if(event.target===this)fecharNao()">
@@ -97,11 +101,11 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261026"></script>
-<script src="js/cardapio.js?v=20261026"></script>
-<script src="js/db.js?v=20261026"></script>
-<script src="js/catalogo.js?v=20261026"></script>
-<script src="js/rota.js?v=20261026"></script>
+<script src="js/config.js?v=20261027"></script>
+<script src="js/cardapio.js?v=20261027"></script>
+<script src="js/db.js?v=20261027"></script>
+<script src="js/catalogo.js?v=20261027"></script>
+<script src="js/rota.js?v=20261027"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }

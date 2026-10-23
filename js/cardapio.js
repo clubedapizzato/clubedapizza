@@ -224,7 +224,7 @@ window.STATUS = {
       pronto: `Olá ${nome}! 📦 Seu pedido *#${n}* está pronto e já vai sair para entrega.`,
       saiu: p.entrega.tipo === 'retirada'
         ? `Olá ${nome}! ✅ Seu pedido *#${n}* está pronto para retirada no ${loja}.`
-        : `Olá ${nome}! 🛵 Seu pedido *#${n}* saiu para entrega${p.entregador && p.entregador.nome ? ' com ' + p.entregador.nome.split(' ')[0] : ''}. Já já chega aí!${cobrar(p)}`,
+        : `Olá ${nome}! 🛵 Seu pedido *#${n}* saiu para entrega. Já já chega aí!${cobrar(p)}`,
       entregue: `Pedido *#${n}* entregue. Obrigado pela preferência, ${nome}! ❤️ ${loja}`,
       nao_entregue: `Olá ${nome}. Tentamos entregar seu pedido *#${n}*, mas não conseguimos${p.naoEntregue && p.naoEntregue.motivo ? ' (' + p.naoEntregue.motivo.toLowerCase() + ')' : ''}. Por favor, responda esta mensagem para combinarmos. ${loja}`,
       cancelado: `Olá ${nome}. Seu pedido *#${n}* foi cancelado. Qualquer dúvida, fale conosco.`
