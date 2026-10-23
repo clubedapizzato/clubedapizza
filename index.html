@@ -6,22 +6,22 @@
 <meta name="theme-color" content="#1c1917">
 <title>Clube da Pizza • Peça online</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="icon" type="image/png" sizes="32x32" href="img/favicon-32.png">
-<link rel="icon" type="image/png" sizes="192x192" href="img/icone-192.png">
-<link rel="apple-touch-icon" href="img/icone-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
+<link rel="apple-touch-icon" href="img/cdp-icone-180.png">
 <meta name="description" content="Peça sua pizza online no Clube da Pizza Delivery — Novo Acordo/TO.">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Clube da Pizza">
 <meta property="og:title" content="Clube da Pizza • Peça online">
 <meta property="og:description" content="Peça sua pizza online no Clube da Pizza Delivery — Novo Acordo/TO.">
 <meta property="og:url" content="https://clubedapizzato.com.br/">
-<meta property="og:image" content="https://clubedapizzato.com.br/img/og-logo.jpg">
+<meta property="og:image" content="https://clubedapizzato.com.br/img/cdp-og.jpg">
 <meta property="og:image:type" content="image/jpeg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="1200">
 <meta property="og:image:alt" content="Logo do Clube da Pizza">
 <meta name="twitter:card" content="summary">
-<link rel="stylesheet" href="css/app.css?v=20261029">
+<link rel="stylesheet" href="css/app.css?v=20261030">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
 .codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
@@ -35,7 +35,7 @@
 <body>
 <header class="topo">
   <div class="in">
-    <div class="marca"><a class="logoTopo" href="#" onclick="scrollTo({top:0,behavior:'smooth'});return false" title="Clube da Pizza" aria-label="Clube da Pizza — voltar ao topo"><picture><source type="image/webp" srcset="img/selo-96.webp 96w, img/selo-144.webp 144w" sizes="(min-width: 768px) 48px, 40px"><img src="img/selo-96.png" srcset="img/selo-96.png 96w, img/selo-144.png 144w" sizes="(min-width: 768px) 48px, 40px" width="40" height="40" alt="Clube da Pizza"></picture></a><h1 id="nomeLoja">🍕 Clube da Pizza</h1></div>
+    <div class="marca"><a class="logoTopo" href="#" onclick="scrollTo({top:0,behavior:'smooth'});return false" title="Clube da Pizza" aria-label="Clube da Pizza — voltar ao topo"><picture><source type="image/webp" srcset="img/cdp-cabecalho-96.webp 96w, img/cdp-cabecalho-144.webp 144w, img/cdp-cabecalho-180.webp 180w" sizes="(min-width: 768px) 60px, 48px"><img src="img/cdp-cabecalho-96.png" srcset="img/cdp-cabecalho-96.png 96w, img/cdp-cabecalho-144.png 144w, img/cdp-cabecalho-180.png 180w" sizes="(min-width: 768px) 60px, 48px" width="48" height="48" alt="Clube da Pizza Delivery"></picture></a><h1 id="nomeLoja">🍕 Clube da Pizza</h1></div>
     <div style="display:flex;gap:6px">
       <button class="btn sm sec" id="btnAcompanhar" onclick="abrirCodigo()">📦 Acompanhar pedido</button>
       <button class="btn sm sec hide" id="btnVoltar" onclick="mostrar('cardapio')">← Cardápio</button>
@@ -50,7 +50,7 @@
 
   <!-- ================= TELA 1: CARDÁPIO ================= -->
   <section id="tela-cardapio">
-    <div class="logoLoja"><picture><source type="image/webp" srcset="img/logo-loja-440.webp 440w, img/logo-loja-660.webp 660w, img/logo-loja-840.webp 840w" sizes="(min-width: 768px) 280px, 220px"><img src="img/logo-loja-660.jpg" width="220" height="218" alt="Clube da Pizza Delivery — (63) 9 9133-2966"></picture></div>
+    <div class="logoLoja"><picture><source type="image/webp" srcset="img/cdp-loja-440.webp 440w, img/cdp-loja-660.webp 660w, img/cdp-loja-840.webp 840w" sizes="(min-width: 768px) 280px, 220px"><img src="img/cdp-loja-660.jpg" width="660" height="584" alt="Clube da Pizza Delivery"></picture></div>
     <nav class="tabs" id="tabs"></nav>
     <div id="listaCardapio"></div>
   </section>
@@ -141,12 +141,12 @@
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261029"></script>
-<script src="js/cardapio.js?v=20261029"></script>
-<script src="js/pix.js?v=20261029"></script>
-<script src="js/db.js?v=20261029"></script>
-<script src="js/catalogo.js?v=20261029"></script>
-<script src="js/endereco.js?v=20261029"></script>
+<script src="js/config.js?v=20261030"></script>
+<script src="js/cardapio.js?v=20261030"></script>
+<script src="js/pix.js?v=20261030"></script>
+<script src="js/db.js?v=20261030"></script>
+<script src="js/catalogo.js?v=20261030"></script>
+<script src="js/endereco.js?v=20261030"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
