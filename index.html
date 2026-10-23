@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <title>Clube da Pizza • Peça online</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261022">
+<link rel="stylesheet" href="css/app.css?v=20261026">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
 .codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
@@ -124,12 +124,12 @@
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261022"></script>
-<script src="js/cardapio.js?v=20261022"></script>
-<script src="js/pix.js?v=20261022"></script>
-<script src="js/db.js?v=20261022"></script>
-<script src="js/catalogo.js?v=20261022"></script>
-<script src="js/endereco.js?v=20261022"></script>
+<script src="js/config.js?v=20261026"></script>
+<script src="js/cardapio.js?v=20261026"></script>
+<script src="js/pix.js?v=20261026"></script>
+<script src="js/db.js?v=20261026"></script>
+<script src="js/catalogo.js?v=20261026"></script>
+<script src="js/endereco.js?v=20261026"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -211,6 +211,7 @@ function fecharModal() { document.getElementById('modalPizza').classList.remove(
 
 function renderModal() {
   const m = montagem, t = Preco.tamanho(m.tamanho);
+  Catalogo.limparAdicionais(m);   // adicional esgotado no tamanho sai da montagem
   const preco = Preco.pizza(m.tamanho, m.sabores, m.adicionais);
   document.getElementById('modalConteudo').innerHTML = `
     <h2>Monte sua pizza</h2>

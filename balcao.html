@@ -7,7 +7,7 @@
 <meta name="robots" content="noindex">
 <title>Balcão • Clube da Pizza</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="css/app.css?v=20261025">
+<link rel="stylesheet" href="css/app.css?v=20261026">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px}
@@ -186,16 +186,16 @@ main{max-width:1400px;padding-bottom:30px}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261025"></script>
-<script src="js/cardapio.js?v=20261025"></script>
-<script src="js/db.js?v=20261025"></script>
-<script src="js/catalogo.js?v=20261025"></script>
-<script src="js/ficha.js?v=20261025"></script>
-<script src="js/endereco.js?v=20261025"></script>
-<script src="js/impressora.js?v=20261025"></script>
-<script src="js/clientes.js?v=20261025"></script>
-<script src="js/fincalc.js?v=20261025"></script>
-<script src="js/financeiro.js?v=20261025"></script>
+<script src="js/config.js?v=20261026"></script>
+<script src="js/cardapio.js?v=20261026"></script>
+<script src="js/db.js?v=20261026"></script>
+<script src="js/catalogo.js?v=20261026"></script>
+<script src="js/ficha.js?v=20261026"></script>
+<script src="js/endereco.js?v=20261026"></script>
+<script src="js/impressora.js?v=20261026"></script>
+<script src="js/clientes.js?v=20261026"></script>
+<script src="js/fincalc.js?v=20261026"></script>
+<script src="js/financeiro.js?v=20261026"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const C = CARDAPIO;
@@ -298,6 +298,7 @@ function abrirPizza(iSabor) {
 function fecharModal() { document.getElementById('modalPizza').classList.remove('on'); }
 function renderModal() {
   const m = montagem, t = Preco.tamanho(m.tamanho);
+  Catalogo.limparAdicionais(m);   // adicional esgotado no tamanho sai da montagem
   const preco = Preco.pizza(m.tamanho, m.sabores, m.adicionais);
   document.getElementById('modalConteudo').innerHTML = `
     <h2>🍕 Montar pizza</h2>
@@ -420,7 +421,8 @@ async function finalizar() {
   }
   if (!forma) return toast('Escolha a forma de pagamento.');
   if (forma === 'consumo_interno' && delivery()) return toast('Consumo interno é só para comer aqui ou levar.');
-  const falta = Catalogo.faltas(carrinho)[0];
+  // adicional sem insumo no balcão só avisa (nunca trava a venda)
+  const falta = Catalogo.faltas(carrinho, { adicionais: false })[0];
   if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}.` : `${falta.nome} sem estoque.`);
   const ci = forma === 'consumo_interno';
   const subtotalRef = Preco.subtotal(carrinho), subtotal = ci ? 0 : subtotalRef, taxa = taxaAtual(), total = subtotal + (taxa || 0);
@@ -466,7 +468,10 @@ async function finalizar() {
     // balcão: baixa o estoque na hora, junto com a criação do pedido
     const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true, entregue: semPizza, vinculos });
     // insumos pela ficha técnica (em segundo plano: nunca trava o caixa)
-    DB.baixarInsumos(id).then(r => { if (r.feito && r.semFicha.length) toast(`📋 Sem ficha técnica: ${r.semFicha.join(', ')} — insumos não baixados.`); })
+    DB.baixarInsumos(id).then(r => {
+      if (r.feito && r.semFicha.length) toast(`📋 Sem ficha técnica: ${r.semFicha.join(', ')} — insumos não baixados.`);
+      else if (r.feito && r.faltas.length) toast(`⚠️ Insumo insuficiente: ${r.faltas.join(', ')} (estoque ficou negativo).`);
+    })
       .catch(e => { DB.logErro(e); toast('Insumos não baixados: ' + DB.mensagemErro(e)); });
     ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now(), status: semPizza ? 'entregue' : 'novo' });
     mostrarSucesso();

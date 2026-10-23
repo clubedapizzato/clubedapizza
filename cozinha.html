@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Cozinha • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261025">
+<link rel="stylesheet" href="css/app.css?v=20261026">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px;flex-wrap:wrap}
@@ -101,13 +101,13 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261025"></script>
-<script src="js/cardapio.js?v=20261025"></script>
-<script src="js/db.js?v=20261025"></script>
-<script src="js/catalogo.js?v=20261025"></script>
-<script src="js/ficha.js?v=20261025"></script>
-<script src="js/impressora.js?v=20261025"></script>
-<script src="js/financeiro.js?v=20261025"></script>
+<script src="js/config.js?v=20261026"></script>
+<script src="js/cardapio.js?v=20261026"></script>
+<script src="js/db.js?v=20261026"></script>
+<script src="js/catalogo.js?v=20261026"></script>
+<script src="js/ficha.js?v=20261026"></script>
+<script src="js/impressora.js?v=20261026"></script>
+<script src="js/financeiro.js?v=20261026"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -347,6 +347,7 @@ async function moverInsumos(id, sinal, numero) {
   try {
     const r = await (sinal < 0 ? DB.baixarInsumos(id) : DB.estornarInsumos(id));
     if (r.feito && r.semFicha.length) toast(`📋 Pedido #${numero}: sem ficha técnica (${r.semFicha.join(', ')}) — insumos não baixados.`);
+    else if (r.feito && r.faltas.length) toast(`⚠️ Pedido #${numero}: insumo insuficiente (${r.faltas.join(', ')}) — estoque ficou negativo.`);
   } catch (e) { DB.logErro(e); toast(`Insumos do pedido #${numero} não ${sinal < 0 ? 'baixados' : 'devolvidos'}: ${DB.mensagemErro(e)}`); }
 }
 // "⚠️ 3 insumos acabando" (link para a Gestão)
