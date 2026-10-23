@@ -9,11 +9,18 @@ header.topo{background:var(--dark);color:#fff;position:sticky;top:0;z-index:50;b
 .topo .in{max-width:960px;margin:auto;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}
 .topo h1{font-size:18px;margin:0;min-width:0}
 /* Logo no canto superior esquerdo de todas as páginas (ver CLAUDE.md) */
-:root{--topo-h:60px}
+:root{--topo-h:64px}
 .marca{display:flex;align-items:center;gap:10px;min-width:0}
-.logoTopo{flex:none;display:block;width:44px;height:44px}
-.logoTopo img{display:block;width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 1px 2px #0009)}
-@media(min-width:768px){:root{--topo-h:72px}.logoTopo{width:56px;height:56px}}
+.logoTopo{flex:none;display:block;width:48px;height:48px;border-radius:10px;overflow:hidden;background:#432818;border:1px solid #ffffff40;box-shadow:0 1px 4px #0008}
+.logoTopo img{display:block;width:100%;height:100%}
+.marcaNome{font-size:18px;font-weight:800;color:#fff;white-space:nowrap}
+.marcaNome::after{content:'·';margin-left:8px;opacity:.5;font-weight:400}
+@media(max-width:640px){.marcaNome{display:none}}
+@media(min-width:768px){:root{--topo-h:76px}.logoTopo{width:60px;height:60px;border-radius:12px}}
+/* Logo completa só no topo da loja */
+.logoLoja{width:220px;margin:6px auto 14px;background:#432818;border-radius:18px;overflow:hidden;box-shadow:0 2px 10px #0000001a}
+.logoLoja img{display:block;width:100%;height:auto}
+@media(min-width:768px){.logoLoja{width:280px}}
 /* Rodapé de todas as páginas */
 .rodape{text-align:center;color:var(--muted);font-size:12px;padding:14px 16px calc(14px + env(safe-area-inset-bottom))}
 body:has(> #barra) main + .rodape{margin-top:-96px;padding-bottom:calc(96px + env(safe-area-inset-bottom))}
