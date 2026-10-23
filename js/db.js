@@ -26,7 +26,7 @@ window.DB = (function () {
   }
 
   /* ---------------- modo demonstração ---------------- */
-  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config', LS_RAS = 'cdp_rastreio', LS_FILA = 'cdp_fila', LS_INS = 'cdp_insumos', LS_FIC = 'cdp_fichas';
+  const LS = 'cdp_pedidos', LS_PROD = 'cdp_produtos', LS_MOV = 'cdp_movimentos', LS_CFG = 'cdp_config', LS_RAS = 'cdp_rastreio', LS_FILA = 'cdp_fila', LS_INS = 'cdp_insumos', LS_FIC = 'cdp_fichas', LS_DISP = 'cdp_disponibilidade';
   const lerLS = (k, padrao) => { try { return JSON.parse(localStorage.getItem(k)) || padrao; } catch { return padrao; } };
   const gravarLS = (k, v) => { localStorage.setItem(k, JSON.stringify(v)); window.dispatchEvent(new CustomEvent('cdp-local', { detail: k })); };
   const lerTodos = () => lerLS(LS, {});
@@ -60,20 +60,19 @@ window.DB = (function () {
   const usuario = () => (modo() === 'demo' ? 'demo' : (auth && auth.currentUser && auth.currentUser.email) || '');
 
   /* ---------------- ESTOQUE (regras comuns aos dois modos) ---------------- */
-  // produtos + adicionais das pizzas (adicional pode controlar estoque)
-  const idsProdutos = itens => [...new Set((itens || []).flatMap(it => it.tipo === 'produto' ? [it.id] : (it.adicionais || []).map(a => a.id)))];
+  // Só produtos: o adicional da pizza não tem estoque próprio — baixa pelos insumos da ficha (baixarInsumos)
+  const idsProdutos = itens => [...new Set((itens || []).filter(it => it.tipo === 'produto').map(it => it.id))];
 
   // Alterações de estoque de um pedido. sinal -1 = baixa (venda), +1 = estorno
   function planoEstoque(pedido, prods, sinal) {
     const qtd = {};
     (pedido.itens || []).forEach(it => {
       if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1);
-      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); });
     });
     const mudancas = [], faltas = [];
     Object.keys(qtd).forEach(id => {
       const p = prods[id];
-      if (!p || !p.controlaEstoque) return;
+      if (!p || !p.controlaEstoque || p.tipo === 'adicional') return;
       const atual = p.estoqueAtual || 0;
       if (sinal < 0 && atual < qtd[id]) faltas.push({ id, nome: p.nome, pedido: qtd[id], tem: atual });
       mudancas.push({ id, nome: p.nome, qtd: sinal * qtd[id], estoque: atual + sinal * qtd[id], custo: p.custoUnitario || 0 });
@@ -302,6 +301,18 @@ window.DB = (function () {
     await init();
     if (modo() === 'demo') { gravarLS(LS_FILA, Object.assign(lerLS(LS_FILA, {}), campos)); return; }
     await comCaminho('config/fila', fs.setDoc(fs.doc(db, 'config', 'fila'), campos, { merge: true }));
+  }
+
+  // Disponibilidade dos adicionais (config/disponibilidade): público, SEM custos; gravado pelas páginas logadas
+  async function observarDisponibilidade(cb) {
+    await init();
+    if (modo() === 'demo') return ouvirLocal(() => cb(lerLS(LS_DISP, null)), LS_DISP);
+    return fs.onSnapshot(fs.doc(db, 'config', 'disponibilidade'), s => cb(s.exists() ? s.data() : null), e => { console.error(e); cb(null); });
+  }
+  async function salvarDisponibilidade(campos) {
+    await init();
+    if (modo() === 'demo') { gravarLS(LS_DISP, campos); return; }
+    await comCaminho('config/disponibilidade', fs.setDoc(fs.doc(db, 'config', 'disponibilidade'), campos));
   }
 
   // Último pedido (mais recente) com este telefone — só dígitos; delivery do balcão (logado)
@@ -617,7 +628,7 @@ window.DB = (function () {
   }
 
   return {
-    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, atualizarPedido,
+    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, observarDisponibilidade, salvarDisponibilidade, atualizarPedido,
     observarInsumos, observarFichas, salvarInsumo, salvarFicha, mensagemErro, logErro,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario,

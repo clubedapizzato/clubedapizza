@@ -70,16 +70,27 @@ window.Catalogo = (function () {
 
   // Assina produtos + config/loja; onChange é chamado a cada atualização (estoque em tempo real)
   function iniciar(onChange) {
-    const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } };
+    // páginas logadas (ficha.js carregada) republicam a disponibilidade dos adicionais quando o catálogo muda
+    const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } if (window.Ficha) Ficha.agendarPublicacao(); };
     DB.observarProdutos(l => { aplicar(l); avisar(); }, () => { aplicar([]); avisar(); });
     DB.observarConfig(cfg => { C.loja = Object.assign({}, LOJA_PADRAO, cfg || {}); avisar(); });
+    DB.observarDisponibilidade(d => { disp = d; avisar(); });
+  }
+  let disp = null;   // config/disponibilidade (público, sem custos)
+
+  /* Adicional no tamanho: indisponível quando algum insumo da ficha (que controla estoque) não dá 1 porção.
+     Interruptor da Gestão "Esconder adicional quando o insumo acabar" (config/loja.esconderAdicionalSemInsumo, padrão ligado). */
+  function adicionalDisponivel(id, tam) {
+    if ((C.loja || {}).esconderAdicionalSemInsumo === false) return true;
+    const a = disp && disp.adicionais && disp.adicionais[id];
+    return !a || a[tam] !== false;
   }
 
   const doc = id => docs[id] || null;
-  // Unidades disponíveis para venda (Infinity se não controla estoque)
+  // Unidades disponíveis para venda (Infinity se não controla estoque; adicional usa o estoque dos insumos)
   function disponivel(id) {
     const d = docs[id];
-    if (!d || !d.controlaEstoque) return Infinity;
+    if (!d || !d.controlaEstoque || d.tipo === 'adicional') return Infinity;
     return Math.max(0, Math.floor(d.estoqueAtual || 0));
   }
   const vendavel = p => p.ativo !== false && disponivel(p.id) > 0;
@@ -89,23 +100,28 @@ window.Catalogo = (function () {
     .map(c => Object.assign({}, c, { produtos: c.produtos.filter(vendavel) })).filter(c => c.produtos.length);
   const sachesVenda = () => ((C.categorias.find(c => c.id === 'saches') || {}).produtos || []).filter(vendavel);
 
-  // Itens do carrinho que passam do estoque: [{ id, nome, pedido, tem }]
-  function faltas(itens) {
-    const qtd = {};
+  /* Itens do carrinho que passam do estoque: [{ id, nome, pedido, tem }]
+     opcoes.adicionais === false: não confere adicional esgotado (balcão só avisa, nunca trava) */
+  function faltas(itens, opcoes = {}) {
+    const qtd = {}, esgot = {};
     (itens || []).forEach(it => {
       if (it.tipo === 'produto') qtd[it.id] = (qtd[it.id] || 0) + (it.qtd || 1);
-      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); });   // adicional com estoque
+      (it.adicionais || []).forEach(a => { qtd[a.id] = (qtd[a.id] || 0) + (it.qtd || 1); if (!adicionalDisponivel(a.id, it.tamanho)) esgot[a.id] = true; });
     });
     const item = id => Preco.produto(id) || Preco.adicional(id);
-    return Object.keys(qtd).filter(id => qtd[id] > disponivel(id) || (item(id) && item(id).ativo === false))
-      .map(id => ({ id, nome: (item(id) || {}).nome || id, pedido: qtd[id], tem: item(id) && item(id).ativo === false ? 0 : disponivel(id) }));
+    const adic = id => !!Preco.adicional(id) && !Preco.produto(id);
+    return Object.keys(qtd).filter(id => adic(id) && opcoes.adicionais === false ? false : qtd[id] > disponivel(id) || esgot[id] || (item(id) && item(id).ativo === false))
+      .map(id => ({ id, nome: (item(id) || {}).nome || id, pedido: qtd[id], tem: (item(id) && item(id).ativo === false) || esgot[id] ? 0 : disponivel(id) }));
   }
 
   /* ---------- adicionais na montagem da pizza (loja e balcão) ---------- */
-  const adicionaisVenda = () => (C.adicionais || []).filter(a => a.ativo !== false && disponivel(a.id) > 0);
+  const adicionaisVenda = tam => (C.adicionais || []).filter(a => a.ativo !== false && (!tam || adicionalDisponivel(a.id, tam)));
+  // Tira da montagem o adicional que esgotou no tamanho escolhido (chamar antes de calcular o preço)
+  function limparAdicionais(m) { m.adicionais = m.adicionais.filter(id => adicionaisVenda(m.tamanho).some(a => a.id === id)); }
   // HTML da seção "➕ Adicionais" do modal (m = montagem { tamanho, adicionais: [ids] }); o clique chama mAdic(id) da página
   function htmlAdicionais(m) {
-    const adic = adicionaisVenda();
+    limparAdicionais(m);
+    const adic = adicionaisVenda(m.tamanho);
     return adic.length ? `<h3 style="margin-top:14px">➕ Adicionais</h3><div class="chips">${adic.map(a =>
       `<span class="chip ${m.adicionais.includes(a.id) ? 'on' : ''}" onclick="mAdic('${a.id}')">${m.adicionais.includes(a.id) ? '✓ ' : '+ '}${esc(a.nome)} • ${dinheiro(a[m.tamanho])}</span>`).join('')}</div>` : '';
   }
@@ -140,6 +156,6 @@ window.Catalogo = (function () {
   return {
     iniciar, aplicar, listaImportacao, doc, todos: () => ordenar(Object.values(docs)), doBanco: () => doBanco,
     disponivel, vendavel, saboresAtivos, categoriasVenda, sachesVenda, faltas, taxaDe, custoPizza, itensPedido, slug, SACHES,
-    adicionaisPadrao, adicionaisVenda, htmlAdicionais, alternarAdicional, adicionaisItem
+    adicionaisPadrao, adicionaisVenda, adicionalDisponivel, limparAdicionais, disponibilidade: () => disp, htmlAdicionais, alternarAdicional, adicionaisItem
   };
 })();

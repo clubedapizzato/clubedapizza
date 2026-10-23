@@ -10,7 +10,7 @@ window.Ficha = (function () {
   const UNIDADES = ['kg', 'g', 'L', 'ml', 'un'];
   const CATEGORIAS = ['Queijos', 'Carnes', 'Vegetais', 'Molhos', 'Massa', 'Embalagens', 'Gás/Energia', 'Outros'];
   const TAMANHOS = ['P', 'M', 'G'];
-  let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null, carregado = false;
+  let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null, carregado = false, fichasCarregadas = false;
   const r2 = v => Math.round(v * 100) / 100;
 
   // R$ por unidade do insumo (R$/kg, R$/L, R$/un), já com a perda: custo ÷ (1 − perda)
@@ -92,17 +92,52 @@ window.Ficha = (function () {
     return { qtd: r5(embalagens * emb), embalagens, custo: Math.round(embalagens * emb * custoMedio(ins) * 100) / 100 };
   }
 
+  // Quantidade bruta de uma linha da ficha na unidade do insumo: converte g↔kg / ml↔L e soma a perda
+  function necessidade(l, ins) {
+    let q = Number(l.qtd) || 0;
+    if (ins && l.un) { const c = converter(q, l.un, ins.unidade); if (c != null) q = c; }
+    const perda = ins ? Math.min(Math.max(Number(ins.perda) || 0, 0), 95) : 0;
+    return q / (1 - perda / 100);
+  }
+
+  /* Porções de um adicional num tamanho pelo estoque dos insumos da ficha (o adicional não tem estoque próprio).
+     { semFicha, porcoes (menor estoque ÷ qtd; null = nenhum insumo controla estoque), linhas: [{ ins, qtd, estoque, porcoes }] } */
+  function porcoesAdicional(id, tam) {
+    const linhas = ((fichas[id] || {})[tam] || []).map(l => {
+      const ins = insumos[l.insumoId] || null, q = necessidade(l, ins);
+      const ctrl = !!(ins && ins.controlaEstoque);
+      return { ins, qtd: q, controla: ctrl, estoque: ctrl ? Number(ins.estoqueAtual) || 0 : null, porcoes: ctrl && q > 0 ? Math.max(0, Math.floor((Number(ins.estoqueAtual) || 0) / q + 1e-9)) : null };
+    });
+    const ps = linhas.filter(l => l.porcoes != null).map(l => l.porcoes);
+    return { semFicha: !linhas.length, porcoes: ps.length ? Math.min(...ps) : null, linhas };
+  }
+  // { adicionalId: { P: true, M: false, G: true } } — false = algum insumo que controla estoque não dá 1 porção
+  function disponibilidadeAdicionais(ids) {
+    const o = {};
+    ids.forEach(id => { o[id] = {}; TAMANHOS.forEach(t => { const p = porcoesAdicional(id, t).porcoes; o[id][t] = p == null || p >= 1; }); });
+    return o;
+  }
+  /* Publica config/disponibilidade (público, SEM custos) para a loja/balcão esconderem adicional sem insumo.
+     Roda nas páginas logadas (Gestão, cozinha, balcão) quando insumos, fichas ou catálogo mudam; só grava se mudou. */
+  let tPub = null, publicado = null;
+  function agendarPublicacao() {
+    clearTimeout(tPub);
+    tPub = setTimeout(async () => {
+      if (!iniciado || !carregado || !fichasCarregadas || erroLeitura || !window.Catalogo) return;
+      const adicionais = disponibilidadeAdicionais((CARDAPIO.adicionais || []).map(a => a.id));
+      const j = JSON.stringify(adicionais), atual = Catalogo.disponibilidade();
+      if (j === publicado || (atual && JSON.stringify(atual.adicionais || {}) === j)) { publicado = j; return; }
+      try { await DB.salvarDisponibilidade({ adicionais, atualizadoEm: Date.now() }); publicado = j; } catch (e) { console.error(e); }
+    }, 1500);
+  }
+
   /* Consumo de insumos de um pedido pelas fichas (meio a meio = fração de cada sabor; + base comum + adicionais).
      fs/is: mapas de fichas e insumos (padrão: os carregados). Quantidade BRUTA na unidade do insumo:
      qtd da ficha ÷ (1 − perda), a mesma conta do custo. Retorna { qtd: { insumoId: n }, semFicha: ['CALABRESA (G)'] } */
   function consumoPedido(pedido, fs = fichas, is = insumos) {
     const qtd = {}, semFicha = [];
     const soma = (linhas, fator) => (linhas || []).forEach(l => {
-      const ins = is[l.insumoId];
-      let q = (Number(l.qtd) || 0) * fator;
-      if (ins && l.un) { const c = converter(q, l.un, ins.unidade); if (c != null) q = c; }
-      const perda = ins ? Math.min(Math.max(Number(ins.perda) || 0, 0), 95) : 0;
-      qtd[l.insumoId] = (qtd[l.insumoId] || 0) + q / (1 - perda / 100);
+      qtd[l.insumoId] = (qtd[l.insumoId] || 0) + necessidade(l, is[l.insumoId]) * fator;
     });
     const tem = (id, tam) => !!(fs[id] && (fs[id][tam] || []).length);
     (pedido.itens || []).forEach(it => {
@@ -154,17 +189,17 @@ window.Ficha = (function () {
   // Assina insumos e fichas (só logado); onChange a cada atualização
   function iniciar(onChange) {
     if (iniciado) return; iniciado = true;
-    const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } };
+    const avisar = () => { try { onChange && onChange(); } catch (e) { console.error(e); } agendarPublicacao(); };
     // erro de leitura (ex.: regras sem insumos/fichas) fica visível na Gestão
     const falhou = e => { erroLeitura = e; avisar(); };
     DB.observarInsumos(l => { erroLeitura = null; carregado = true; insumos = {}; l.forEach(i => { insumos[i.id] = i; }); avisar(); }, falhou);
-    DB.observarFichas(l => { fichas = {}; l.forEach(f => { fichas[f.id] = f; }); avisar(); }, falhou);
+    DB.observarFichas(l => { fichasCarregadas = true; fichas = {}; l.forEach(f => { fichas[f.id] = f; }); avisar(); }, falhou);
   }
 
   return {
     UNIDADES, CATEGORIAS, TAMANHOS, iniciar, custoUnit, custoLinha, custoLinhas, custoBase, custoFicha, custoSabor, custoItem,
     temFicha, idSabor, lerQtd, usoInsumo, resultado, corCmv, cmvAlvo, listaExemplo, fichaExemplo,
-    fichasDoInsumo, converter, custoMedio, estado, acabando, sugestaoCompra, consumoPedido, fichasDoPedido, carregado: () => carregado,
+    porcoesAdicional, disponibilidadeAdicionais, agendarPublicacao, fichasDoInsumo, converter, custoMedio, estado, acabando, sugestaoCompra, consumoPedido, fichasDoPedido, carregado: () => carregado,
     insumo: id => insumos[id] || null, insumos: () => Object.values(insumos).sort((a, b) => a.nome.localeCompare(b.nome)),
     ficha: id => fichas[id] || null, base, erro: () => erroLeitura
   };

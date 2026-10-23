@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1c1917">
 <meta name="robots" content="noindex">
 <title>Gestão • Clube da Pizza</title>
-<link rel="stylesheet" href="css/app.css?v=20261025">
+<link rel="stylesheet" href="css/app.css?v=20261026">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -313,11 +313,11 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261025"></script>
-<script src="js/cardapio.js?v=20261025"></script>
-<script src="js/db.js?v=20261025"></script>
-<script src="js/catalogo.js?v=20261025"></script>
-<script src="js/ficha.js?v=20261025"></script>
+<script src="js/config.js?v=20261026"></script>
+<script src="js/cardapio.js?v=20261026"></script>
+<script src="js/db.js?v=20261026"></script>
+<script src="js/catalogo.js?v=20261026"></script>
+<script src="js/ficha.js?v=20261026"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
@@ -644,7 +644,7 @@ function renderProdutos() {
 
   const prods = todos.filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');
   const adics = todos.filter(d => d.tipo === 'adicional');
-  const controlados = prods.concat(adics).filter(d => d.controlaEstoque);
+  const controlados = prods.filter(d => d.controlaEstoque);   // adicional usa o estoque dos insumos
   const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
   const negativos = controlados.filter(d => (d.estoqueAtual || 0) < 0);
   const parado = controlados.reduce((s, d) => s + Math.max(0, d.estoqueAtual || 0) * (d.custoUnitario || 0), 0);
@@ -665,17 +665,20 @@ function renderProdutos() {
       <td class="r muted">${['P', 'M', 'G'].map(t => (d.custos || {})[t] != null && (d.custos || {})[t] !== '' ? dinheiro(d.custos[t]) : '—').join(' / ')}</td>
       <td class="r"><button class="btn sm sec" onclick="editarSabor('${d.id}')">✏️</button></td></tr>`).join('')}
   </table></div></div>`;
-  // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho, estoque opcional
+  // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho; estoque = insumos da ficha técnica
+  const esconder = CARDAPIO.loja.esconderAdicionalSemInsumo !== false;
   h += `<div class="card" id="cardAdicionais"><h2>➕ Adicionais da pizza</h2>
     ${adics.length ? `<div class="rolar"><table>
-      <tr><th>Adicional</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Estoque</th><th></th></tr>
-      ${adics.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+      <tr><th>Adicional</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r" title="porções que os insumos da ficha ainda dão">Porções P / M / G</th><th></th></tr>
+      ${adics.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}" data-adic="${esc(d.id)}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
         ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
-        <td class="r">${fmtEstoque(d)}</td><td class="r"><button class="btn sm sec" onclick="editarAdicional('${d.id}')">✏️</button></td></tr>`).join('')}
+        <td class="r">${['P', 'M', 'G'].map(t => porcoesTxt(d.id, t)).join(' / ')}</td><td class="r"><button class="btn sm sec" onclick="editarAdicional('${d.id}')">✏️</button></td></tr>`).join('')}
     </table></div>` : `<div class="aviso">A loja está usando os adicionais padrão (Catupiry e Cheddar: P R$ 3 • M R$ 5 • G R$ 7). Crie-os aqui para poder editar.</div>
       <button class="btn dark" onclick="criarAdicionaisPadrao()">➕ Criar Catupiry e Cheddar</button>`}
     <button class="btn sec" style="margin-top:10px" onclick="editarAdicional(null)">🆕 Novo adicional</button>
-    <div class="muted" style="margin-top:6px">O cliente escolhe quantos quiser (1 de cada por pizza). Preço = pizza (regra do meio a meio) + soma dos adicionais do tamanho.</div></div>`;
+    <label class="chk"><input type="checkbox" id="cfgEsconderAdic" ${esconder ? 'checked' : ''} onchange="salvarEsconderAdic(this.checked)"> Esconder adicional quando o insumo acabar (loja e balcão)</label>
+    <div class="muted" style="margin-top:6px">O cliente escolhe quantos quiser (1 de cada por pizza). Preço = pizza (regra do meio a meio) + soma dos adicionais do tamanho.
+      <b>Estoque controlado pelos insumos da ficha técnica</b> (✏️ → 📋 Ficha técnica): o adicional some no tamanho em que algum insumo que controla estoque não dá 1 porção. Sem ficha = sempre disponível. Desligue a opção acima se o estoque dos insumos ainda não estiver confiável.</div></div>`;
   const cats = [];
   prods.forEach(d => { const c = d.categoria || 'Outros'; if (!cats.includes(c)) cats.push(c); });
   cats.forEach(c => {
@@ -1227,9 +1230,31 @@ async function criarAdicionaisPadrao() {
     toast('✅ Catupiry e Cheddar criados.');
   } catch (e) { avisarErro(e); }
 }
+// "3" / "0 🔴" / "—" (sem ficha) / "∞" (nenhum insumo da ficha controla estoque)
+function porcoesTxt(id, t) {
+  const p = Ficha.porcoesAdicional(id, t);
+  if (p.semFicha) return `<span class="muted" title="sem ficha técnica em ${t}">—</span>`;
+  if (p.porcoes == null) return `<span class="muted" title="nenhum insumo da ficha controla estoque">∞</span>`;
+  return p.porcoes < 1 ? `<span class="neg" title="esgotado em ${t}">0</span>` : `<b>${p.porcoes}</b>`;
+}
+async function salvarEsconderAdic(on) {
+  try { await DB.salvarConfig({ esconderAdicionalSemInsumo: on }); toast(on ? '✅ Adicional some da loja quando o insumo acabar.' : 'Adicionais sempre visíveis (estoque dos insumos não esconde).'); }
+  catch (e) { avisarErro(e); }
+}
+// Estoque do adicional = insumos da ficha, por tamanho (o adicional não tem estoque próprio)
+function htmlEstoqueAdicional(id) {
+  if (!id) return '<div class="calc">📦 <b>Estoque controlado pelos insumos da ficha técnica.</b> Salve o adicional e monte a ficha (aba 📋 Ficha técnica) com o insumo e a quantidade de cada porção.</div>';
+  return `<div class="calc" id="estoqueAdic">📦 <b>Estoque controlado pelos insumos da ficha técnica</b>
+    ${['P', 'M', 'G'].map(t => { const p = Ficha.porcoesAdicional(id, t);
+      return `<div style="margin-top:6px"><b>${t}</b> — ${p.semFicha ? '<span class="semFicha">sem ficha (sempre disponível)</span>'
+        : p.porcoes == null ? '<span class="muted">nenhum insumo controla estoque (sempre disponível)</span>'
+        : `<b class="${p.porcoes < 1 ? 'neg' : ''}">${p.porcoes} porç${p.porcoes === 1 ? 'ão' : 'ões'}</b>${p.porcoes < 1 ? ' — esgotado' : ''}`}
+        ${p.linhas.map(l => `<div class="muted">• ${esc(l.ins ? l.ins.nome : '(insumo removido)')}: ${qtdTxt(l.qtd)} ${esc(l.ins ? l.ins.unidade : '')} por porção • ${l.controla ? `estoque ${qtdTxt(l.estoque)} ${esc(l.ins.unidade)} = ${l.porcoes} porç.` : 'não controla estoque'}</div>`).join('')}</div>`; }).join('')}
+    <div class="muted" style="margin-top:6px">Compra, ajuste e inventário são feitos no insumo (aba 🧂 Estoque de insumos).</div></div>`;
+}
 function editarAdicional(id) {
   editando = id;
-  const d = id ? Catalogo.doc(id) : { ativo: true, precos: {}, controlaEstoque: false, estoqueMinimo: 0, unidade: 'porção' };
+  const d = id ? Catalogo.doc(id) : { ativo: true, precos: {} };
   abrirModal(`<h2>${id ? '✏️ ' + esc(d.nome) : '🆕 Novo adicional'}</h2>
     ${id ? abasFicha('dados') : ''}
     <div id="painelDados">
@@ -1238,8 +1263,7 @@ function editarAdicional(id) {
     <h3 style="margin-top:14px">Preço por tamanho</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('aP' + t, t, (d.precos || {})[t], 'inputmode="decimal"')).join('')}</div>
     ${campo('aOrdem', 'Ordem na lista', d.ordem != null ? d.ordem : '', 'inputmode="decimal" placeholder="1, 2, 3..."')}
-    ${caixa('aControla', 'Controla estoque (some da montagem quando zerar; entrada pelo ➕ Entrada de compra)', !!d.controlaEstoque)}
-    ${campo('aMin', 'Estoque mínimo (alerta)', d.estoqueMinimo || 0, 'inputmode="decimal"')}
+    ${htmlEstoqueAdicional(id)}
     <button class="btn full" style="margin-top:14px" onclick="salvarAdicionalForm()">Salvar</button>
     <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>
     </div>${id ? '<div id="painelFicha" class="hide"></div>' : ''}`);
@@ -1248,14 +1272,13 @@ async function salvarAdicionalForm() {
   const nome = val('aNome'), precos = {};
   if (nome.length < 2) return toast('Informe o nome.');
   for (const t of ['P', 'M', 'G']) { const v = numero(val('aP' + t)); if (v == null || v < 0) return toast(`Informe o preço ${t}.`); precos[t] = v; }
-  const campos = { tipo: 'adicional', nome, categoria: 'Adicionais', ativo: document.getElementById('aAtivo').checked, precos,
-    controlaEstoque: document.getElementById('aControla').checked, estoqueMinimo: numero(val('aMin')) || 0, unidade: 'porção' };
+  // estoque próprio do adicional não é mais usado (fica guardado nos dados antigos): vale o dos insumos da ficha
+  const campos = { tipo: 'adicional', nome, categoria: 'Adicionais', ativo: document.getElementById('aAtivo').checked, precos };
   const ordem = numero(val('aOrdem')); if (ordem != null) campos.ordem = ordem;
   let id = editando;
   if (!id) {
     const base = 'adic-' + (Catalogo.slug(nome) || 'item');
     id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
-    Object.assign(campos, { estoqueAtual: 0, custoUnitario: 0, custosExtras: 0 });
     if (campos.ordem == null) campos.ordem = Catalogo.todos().length + 1;
   }
   try { await DB.salvarProduto(id, campos); fecharModal(); toast('✅ Adicional salvo.'); }
@@ -1268,7 +1291,7 @@ const AJUSTES = ['Perda', 'Avaria', 'Consumo interno', 'Contagem'];
 function abrirMov(tipo) {
   if (!Catalogo.doBanco()) return toast('Importe o cardápio primeiro.');
   movTipo = tipo;
-  const prods = Catalogo.todos().filter(d => d.tipo !== 'sabor');
+  const prods = Catalogo.todos().filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');   // adicional: pelo insumo
   const opts = prods.map(d => `<option value="${d.id}">${esc(d.categoria)} — ${esc(d.nome)}</option>`).join('');
   abrirModal(tipo === 'entrada' ? `<h2>➕ Entrada de compra</h2>
     <div class="grid2">${campo('mData', 'Data', hojeISO(), 'type="date"')}${campo('mForn', 'Fornecedor', '', 'placeholder="Ex.: Distribuidora X"')}</div>
