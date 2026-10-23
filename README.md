@@ -29,6 +29,9 @@
 | `js/caixa.js` | Tela do `caixa.html` |
 | `firestore.rules` | Regras de segurança do Firebase |
 
+## Logo e rodapé (padrão de todas as páginas)
+Toda página com interface tem a **logo** (`img/`) no canto superior esquerdo do cabeçalho (toque = volta ao topo) e o rodapé **"2024-2026 Clube da Pizza Delivery. Todos os direitos reservados."**. Páginas novas devem seguir o mesmo padrão — regra registrada em `CLAUDE.md`. Ícones: `img/favicon-32.png`, `img/logo-180.jpg` (iPhone), `img/logo-192.jpg`; prévia no WhatsApp (`og:image`) usa `https://clubedapizzato.com.br/img/logo-512.jpg`. Impressão e ticket não mudam.
+
 ## Testar agora (modo demonstração)
 Com `firebase: null` no `config.js`, abra `index.html` e `cozinha.html` em **duas abas do mesmo navegador**. O pedido feito na loja aparece na cozinha na hora.
 
