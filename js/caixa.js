@@ -46,6 +46,7 @@ const cfg = () => S.cfg || cfgPadrao();
 const contasFin = () => cfg().contas;
 const contasAtivas = () => contasFin().filter(c => c.ativa !== false);
 const nomeConta = id => (contasFin().find(c => c.id === id) || {}).nome || id || '—';
+const contaPix = () => (contasAtivas().find(c => c.tipo === 'pix') || {}).id;
 const contaCaixa = () => (contasFin().find(c => c.tipo === 'caixa') || contasFin()[0] || {}).id;
 const cats = tipo => (cfg().categorias || F.CATEGORIAS)[tipo] || [];
 const taxaCartao = () => { const t = cfg().taxaCartao; return t != null && t !== '' ? Number(t) : Number((CARDAPIO.loja || {}).taxaMaquininha) || 0; };
@@ -534,6 +535,7 @@ function renderContas(nat) {
   if (foco) { const i = $('cb_' + nat); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
 }
 function editarConta(nat, id) {
+  if (id && (S.contas.find(x => x.id === id) || {}).folhaId) return toast('Conta de folha: para mudar o valor, use 🔄 Regerar na folha (👷 Funcionários).');
   const c = id ? S.contas.find(x => x.id === id) : { natureza: nat, vencimento: hoje(), recorrencia: { tipo: 'unica' }, conta: nat === 'pagar' ? 'banco' : 'pix', categoria: nat === 'pagar' ? 'Aluguel' : 'Outras receitas' };
   if (!c) return;
   const rec = c.recorrencia || {}, tipoCat = nat === 'pagar' ? 'saida' : 'entrada';
@@ -627,8 +629,10 @@ function pagarConta(id) {
       msg += ` Próxima: ${br(prox.vencimento)}.`;
     }
     ops.push({ op: 'set', col: 'fin_contas', id: c.id, dados: up });
+    // conta de folha: a folha fica "paga" junto (a saída é só esta)
+    if (c.folhaId && S.folha.some(x => x.id === c.folhaId)) ops.push({ op: 'set', col: 'fin_folha', id: c.folhaId, dados: { status: 'paga', pagoEm: v.data, conta: v.conta, forma: v.forma, lancamentoId: lid } });
     await Fin.lote(ops);
-    toast(msg);
+    toast(c.folhaId ? `Folha paga: ${dinheiro(v.valor)} lançado como saída.` : msg);
   }, { ok: pg ? 'Confirmar pagamento' : 'Confirmar recebimento', topo: '<div id="difPgBox"></div>' });
   difPg.c = c;
 }
@@ -646,11 +650,13 @@ async function desfazerConta(id) {
     const ops = [{ op: 'set', col: 'fin_contas', id, dados: { status: 'aberta', valorPago: null, pagoEm: null, contaPg: null, lancamentoId: null, diferenca: null, proximaId: null } }];
     if (c.lancamentoId) ops.push({ op: 'delete', col: 'fin_lancamentos', id: c.lancamentoId });
     if (prox) ops.push({ op: 'delete', col: 'fin_contas', id: prox.id });
+    if (c.folhaId && S.folha.some(x => x.id === c.folhaId)) ops.push({ op: 'set', col: 'fin_folha', id: c.folhaId, dados: { status: 'aberta', pagoEm: null, lancamentoId: null } });
     await Fin.lote(ops); toast('Desfeito.');
   } catch (e) { erro(e); }
 }
 async function cancelarConta(id) {
   const c = S.contas.find(x => x.id === id); if (!c) return;
+  if (c.folhaId) return toast('Conta de folha: para cancelar, exclua a folha em 👷 Funcionários (os vales voltam a ficar pendentes).');
   const rec = c.recorrencia && c.recorrencia.tipo !== 'unica' && !c.parcelado && F.proximaOcorrencia(c);
   let gerar = false;
   if (rec) {
@@ -917,7 +923,7 @@ function gerarFolha(fid) {
       if (!exigir(v.de && v.ate && v.de <= v.ate, 'Período inválido.')) return false;
       const sobre = S.folha.find(x => x.tipo === 'folha' && x.funcionarioId === fid && x.de <= v.ate && x.ate >= v.de);
       if (sobre && !confirm(`Já existe folha de ${br(sobre.de)} a ${br(sobre.ate)} para ${f.nome}. Gerar outra mesmo assim?`)) return false;
-      await salvarFolha(f, v.de, v.ate); toast('Folha gerada. Confira e toque em "Pagar".');
+      await salvarFolha(f, v.de, v.ate); toast('Folha gerada e lançada em 📤 Contas a pagar.');
     }, { ok: 'Gerar folha', topo: '<div id="prevFolhaBox"></div>', aoAbrir: () => { prevFolha.f = f; prevFolha(); } });
 }
 function prevFolha() {
@@ -931,10 +937,53 @@ function tabelaFolha(x) {
     ${lin('Bruto', dinheiro(x.bruto))}${x.vales ? lin('(−) Vales/adiantamentos', '−' + dinheiro(x.vales)) : ''}${x.descontos ? lin('(−) Descontos', '−' + dinheiro(x.descontos)) : ''}
     ${lin('Líquido a pagar', dinheiro(x.liquido), 'total')}</div>`;
 }
-async function salvarFolha(f, de, ate) {
-  const x = F.calcularFolha(f, de, ate, S.folha, pedidos), id = Fin.novoId('fo');
-  await Fin.lote([{ op: 'replace', col: 'fin_folha', id, dados: Object.assign(x, { tipo: 'folha', status: 'aberta', criadoEm: Date.now(), telefone: f.telefone || '', funcao: f.funcao || '', pix: f.pix || '' }) }]
-    .concat(x.itensIds.map(i => ({ op: 'set', col: 'fin_folha', id: i, dados: { folhaId: id } }))));
+/* Folha → conta a pagar (fin_contas, folhaId ↔ contaId). Nada sai do caixa ao gerar: a saída nasce ao pagar a conta.
+   Vales já saíram do caixa quando foram dados; aqui só reduzem o que falta pagar (líquido). */
+const catFolha = x => x.tipoPagamento === 'diaria' ? 'Diárias' : 'Salários';
+// Vencimento: mensal → dia de pagamento do mês seguinte (padrão 5); demais → fim do período (dia de pagamento)
+function vencFolha(f, x) {
+  const v = x.tipoPagamento === 'mensal' ? F.addMeses(x.ate, 1, Number(f && f.diaMes) || 5) : x.ate;
+  return v < hoje() ? hoje() : v;
+}
+// Linhas do detalhamento (folha, conta a pagar e recibo)
+function linhasFolha(x, itens) {
+  const l = [x.tipoPagamento === 'diaria' ? [`Diárias ${x.dias} x ${dinheiro(x.valorBase)}`, x.base] : [`Salário ${(F.TIPOS_PAG[x.tipoPagamento] || '').toLowerCase()}`, x.base]];
+  if (x.comissao) l.push([`Comissão ${x.entregas} entrega(s)`, x.comissao]);
+  itens.filter(i => i.tipo === 'bonus').forEach(i => l.push([`(+) Bônus ${br(i.data).slice(0, 5)}${i.descricao ? ' ' + i.descricao : ''}`, i.valor]));
+  itens.filter(i => i.tipo === 'vale').forEach(i => l.push([`(-) Vale ${br(i.data).slice(0, 5)}${i.descricao ? ' ' + i.descricao : ''}`, -i.valor]));
+  itens.filter(i => i.tipo === 'desconto').forEach(i => l.push([`(-) Desconto ${br(i.data).slice(0, 5)}${i.descricao ? ' ' + i.descricao : ''}`, -i.valor]));
+  return l;
+}
+const textoDetalhe = (x, itens) => linhasFolha(x, itens).map(([n, v]) => `${n}: ${v < 0 ? '−' : ''}${dinheiro(Math.abs(v))}`).join(' • ') + ` = líquido ${dinheiro(x.liquido)}`;
+// Dados da conta a pagar de uma folha
+function dadosContaFolha(x, f, itens, folhaId) {
+  return { natureza: 'pagar', descricao: `Folha ${x.nome} (${br(x.de)} a ${br(x.ate)})`, pessoa: x.nome, categoria: catFolha(x), valor: x.liquido,
+    vencimento: vencFolha(f, x), conta: (x.pix && contaPix()) || contaCaixa(), forma: x.pix ? 'pix' : 'dinheiro', recorrencia: { tipo: 'unica' },
+    status: 'aberta', folhaId, obs: textoDetalhe(x, itens) };
+}
+/* Gera (ou regera, com "id") a folha + conta a pagar vinculada. Regerar: só folha não paga; libera os itens antigos e recalcula. */
+async function salvarFolha(f, de, ate, id) {
+  const antiga = id ? S.folha.find(x => x.id === id) : null;
+  if (antiga && antiga.status === 'paga') throw new Error('Folha já paga não pode ser regerada.');
+  id = id || Fin.novoId('fo');
+  // itens da própria folha voltam a ficar livres para o recálculo
+  const livres = S.folha.map(i => i.folhaId === id ? Object.assign({}, i, { folhaId: null }) : i);
+  const x = F.calcularFolha(f, de, ate, livres, pedidos);
+  const itens = livres.filter(i => x.itensIds.includes(i.id));
+  const contaAntiga = antiga && antiga.contaId ? S.contas.find(c => c.id === antiga.contaId) : null;
+  if (contaAntiga && contaAntiga.status === 'paga') throw new Error('A conta a pagar desta folha já foi paga.');
+  const ops = [];
+  let contaId = null;
+  if (x.liquido > 0) {
+    contaId = contaAntiga ? contaAntiga.id : Fin.novoId('c');
+    ops.push({ op: 'replace', col: 'fin_contas', id: contaId, dados: Object.assign(dadosContaFolha(Object.assign({}, x, { pix: f.pix }), f, itens, id), { serieId: contaId, criadoEm: contaAntiga ? contaAntiga.criadoEm || Date.now() : Date.now() }) });
+  } else if (contaAntiga) ops.push({ op: 'delete', col: 'fin_contas', id: contaAntiga.id });
+  ops.push({ op: 'replace', col: 'fin_folha', id, dados: Object.assign(x, { tipo: 'folha', status: 'aberta', contaId, criadoEm: antiga ? antiga.criadoEm || Date.now() : Date.now(), regeradaEm: antiga ? Date.now() : null,
+    telefone: f.telefone || '', funcao: f.funcao || '', pix: f.pix || '', detalhe: textoDetalhe(x, itens) }) });
+  // itens que saíram (regerar) voltam a pendentes; os do cálculo ficam marcados nesta folha
+  S.folha.filter(i => i.folhaId === id && !x.itensIds.includes(i.id)).forEach(i => ops.push({ op: 'set', col: 'fin_folha', id: i.id, dados: { folhaId: null } }));
+  x.itensIds.forEach(i => ops.push({ op: 'set', col: 'fin_folha', id: i, dados: { folhaId: id } }));
+  await Fin.lote(ops);
   return id;
 }
 async function gerarTodas() {
@@ -949,44 +998,71 @@ function renderFolhas() {
   const st = $('foStatus').value, l = S.folha.filter(x => x.tipo === 'folha' && (!st || x.status === st)).sort((a, b) => b.ate.localeCompare(a.ate) || a.nome.localeCompare(b.nome));
   const tot = l.reduce((t, x) => t + x.liquido, 0);
   $('tabFolhas').innerHTML = l.length ? `<table><tr><th>Funcionário</th><th>Período</th><th class="r">Bruto</th><th class="r">Vales</th><th class="r">Descontos</th><th class="r">Líquido</th><th>Situação</th><th></th></tr>
-    ${l.map(x => `<tr><td><b>${esc(x.nome)}</b><div class="muted">${F.TIPOS_PAG[x.tipoPagamento] || ''}${x.entregas ? ` • ${x.entregas} entrega(s)` : ''}${x.tipoPagamento === 'diaria' ? ` • ${x.dias} dia(s)` : ''}</div></td>
+    ${l.map(x => `<tr><td><b>${esc(x.nome)}</b><div class="muted">${F.TIPOS_PAG[x.tipoPagamento] || ''}${x.entregas ? ` • ${x.entregas} entrega(s)` : ''}${x.tipoPagamento === 'diaria' ? ` • ${x.dias} dia(s)` : ''}${x.bonus || x.comissao ? ` • bônus/comissão ${dinheiro(x.bonus + x.comissao)}` : ''}</div>
+      <details><summary class="muted" style="cursor:pointer">detalhamento</summary><div class="muted">${esc(x.detalhe || textoDetalhe(x, S.folha.filter(i => i.folhaId === x.id)))}</div></details></td>
       <td style="white-space:nowrap">${br(x.de)} a ${br(x.ate)}</td><td class="r">${dinheiro(x.bruto)}</td><td class="r">${x.vales ? '−' + dinheiro(x.vales) : '—'}</td><td class="r">${x.descontos ? '−' + dinheiro(x.descontos) : '—'}</td>
-      <td class="r"><b>${dinheiro(x.liquido)}</b></td><td>${x.status === 'paga' ? `<span class="tag verde">paga ${br(x.pagoEm)}</span>` : '<span class="tag amar">a pagar</span>'}</td>
-      <td style="white-space:nowrap">${x.status === 'aberta' ? `<button class="btn sm" style="background:var(--ok)" onclick="pagarFolha('${x.id}')">Pagar</button> <button class="btn sm sec" title="Excluir" onclick="excluirFolha('${x.id}')">🗑️</button>`
+      <td class="r"><b>${dinheiro(x.liquido)}</b></td><td>${situacaoFolha(x)}</td>
+      <td style="white-space:nowrap">${x.status === 'aberta' ? `<button class="btn sm" style="background:var(--ok)" onclick="pagarFolha('${x.id}')">Pagar</button> <button class="btn sm sec" title="Regerar (recalcula com vales/descontos/bônus atuais)" onclick="regerarFolha('${x.id}')">🔄</button> <button class="btn sm sec" title="Excluir" onclick="excluirFolha('${x.id}')">🗑️</button>${!x.contaId && x.liquido > 0 ? ` <button class="btn sm dark" onclick="criarContaFolha('${x.id}')">📤 Criar conta a pagar</button>` : ''}`
         : `<button class="btn sm sec" onclick="desfazerFolha('${x.id}')">↩️</button>`} <button class="btn sm sec" title="Recibo" onclick="recibo('${x.id}')">🖨️</button>${x.telefone ? ` <button class="btn sm wa" onclick="whatsFolha('${x.id}')">💬</button>` : ''}</td></tr>`).join('')}
     <tr class="tot"><td colspan="5">${l.length} folha(s)</td><td class="r">${dinheiro(tot)}</td><td colspan="2"></td></tr></table>`
     : '<div class="vazio">Nenhuma folha neste filtro.</div>';
 }
+function situacaoFolha(x) {
+  if (x.status === 'paga') return `<span class="tag verde">paga ${br(x.pagoEm)}</span>`;
+  const c = x.contaId && S.contas.find(k => k.id === x.contaId);
+  if (c) return `<span class="tag amar">📤 a pagar • vence ${br(c.vencimento)}</span>`;
+  return x.liquido > 0 ? '<span class="tag amar">a pagar (sem conta)</span>' : '<span class="tag">nada a pagar</span>';
+}
+// Pagar: pela conta a pagar vinculada (mesmo fluxo da aba 📤 A pagar → 1 saída só)
 function pagarFolha(id) {
   const x = S.folha.find(f => f.id === id); if (!x) return;
-  abrirForm(`💸 Pagar folha — ${x.nome}`, [{ k: 'data', l: 'Data do pagamento', t: 'date', v: hoje() }, { k: 'conta', l: 'Saiu da conta', t: 'select', op: opContas(), v: x.pix ? 'pix' : contaCaixa() },
-    { k: 'forma', l: 'Forma', t: 'select', op: opFormas(), v: x.pix ? 'pix' : 'dinheiro' }], async v => {
-    checarMes(v.data);
-    const ops = [], up = { status: 'paga', pagoEm: v.data, conta: v.conta, forma: v.forma };
-    if (x.liquido > 0) {
-      const lid = Fin.novoId('l'); up.lancamentoId = lid;
-      ops.push({ op: 'replace', col: 'fin_lancamentos', id: lid, dados: { tipo: 'saida', data: v.data, valor: x.liquido, conta: v.conta, forma: v.forma, categoria: x.tipoPagamento === 'diaria' ? 'Diárias' : 'Salários',
-        descricao: `Folha ${x.nome} (${br(x.de)} a ${br(x.ate)})`, pessoa: x.nome, origem: 'folha', refId: id, criadoEm: Date.now(), criadoPor: Fin.usuario() } });
-    }
-    ops.push({ op: 'set', col: 'fin_folha', id, dados: up });
-    await Fin.lote(ops); toast(`Folha paga: ${dinheiro(x.liquido)} lançado como saída.`);
-  }, { ok: 'Confirmar pagamento', topo: tabelaFolha(x) });
+  const c = x.contaId && S.contas.find(k => k.id === x.contaId);
+  if (c && c.status === 'aberta') return pagarConta(c.id);
+  if (x.liquido > 0 && !c) return toast('Esta folha ainda não tem conta a pagar: toque em "📤 Criar conta a pagar".');
+  // líquido zero (vales cobriram tudo): só marca paga, sem saída
+  if (!confirm(`O líquido da folha de ${x.nome} é ${dinheiro(x.liquido)}: marcar como paga (sem saída no caixa)?`)) return;
+  Fin.lote([{ op: 'set', col: 'fin_folha', id, dados: { status: 'paga', pagoEm: hoje() } }]).catch(erro);
+}
+async function criarContaFolha(id) {
+  const x = S.folha.find(f => f.id === id); if (!x || x.contaId || x.status !== 'aberta') return;
+  const f = S.funcs.find(k => k.id === x.funcionarioId), cid = Fin.novoId('c');
+  try {
+    await Fin.lote([{ op: 'replace', col: 'fin_contas', id: cid, dados: Object.assign(dadosContaFolha(x, f, S.folha.filter(i => i.folhaId === id), id), { serieId: cid, criadoEm: Date.now() }) },
+      { op: 'set', col: 'fin_folha', id, dados: { contaId: cid } }]);
+    toast('Conta a pagar criada para esta folha.');
+  } catch (e) { erro(e); }
+}
+async function regerarFolha(id) {
+  const x = S.folha.find(f => f.id === id), f = x && S.funcs.find(k => k.id === x.funcionarioId);
+  if (!x) return;
+  if (x.status === 'paga') return toast('Folha já paga não pode ser regerada.');
+  if (!f) return toast('Funcionário não encontrado.');
+  if (!confirm(`Regerar a folha de ${x.nome} (${br(x.de)} a ${br(x.ate)})? Recalcula com os vales, descontos e bônus pendentes e atualiza a conta a pagar.`)) return;
+  try { await salvarFolha(f, x.de, x.ate, id); toast('Folha regerada e conta a pagar atualizada.'); } catch (e) { erro(e); }
 }
 async function excluirFolha(id) {
-  const x = S.folha.find(f => f.id === id); if (!x || !confirm(`Excluir a folha de ${x.nome} (${br(x.de)} a ${br(x.ate)})? Vales/descontos/bônus voltam a ficar pendentes.`)) return;
-  try { await Fin.lote([{ op: 'delete', col: 'fin_folha', id }].concat(S.folha.filter(i => i.folhaId === id).map(i => ({ op: 'set', col: 'fin_folha', id: i.id, dados: { folhaId: null } })))); } catch (e) { erro(e); }
+  const x = S.folha.find(f => f.id === id); if (!x) return;
+  const c = x.contaId && S.contas.find(k => k.id === x.contaId);
+  if (x.status === 'paga' || (c && c.status === 'paga')) return toast('Folha já paga: desfaça o pagamento antes de excluir.');
+  if (!confirm(`Excluir a folha de ${x.nome} (${br(x.de)} a ${br(x.ate)})? Vales/descontos/bônus voltam a ficar pendentes${c ? ' e a conta a pagar é apagada' : ''}.`)) return;
+  try {
+    await Fin.lote([{ op: 'delete', col: 'fin_folha', id }].concat(c ? [{ op: 'delete', col: 'fin_contas', id: c.id }] : [])
+      .concat(S.folha.filter(i => i.folhaId === id).map(i => ({ op: 'set', col: 'fin_folha', id: i.id, dados: { folhaId: null } }))));
+  } catch (e) { erro(e); }
 }
 async function desfazerFolha(id) {
-  const x = S.folha.find(f => f.id === id); if (!x || !confirm(`Desfazer o pagamento da folha de ${x.nome}? A saída no caixa será apagada.`)) return;
+  const x = S.folha.find(f => f.id === id); if (!x) return;
+  const c = x.contaId && S.contas.find(k => k.id === x.contaId);
+  if (c && c.status === 'paga') return desfazerConta(c.id);   // desfaz pela conta (apaga a saída e reabre a folha)
+  if (!confirm(`Desfazer o pagamento da folha de ${x.nome}? A saída no caixa será apagada.`)) return;
   try { checarMes(x.pagoEm); const ops = [{ op: 'set', col: 'fin_folha', id, dados: { status: 'aberta', pagoEm: null, lancamentoId: null } }]; if (x.lancamentoId) ops.push({ op: 'delete', col: 'fin_lancamentos', id: x.lancamentoId }); await Fin.lote(ops); } catch (e) { erro(e); }
 }
 function textoRecibo(x, larg) {
   const L = (a, b) => { const s = String(b); return a + ' '.repeat(Math.max(1, larg - a.length - s.length)) + s; }, hr = '-'.repeat(larg);
   const itens = S.folha.filter(i => i.folhaId === x.id);
   return [CONFIG.loja.nome.toUpperCase(), 'RECIBO DE PAGAMENTO', hr, `Funcionário: ${x.nome}`, x.funcao ? `Função: ${x.funcao}` : '', `Período: ${br(x.de)} a ${br(x.ate)}`, `Tipo: ${F.TIPOS_PAG[x.tipoPagamento] || ''}`, hr,
-    x.tipoPagamento === 'diaria' ? L(`Diárias ${x.dias} x ${dinheiro(x.valorBase)}`, dinheiro(x.base)) : L('Salário', dinheiro(x.base)),
-    x.comissao ? L(`Comissão ${x.entregas} entrega(s)`, dinheiro(x.comissao)) : '', x.bonus ? L('Bônus', dinheiro(x.bonus)) : '', L('BRUTO', dinheiro(x.bruto)),
-    ...itens.filter(i => i.tipo !== 'bonus').map(i => L(`(-) ${i.tipo === 'vale' ? 'Vale' : 'Desc.'} ${br(i.data).slice(0, 5)}`, dinheiro(i.valor))), hr,
+    ...linhasFolha(x, itens).filter(([, v]) => v >= 0).map(([n, v]) => L(n.slice(0, larg - 12), dinheiro(v))), L('BRUTO', dinheiro(x.bruto)),
+    ...linhasFolha(x, itens).filter(([, v]) => v < 0).map(([n, v]) => L(n.slice(0, larg - 12), dinheiro(-v))), hr,
     L('LÍQUIDO', dinheiro(x.liquido)), x.status === 'paga' ? `Pago em ${br(x.pagoEm)} (${(FORMAS[x.forma] || x.forma || '').replace(/^\S+\s/, '')})` : 'A PAGAR', '',
     'Declaro ter recebido a importância', 'líquida acima.', '', '', '_'.repeat(Math.min(larg, 32)), x.nome].filter(s => s !== '').join('\n');
 }
