@@ -662,13 +662,15 @@ function renderProdutos() {
 
   if (vazio) { document.getElementById('tabelas').innerHTML = ''; return; }
   const sabores = todos.filter(d => d.tipo === 'sabor');
-  let h = `<div class="card"><h2>🍕 Sabores de pizza</h2><div class="rolar"><table>
+  let h = `<div class="card" id="cardSabores"><h2>🍕 Sabores de pizza</h2><div class="rolar"><table>
     <tr><th>Sabor</th><th>Ativo</th><th class="r">P</th><th class="r">M</th><th class="r">G</th><th class="r">Custo P/M/G</th><th></th></tr>
-    ${sabores.map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+    ${sabores.filter(d => !d.excluido).map(d => `<tr class="${d.ativo === false ? 'inativo' : ''}" data-sabor="${esc(d.id)}"><td><b>${esc(d.nome)}</b></td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
       ${['P', 'M', 'G'].map(t => `<td class="r">${dinheiro((d.precos || {})[t])}</td>`).join('')}
       <td class="r muted">${['P', 'M', 'G'].map(t => (d.custos || {})[t] != null && (d.custos || {})[t] !== '' ? dinheiro(d.custos[t]) : '—').join(' / ')}</td>
-      <td class="r"><button class="btn sm sec" onclick="editarSabor('${d.id}')">✏️</button></td></tr>`).join('')}
-  </table></div></div>`;
+      <td class="r" style="white-space:nowrap"><button class="btn sm sec" title="Editar" onclick="editarSabor('${d.id}')">✏️</button> <button class="btn sm sec" title="Duplicar (copia preços e ficha técnica)" onclick="editarSabor(null,'${d.id}')">📄</button></td></tr>`).join('')}
+  </table></div>
+  <button class="btn" style="margin-top:10px" onclick="editarSabor(null)">➕ Novo sabor</button>
+  <div class="muted" style="margin-top:6px">O sabor novo já aparece na loja e no balcão (se ativo). Depois de criar, monte a 📋 Ficha técnica para o custo e a baixa dos insumos.</div></div>`;
   // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho; estoque = insumos da ficha técnica
   const esconder = CARDAPIO.loja.esconderAdicionalSemInsumo !== false;
   h += `<div class="card" id="cardAdicionais"><h2>➕ Adicionais da pizza</h2>
@@ -877,35 +879,88 @@ async function salvarProdutoForm() {
   catch (e) { avisarErro(e); }
 }
 
-function editarSabor(id) {
-  editando = id;
-  const d = Catalogo.doc(id), pr = d.precos || {}, cu = d.custos || {};
-  abrirModal(`<h2>🍕 ${esc(d.nome)}</h2>
-    ${abasFicha('dados')}
+/* Sabor: editar (id), novo (null) ou duplicar (null, idOrigem → copia preços, descrição e ficha técnica) */
+let saborOrigem = null;
+const saboresCad = () => Catalogo.todos().filter(x => x.tipo === 'sabor' && !x.excluido);
+function editarSabor(id, duplicarDe) {
+  editando = id; saborOrigem = duplicarDe || null;
+  const o = duplicarDe ? Catalogo.doc(duplicarDe) : null;
+  const ultimaOrdem = Math.max(-1, ...saboresCad().map(x => Number(x.ordem) || 0));
+  const d = id ? Catalogo.doc(id) : o ? Object.assign({}, o, { nome: o.nome + ' (CÓPIA)', ordem: (Number(o.ordem) || 0) + 0.5 }) : { ativo: true, precos: {}, custos: {}, ordem: ultimaOrdem + 1 };
+  const pr = d.precos || {}, cu = d.custos || {};
+  abrirModal(`<h2>🍕 ${id ? esc(d.nome) : o ? '📄 Duplicar ' + esc(o.nome) : '➕ Novo sabor'}</h2>
+    ${id ? abasFicha('dados') : ''}
     <div id="painelDados">
-    ${campo('sNome', 'Nome do sabor', d.nome)}
-    ${campo('sDesc', 'Descrição (opcional)', d.desc || '')}
+    ${campo('sNome', 'Nome do sabor', d.nome || '', 'placeholder="Ex.: FRANGO COM CATUPIRY"')}
+    ${campo('sDesc', 'Ingredientes / descrição (opcional)', d.desc || '', 'placeholder="Ex.: frango desfiado, catupiry, muçarela e orégano"')}
     ${caixa('sAtivo', 'Ativo (aparece à venda)', d.ativo !== false)}
+    ${campo('sOrdem', 'Posição no cardápio (menor aparece antes)', d.ordem != null ? String(d.ordem).replace('.', ',') : '', 'inputmode="decimal"')}
     <h3 style="margin-top:14px">Preço de venda</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sP' + t, t, pr[t], 'inputmode="decimal"')).join('')}</div>
     <h3 style="margin-top:14px">Custo manual (opcional — a ficha técnica tem prioridade)</h3>
     <div class="grid2" style="grid-template-columns:repeat(3,1fr)">${['P', 'M', 'G'].map(t => campo('sC' + t, t, cu[t], 'inputmode="decimal" placeholder="—"')).join('')}</div>
-    <div class="muted" style="margin-top:6px">Sabores não controlam estoque. Monte a aba 📋 Ficha técnica para calcular o custo pelos insumos.</div>
-    <button class="btn full" style="margin-top:14px" onclick="salvarSaborForm()">Salvar</button>
+    <div class="muted" style="margin-top:6px">Sabores não controlam estoque. ${id ? 'Monte a aba 📋 Ficha técnica para calcular o custo pelos insumos.' : o ? 'A ficha técnica do sabor original é copiada junto.' : 'Depois de salvar, a 📋 Ficha técnica abre para você montar.'}</div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarSaborForm()">${id ? 'Salvar' : '➕ Criar sabor'}</button>
+    ${id ? `<button class="btn sec full" style="margin-top:8px" onclick="pedirExclusaoSabor()">🗑️ Excluir / desativar sabor</button><div id="sExcluir"></div>` : ''}
     <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>
     </div><div id="painelFicha" class="hide"></div>`);
 }
 async function salvarSaborForm() {
-  const d = Catalogo.doc(editando), nome = val('sNome').toUpperCase();
+  const d = editando ? Catalogo.doc(editando) : null, nome = val('sNome').toUpperCase().replace(/\s+/g, ' ');
   const precos = {}, custos = {};
+  if (nome.length < 2) return toast('Informe o nome.');
+  // nome repetido quebra o preço/ficha (os pedidos guardam o nome do sabor)
+  if (saboresCad().some(x => x.id !== editando && x.nome.trim().toUpperCase() === nome)) return toast(`Já existe o sabor ${nome}.`);
   for (const t of ['P', 'M', 'G']) {
     const p = numero(val('sP' + t)), c = val('sC' + t);
     if (p == null || p <= 0) return toast(`Informe o preço ${t}.`);
     precos[t] = p; custos[t] = c === '' ? null : numero(c);
   }
-  if (nome.length < 2) return toast('Informe o nome.');
-  if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
-  try { await DB.salvarProduto(editando, { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos }); fecharModal(); toast('✅ Sabor salvo.'); }
+  const ordem = numero(val('sOrdem'));
+  const campos = { nome, desc: val('sDesc'), ativo: document.getElementById('sAtivo').checked, precos, custos };
+  if (ordem != null) campos.ordem = ordem;
+  if (d) {
+    if (nome !== d.nome && !confirm('Renomear o sabor? Pedidos antigos guardam o nome anterior.')) return;
+    try { await DB.salvarProduto(editando, campos); fecharModal(); toast('✅ Sabor salvo.'); }
+    catch (e) { avisarErro(e); }
+    return;
+  }
+  if (!Catalogo.doBanco()) return toast('Importe o cardápio primeiro (📥 Importar cardápio atual).');
+  // novo: mesmo formato dos sabores importados (id = pizza-<slug>, sem barras)
+  const base = 'pizza-' + (Catalogo.slug(nome) || 'sabor');
+  let id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
+  if (campos.ordem == null) campos.ordem = Math.max(-1, ...saboresCad().map(x => Number(x.ordem) || 0)) + 1;
+  Object.assign(campos, { tipo: 'sabor', categoria: 'Pizzas', controlaEstoque: false });
+  const origem = saborOrigem ? Ficha.ficha(saborOrigem) : null;
+  try {
+    await DB.salvarProduto(id, campos);
+    if (origem) { const f = {}; TAMS.forEach(t => { f[t] = (origem[t] || []).map(linhaFicha); }); await DB.salvarFicha(id, f); }
+    fecharModal(); toast(`✅ Sabor ${nome} criado${origem ? ' (com a ficha copiada)' : ''} — confira a ficha técnica.`);
+    setTimeout(() => { if (Catalogo.doc(id)) abrirFicha(id, 'G'); }, 400);
+  } catch (e) { avisarErro(e); }
+}
+/* Excluir só sabor nunca vendido (fica marcado excluido e some de tudo — o documento não é apagado);
+   já vendido → só desativa (pedidos antigos e relatórios continuam com o nome) */
+async function pedirExclusaoSabor() {
+  const d = Catalogo.doc(editando), el = document.getElementById('sExcluir');
+  el.innerHTML = '<div class="muted" style="margin-top:8px">Verificando vendas...</div>';
+  let vendas = 0;
+  try { vendas = (await DB.listarPedidos('2000-01-01', '2999-12-31')).filter(p => (p.itens || []).some(it => it.tipo === 'pizza' && (it.sabores || []).includes(d.nome))).length; }
+  catch (e) { el.innerHTML = ''; return avisarErro(e); }
+  el.innerHTML = vendas
+    ? `<div class="alerta" style="margin-top:8px" id="sConfirma">⚠️ <b>${esc(d.nome)}</b> já foi vendido em ${vendas} pedido(s): não dá para excluir (os relatórios usam o nome). Desativar tira o sabor da loja e do balcão.
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="desativarSabor()">⛔ Desativar</button><button class="btn sm sec" onclick="document.getElementById('sExcluir').innerHTML=''">Voltar</button></div></div>`
+    : `<div class="alerta" style="margin-top:8px" id="sConfirma">🗑️ Excluir <b>${esc(d.nome)}</b>? Nunca foi vendido. Ele some da Gestão, da loja e do balcão.
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="excluirSabor()">Sim, excluir</button><button class="btn sm sec" onclick="desativarSabor()">Só desativar</button><button class="btn sm sec" onclick="document.getElementById('sExcluir').innerHTML=''">Não</button></div></div>`;
+}
+async function desativarSabor() {
+  try { await DB.salvarProduto(editando, { ativo: false }); fecharModal(); toast('⛔ Sabor desativado — saiu da loja e do balcão.'); }
+  catch (e) { avisarErro(e); }
+}
+async function excluirSabor() {
+  const d = Catalogo.doc(editando);
+  // renomeia para liberar o nome (a loja procura o sabor pelo nome)
+  try { await DB.salvarProduto(editando, { ativo: false, excluido: true, excluidoEm: Date.now(), nome: `${d.nome} (EXCLUÍDO ${new Date().toLocaleDateString('pt-BR')})` }); fecharModal(); toast('🗑️ Sabor excluído.'); }
   catch (e) { avisarErro(e); }
 }
 
@@ -1065,7 +1120,7 @@ async function salvarCmvAlvo() {
 // Linhas da visão geral: sabores e adicionais × P/M/G
 function linhasFichas() {
   const l = [];
-  Catalogo.todos().filter(d => d.tipo === 'sabor' || d.tipo === 'adicional').forEach(d => TAMS.forEach(t => {
+  Catalogo.todos().filter(d => (d.tipo === 'sabor' || d.tipo === 'adicional') && !d.excluido).forEach(d => TAMS.forEach(t => {
     const venda = Number((d.precos || {})[t]) || 0;
     const custo = d.tipo === 'sabor' ? Ficha.custoSabor(d.id, t) : Ficha.custoFicha(d.id, t);
     const r = custo == null ? null : Ficha.resultado(venda, custo);
@@ -1142,7 +1197,7 @@ function renderFicha() {
   const base = fe.tipo === 'sabor' ? Ficha.custoBase(t) : 0, total = custoFe(t);
   const pctDe = v => total > 0 ? v / total * 100 : 0;
   const barra = v => `<div style="display:flex;gap:6px;align-items:center"><div class="barra2" style="flex:1"><i style="width:${Math.min(100, pctDe(v)).toFixed(1)}%"></i></div><span style="min-width:40px;text-align:right">${pctDe(v).toFixed(0)}%</span></div>`;
-  const outros = fe.tipo === 'base' ? [] : Catalogo.todos().filter(d => d.tipo === fe.tipo && d.id !== fe.id && Ficha.ficha(d.id));
+  const outros = fe.tipo === 'base' ? [] : Catalogo.todos().filter(d => d.tipo === fe.tipo && d.id !== fe.id && !d.excluido && Ficha.ficha(d.id));
   const r = fe.tipo === 'base' ? null : Ficha.resultado(vendaFe(t), total);
   el.innerHTML = `
     <div class="tamCards">${TAMS.map(x => { const v = vendaFe(x), c = custoFe(x), rr = v != null && fe.linhas[x].length ? Ficha.resultado(v, c) : null;
