@@ -5,11 +5,11 @@
    ========================================================= */
 const $ = id => document.getElementById(id);
 const F = FinCalc, r2 = F.r2;
-const S = { cfg: null, lanc: [], contas: [], fiados: [], funcs: [], folha: [], caixas: [] };
+const S = { cfg: null, lanc: [], contas: [], fiados: [], funcs: [], folha: [], caixas: [], cartoes: [], compras: [] };
 let pedidos = [], pedidosDe = null, lojaCfg = {}, pedErro = null, finErro = null;
 let aba = (() => { try { return localStorage.getItem('cdp_caixa_aba') || 'painel'; } catch { return 'painel'; } })();
 let relPeriodo = 'mes', filtroConta = { pagar: 'abertas', receber: 'abertas' }, telWhats = '';
-const ABAS = [['painel', '🏠 Painel'], ['caixa', '🧾 Caixa do dia'], ['lanc', '📒 Lançamentos'], ['pagar', '📤 A pagar'], ['receber', '📥 A receber'],
+const ABAS = [['painel', '🏠 Painel'], ['caixa', '🧾 Caixa do dia'], ['lanc', '📒 Lançamentos'], ['pagar', '📤 A pagar'], ['receber', '📥 A receber'], ['cartoes', '💳 Cartões'],
   ['fiados', '📝 Fiados'], ['func', '👷 Funcionários'], ['rel', '📈 Relatórios'], ['cfg', '⚙️ Config.']];
 const FORMAS = { dinheiro: '💵 Dinheiro', pix: '⚡ Pix', cartao: '💳 Cartão', transferencia: '🏦 Transferência', boleto: '📄 Boleto', outros: 'Outros' };
 const ORIGENS = { manual: '', vendas: '🛒 pedidos', conta_pagar: '📤 conta', conta_receber: '📥 conta', fiado: '📝 fiado', folha: '👷 folha', caixa: '🧾 caixa' };
@@ -92,11 +92,12 @@ $('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); }
 
 function iniciar() {
   mostrarAba(aba);
-  const mapa = { fin_config: 'cfg', fin_lancamentos: 'lanc', fin_contas: 'contas', fin_fiados: 'fiados', fin_funcionarios: 'funcs', fin_folha: 'folha', fin_caixas: 'caixas' };
+  const mapa = { fin_config: 'cfg', fin_lancamentos: 'lanc', fin_contas: 'contas', fin_fiados: 'fiados', fin_funcionarios: 'funcs', fin_folha: 'folha', fin_caixas: 'caixas', fin_cartoes: 'cartoes', fin_cartao_compras: 'compras' };
   Object.entries(mapa).forEach(([col, k]) => Fin.observar(col, l => {
     finErro = null;
     if (k === 'cfg') { const g = l.find(d => d.id === 'geral'); S.cfg = g ? Object.assign(cfgPadrao(), g) : null; }
     else S[k] = l;
+    carregados.add(k);
     invalidar(); agendarRender();
   }, e => { finErro = e; agendarRender(); }));
   Catalogo.iniciar(() => { invalidar(); agendarRender(); });   // taxa da maquininha (config/loja) e custos
@@ -126,12 +127,14 @@ async function ouvirPedidosHoje() {
 // Antes de usar um período antigo nos relatórios
 async function garantirPedidos(de) { if (pedidosDe && de < pedidosDe) await carregarPedidos(de); }
 
+const carregados = new Set();
 let _t = null;
 function agendarRender() { clearTimeout(_t); _t = setTimeout(renderTudo, 30); }
 function renderTudo() {
+  fecharFaturasVencidas();
   $('erroFin').innerHTML = finErro ? `<div class="alertas"><div class="al-verm">⚠️ ${esc(DB.mensagemErro(finErro))} Se acabou de atualizar o sistema, publique as regras do Firebase com as coleções <b>fin_*</b>.</div></div>` : '';
   const f = { painel: renderPainel, caixa: renderCaixa, lanc: renderLanc, pagar: () => renderContas('pagar'), receber: () => renderContas('receber'),
-    fiados: renderFiados, func: renderFunc, rel: renderRel, cfg: renderCfg }[aba];
+    cartoes: renderCartoes, fiados: renderFiados, func: renderFunc, rel: renderRel, cfg: renderCfg }[aba];
   try { f && f(); } catch (e) { console.error(e); }
 }
 function mostrarAba(a) {
@@ -637,6 +640,7 @@ function renderContas(nat) {
 }
 function editarConta(nat, id) {
   if (id && (S.contas.find(x => x.id === id) || {}).folhaId) return toast('Conta de folha: para mudar o valor, use 🔄 Regerar na folha (👷 Funcionários).');
+  if (id && (S.contas.find(x => x.id === id) || {}).faturaCartao) return toast('Fatura de cartão: para mudar, reabra a fatura em 💳 Cartões.');
   const c = id ? S.contas.find(x => x.id === id) : { natureza: nat, vencimento: hoje(), recorrencia: { tipo: 'unica' }, conta: nat === 'pagar' ? 'banco' : 'pix', categoria: nat === 'pagar' ? 'Aluguel' : 'Outras receitas' };
   if (!c) return;
   const rec = c.recorrencia || {}, tipoCat = nat === 'pagar' ? 'saida' : 'entrada';
@@ -758,6 +762,7 @@ async function desfazerConta(id) {
 async function cancelarConta(id) {
   const c = S.contas.find(x => x.id === id); if (!c) return;
   if (c.folhaId) return toast('Conta de folha: para cancelar, exclua a folha em 👷 Funcionários (os vales voltam a ficar pendentes).');
+  if (c.faturaCartao) return toast('Fatura de cartão: para mudar, reabra a fatura em 💳 Cartões.');
   const rec = c.recorrencia && c.recorrencia.tipo !== 'unica' && !c.parcelado && F.proximaOcorrencia(c);
   let gerar = false;
   if (rec) {
@@ -1187,6 +1192,183 @@ function csvFolha() {
     .concat(S.folha.filter(x => x.tipo === 'folha').sort((a, b) => a.de.localeCompare(b.de)).map(x => [x.nome, F.TIPOS_PAG[x.tipoPagamento] || '', br(x.de), br(x.ate), x.dias, x.entregas, x.base, x.comissao, x.bonus, x.bruto, x.vales, x.descontos, x.liquido, x.status, x.pagoEm ? br(x.pagoEm) : ''])));
 }
 
+/* ================= 💳 CARTÕES DE CRÉDITO =================
+   fin_cartoes/{id}: { nome, bandeira, limite, diaVenc, diasFechamento, contaPg, ativo, faturas: { 'AAAA-MM': { status: 'fechada', fechadaEm, contaId, valor } } }
+   fin_cartao_compras/{id}: { cartaoId, data, descricao, categoria, valor, parcelas, itens: [{ n, valor, fatura: 'AAAA-MM' }] }
+   Fatura 'AAAA-MM' = mês do VENCIMENTO. Fecha em (vencimento − diasFechamento). Compra feita depois do fechamento vai para a próxima.
+   A compra não mexe no caixa/banco; entra no DRE como despesa na data da compra. A fatura fechada vira conta a pagar
+   (fat-{cartão}-{mês}); o pagamento dela é a saída de dinheiro, mas não conta como despesa de novo no DRE. */
+const CAT_FATURA = 'Pagamento de fatura de cartão';
+const ehPagtoFatura = l => l.categoria === CAT_FATURA || /^fat-/.test(l.refId || '');
+// Lançamentos para despesas/DRE: sem o pagamento de fatura, com as compras no cartão (data da compra)
+function lancDespesas(lancs) {
+  return lancs.filter(l => !ehPagtoFatura(l)).concat(S.compras.map(c => ({ id: 'cc-' + c.id, tipo: 'saida', data: c.data, valor: Number(c.valor) || 0, categoria: c.categoria,
+    descricao: `💳 ${c.descricao}`, conta: 'cartao:' + c.cartaoId, origem: 'cartao' })));
+}
+const vencDe = (c, m) => { const [y, mm] = m.split('-').map(Number), ult = new Date(y, mm, 0).getDate(); return `${m}-${String(Math.min(Number(c.diaVenc) || 10, ult)).padStart(2, '0')}`; };
+const fechDe = (c, m) => F.addDias(vencDe(c, m), -(c.diasFechamento != null && c.diasFechamento !== '' ? Number(c.diasFechamento) : 7));
+const faturaFechada = (c, m) => !!((c.faturas || {})[m] && c.faturas[m].status === 'fechada');
+// Fatura (mês) em que cai uma compra feita na data d: a primeira ainda aberta cujo fechamento é >= d
+function faturaDaData(c, d) {
+  let m = F.addMes(F.mesDe(d), -1);
+  for (let i = 0; i < 40 && (d > fechDe(c, m) || faturaFechada(c, m)); i++) m = F.addMes(m, 1);
+  return m;
+}
+const itensCartao = id => S.compras.filter(x => x.cartaoId === id).flatMap(x => (x.itens || []).map(i => Object.assign({ compra: x }, i)));
+const valorFatura = (id, m) => r2(itensCartao(id).filter(i => i.fatura === m).reduce((t, i) => t + i.valor, 0));
+// Fatura paga = conta a pagar dela paga → libera o limite
+function situacaoFatura(c, m) {
+  const f = (c.faturas || {})[m];
+  if (!f || f.status !== 'fechada') return 'aberta';
+  const k = f.contaId && S.contas.find(x => x.id === f.contaId);
+  return k && k.status === 'paga' ? 'paga' : 'fechada';
+}
+function resumoCartao(c) {
+  const meses = [...new Set(itensCartao(c.id).map(i => i.fatura).concat(Object.keys(c.faturas || {})))].sort();
+  const usado = r2(itensCartao(c.id).filter(i => situacaoFatura(c, i.fatura) !== 'paga').reduce((t, i) => t + i.valor, 0));
+  const limite = Number(c.limite) || 0, atual = faturaDaData(c, hoje());
+  return { meses, usado, limite, disponivel: r2(limite - usado), atual, valorAtual: valorFatura(c.id, atual), fech: fechDe(c, atual), venc: vencDe(c, atual) };
+}
+// Fecha (manual ou automático) a fatura m: cria/atualiza a conta a pagar fat-{cartão}-{m} (id fixo: não duplica)
+async function fecharFatura(c, m, auto) {
+  const valor = valorFatura(c.id, m);
+  if (!(valor > 0)) { if (!auto) toast('Fatura sem compras: nada a fechar.'); return false; }
+  const contaId = `fat-${c.id}-${m}`, ex = S.contas.find(x => x.id === contaId);
+  if (ex && ex.status === 'paga') return false;
+  const { id, atualizadoEm, atualizadoPor, ...doc } = c;
+  const faturas = Object.assign({}, c.faturas || {}, { [m]: { status: 'fechada', fechadaEm: Date.now(), contaId, valor, auto: !!auto } });
+  await Fin.lote([
+    { op: 'replace', col: 'fin_contas', id: contaId, dados: { natureza: 'pagar', descricao: `Fatura ${c.nome} ${m.slice(5)}/${m.slice(0, 4)}`, pessoa: c.nome, categoria: CAT_FATURA, valor,
+      vencimento: vencDe(c, m), conta: c.contaPg || 'banco', forma: 'transferencia', recorrencia: { tipo: 'unica' }, status: 'aberta', serieId: contaId,
+      faturaCartao: { cartaoId: c.id, mes: m }, obs: `${itensCartao(c.id).filter(i => i.fatura === m).length} lançamento(s) no cartão`, criadoEm: ex ? ex.criadoEm || Date.now() : Date.now() } },
+    { op: 'replace', col: 'fin_cartoes', id: c.id, dados: Object.assign(doc, { faturas }) }]);
+  return true;
+}
+// Ao abrir a página: fecha sozinho as faturas cujo fechamento já passou
+let fechandoAuto = false;
+async function fecharFaturasVencidas() {
+  if (fechandoAuto || !['cartoes', 'compras', 'contas'].every(k => carregados.has(k))) return;
+  const h = hoje(), pend = [];
+  S.cartoes.filter(c => c.ativo !== false).forEach(c => resumoCartao(c).meses.forEach(m => { if (!faturaFechada(c, m) && fechDe(c, m) < h && valorFatura(c.id, m) > 0) pend.push([c, m]); }));
+  if (!pend.length) return;
+  fechandoAuto = true;
+  try { for (const [c, m] of pend) await fecharFatura(c, m, true); toast(`💳 ${pend.length} fatura(s) fechada(s) e lançada(s) em 📤 A pagar.`); }
+  catch (e) { erro(e); }
+  finally { fechandoAuto = false; }
+}
+function renderCartoes() {
+  const l = S.cartoes.filter(c => c.ativo !== false || $('ctInativos').checked).sort((a, b) => a.nome.localeCompare(b.nome));
+  const sit = { aberta: '<span class="tag azul">aberta</span>', fechada: '<span class="tag amar">fechada • a pagar</span>', paga: '<span class="tag verde">paga</span>' };
+  $('listaCartoes').innerHTML = l.length ? l.map(c => {
+    const r = resumoCartao(c), uso = r.limite ? Math.min(100, r.usado / r.limite * 100) : 0;
+    const fats = r.meses.filter(m => valorFatura(c.id, m) > 0 || faturaFechada(c, m)).slice(-6).reverse();
+    return `<div class="card" style="margin:0 0 12px">
+      <div class="barraTopo"><h2>💳 ${esc(c.nome)}${c.bandeira ? ` <span class="muted" style="font-weight:400">${esc(c.bandeira)}</span>` : ''}${c.ativo === false ? ' <span class="tag">inativo</span>' : ''}</h2>
+        <div class="acoes"><button class="btn sm" onclick="compraCartao('${c.id}')">🛒 Nova compra</button><button class="btn sm sec" onclick="verFatura('${c.id}','${r.atual}')">📄 Fatura</button>
+          <button class="btn sm dark" onclick="fecharFaturaAgora('${c.id}')">🔒 Fechar fatura agora</button><button class="btn sm sec" onclick="editarCartao('${c.id}')">✏️</button></div></div>
+      <div class="kpis" style="margin-bottom:6px">
+        <div class="kpi"><small>Limite</small><b>${dinheiro(r.limite)}</b></div>
+        <div class="kpi ${r.usado > r.limite ? 'verm' : ''}"><small>Usado (em aberto)</small><b>${dinheiro(r.usado)}</b></div>
+        <div class="kpi ${r.disponivel < 0 ? 'verm' : r.limite && r.disponivel < r.limite * 0.2 ? 'amar' : 'verde'}"><small>Disponível</small><b>${corV(r.disponivel)}</b></div>
+        <div class="kpi"><small>Fatura atual (${r.atual.slice(5)}/${r.atual.slice(0, 4)})</small><b>${dinheiro(r.valorAtual)}</b><span>fecha ${br(r.fech)} • vence ${br(r.venc)}</span></div>
+      </div>
+      <div class="meta"><i style="width:${uso.toFixed(1)}%;background:${uso >= 100 ? 'var(--brand)' : uso >= 80 ? 'var(--warn)' : 'var(--ok)'}"></i></div>
+      <div class="muted" style="margin-top:4px">${pct(uso)} do limite usado • vence dia ${c.diaVenc}, fecha ${c.diasFechamento != null ? c.diasFechamento : 7} dia(s) antes • paga pela conta ${esc(nomeConta(c.contaPg))}</div>
+      ${fats.length ? `<div class="rolar" style="margin-top:8px"><table><tr><th>Fatura</th><th>Fecha</th><th>Vence</th><th class="r">Valor</th><th>Situação</th><th></th></tr>${fats.map(m => `<tr><td>${m.slice(5)}/${m.slice(0, 4)}</td><td>${br(fechDe(c, m))}</td><td>${br(vencDe(c, m))}</td>
+        <td class="r"><b>${dinheiro(valorFatura(c.id, m))}</b></td><td>${sit[situacaoFatura(c, m)]}</td><td><button class="btn sm sec" onclick="verFatura('${c.id}','${m}')">📄</button></td></tr>`).join('')}</table></div>` : ''}
+    </div>`;
+  }).join('') : '<div class="vazio">Nenhum cartão cadastrado. Toque em ➕ Cartão.</div>';
+}
+function editarCartao(id) {
+  const c = id ? S.cartoes.find(x => x.id === id) : { diaVenc: 10, diasFechamento: 7, contaPg: (contasAtivas().find(k => k.tipo === 'banco') || contasAtivas()[0] || {}).id, ativo: true };
+  if (!c) return;
+  abrirForm(id ? `✏️ ${c.nome}` : '➕ Novo cartão', [
+    { k: 'nome', l: 'Nome / apelido', v: c.nome, ph: 'ex.: Nubank PJ' }, { k: 'bandeira', l: 'Bandeira (opcional)', v: c.bandeira, ph: 'Visa, Master, Elo…' },
+    { k: 'limite', l: 'Limite (R$)', t: 'number', v: c.limite }, { k: 'diaVenc', l: 'Dia do vencimento', t: 'number', v: c.diaVenc },
+    { k: 'diasFechamento', l: 'Fecha quantos dias antes do vencimento', t: 'number', v: c.diasFechamento != null ? c.diasFechamento : 7 },
+    { k: 'contaPg', l: 'Conta que paga a fatura', t: 'select', op: opContas(), v: c.contaPg },
+    { k: 'ativo', l: 'Ativo', t: 'check', v: c.ativo !== false }
+  ], async v => {
+    const dia = Math.floor(v.diaVenc || 0), dias = v.diasFechamento == null ? 7 : Math.floor(v.diasFechamento);
+    if (!exigir(v.nome, 'Informe o nome do cartão.') || !exigir(v.limite > 0, 'Informe o limite.') || !exigir(dia >= 1 && dia <= 31, 'Dia do vencimento de 1 a 31.') || !exigir(dias >= 0 && dias <= 25, 'Dias de fechamento de 0 a 25.')) return false;
+    const { id: _, atualizadoEm, atualizadoPor, ...base } = c;
+    await Fin.substituir('fin_cartoes', id || Fin.novoId('ct'), Object.assign(base, { nome: v.nome, bandeira: v.bandeira, limite: v.limite, diaVenc: dia, diasFechamento: dias, contaPg: v.contaPg, ativo: v.ativo,
+      faturas: c.faturas || {}, criadoEm: c.criadoEm || Date.now() }));
+    toast('Cartão salvo.');
+  });
+}
+function compraCartao(id) {
+  const c = S.cartoes.find(x => x.id === id); if (!c) return;
+  const r = resumoCartao(c);
+  abrirForm(`🛒 Compra no ${c.nome}`, [
+    { k: 'data', l: 'Data da compra', t: 'date', v: hoje(), on: 'prevCompra()' }, { k: 'valor', l: 'Valor total (R$)', t: 'number', on: 'prevCompra()' },
+    { k: 'descricao', l: 'Descrição', w2: true, ph: 'ex.: mussarela no atacado' },
+    { k: 'categoria', l: 'Categoria', t: 'select', op: opCats('saida'), v: 'Insumos/ingredientes' },
+    { k: 'parcelas', l: 'Parcelas', t: 'select', op: Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}x`]), v: 1, on: 'prevCompra()' }
+  ], async v => {
+    if (!exigir(v.valor > 0, 'Informe o valor.') || !exigir(v.descricao, 'Informe a descrição.') || !exigir(v.data, 'Informe a data.')) return false;
+    const r2_ = resumoCartao(S.cartoes.find(x => x.id === id));
+    if (v.valor > r2_.disponivel + 0.004 && !confirm(`A compra (${dinheiro(v.valor)}) passa do disponível no cartão (${dinheiro(r2_.disponivel)}). Lançar mesmo assim?`)) return false;
+    const n = Number(v.parcelas) || 1, itens = parcelasCompra(c, v.data, v.valor, n);
+    await Fin.substituir('fin_cartao_compras', Fin.novoId('cc'), { cartaoId: id, data: v.data, descricao: v.descricao, categoria: v.categoria, valor: v.valor, parcelas: n, itens, criadoEm: Date.now(), criadoPor: Fin.usuario() });
+    toast(`Compra lançada: ${n}x de ${dinheiro(itens[0].valor)} — 1ª na fatura ${itens[0].fatura.slice(5)}/${itens[0].fatura.slice(0, 4)}.`);
+  }, { topo: `<div class="muted" style="margin-bottom:6px">Disponível: <b>${dinheiro(r.disponivel)}</b> de ${dinheiro(r.limite)}</div><div id="prevCompraBox"></div>`, aoAbrir: () => { prevCompra.c = c; } });
+}
+// Parcelas: centavos que sobram na 1ª; a 1ª cai na fatura da data, as demais nos meses seguintes
+function parcelasCompra(c, data, total, n) {
+  const cent = Math.round(total * 100), base = Math.floor(cent / n), resto = cent - base * n, m0 = faturaDaData(c, data);
+  return Array.from({ length: n }, (_, i) => ({ n: i + 1, valor: (base + (i === 0 ? resto : 0)) / 100, fatura: F.addMes(m0, i) }));
+}
+function prevCompra() {
+  const v = valoresForm(), c = prevCompra.c; if (!c || !(v.valor > 0) || !v.data) { $('prevCompraBox').innerHTML = ''; return; }
+  const it = parcelasCompra(c, v.data, v.valor, Number(v.parcelas) || 1);
+  $('prevCompraBox').innerHTML = `<div class="muted">${it.map(i => `${i.n}ª ${dinheiro(i.valor)} → fatura ${i.fatura.slice(5)}/${i.fatura.slice(0, 4)} (vence ${br(vencDe(c, i.fatura))})`).join('<br>')}</div>`;
+}
+async function fecharFaturaAgora(id) {
+  const c = S.cartoes.find(x => x.id === id); if (!c) return;
+  const m = faturaDaData(c, hoje()), v = valorFatura(id, m);
+  if (!(v > 0)) return toast('A fatura atual não tem compras.');
+  if (!confirm(`Fechar agora a fatura ${m.slice(5)}/${m.slice(0, 4)} do ${c.nome} (${dinheiro(v)})?\n\nVira conta a pagar com vencimento ${br(vencDe(c, m))}. Compras novas vão para a próxima fatura.`)) return;
+  try { if (await fecharFatura(c, m, false)) toast('Fatura fechada e lançada em 📤 A pagar.'); } catch (e) { erro(e); }
+}
+// Reabrir: só fatura fechada e não paga → apaga a conta a pagar
+async function reabrirFatura(id, m) {
+  const c = S.cartoes.find(x => x.id === id); if (!c) return;
+  if (situacaoFatura(c, m) === 'paga') return toast('Fatura já paga: desfaça o pagamento em 📤 A pagar antes.');
+  if (!confirm(`Reabrir a fatura ${m.slice(5)}/${m.slice(0, 4)}? A conta a pagar dela é apagada (ela será recriada ao fechar de novo).`)) return;
+  const { id: _, atualizadoEm, atualizadoPor, ...doc } = c, faturas = Object.assign({}, c.faturas); const f = faturas[m]; delete faturas[m];
+  try { await Fin.lote([{ op: 'replace', col: 'fin_cartoes', id, dados: Object.assign(doc, { faturas }) }].concat(f && f.contaId ? [{ op: 'delete', col: 'fin_contas', id: f.contaId }] : [])); fechar('mVer'); toast('Fatura reaberta.'); }
+  catch (e) { erro(e); }
+}
+function verFatura(id, m) {
+  const c = S.cartoes.find(x => x.id === id); if (!c) return;
+  const r = resumoCartao(c), meses = [...new Set(r.meses.concat([r.atual, m]))].sort(), sit = situacaoFatura(c, m);
+  const it = itensCartao(id).filter(i => i.fatura === m).sort((a, b) => a.compra.data.localeCompare(b.compra.data));
+  $('verBox').innerHTML = `<div class="barraTopo"><h2>📄 Fatura ${esc(c.nome)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
+    <div class="filtros"><select onchange="verFatura('${id}',this.value)" style="width:auto">${meses.map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>${x.slice(5)}/${x.slice(0, 4)}</option>`).join('')}</select>
+      <span class="tag ${sit === 'paga' ? 'verde' : sit === 'fechada' ? 'amar' : 'azul'}">${sit === 'paga' ? 'paga' : sit === 'fechada' ? 'fechada • a pagar' : 'aberta'}</span>
+      <span class="muted">fecha ${br(fechDe(c, m))} • vence ${br(vencDe(c, m))}</span></div>
+    <div class="rolar"><table><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Parcela</th><th class="r">Valor</th><th></th></tr>
+    ${it.length ? it.map(i => `<tr><td>${br(i.compra.data)}</td><td>${esc(i.compra.descricao)}</td><td>${esc(i.compra.categoria || '')}</td><td>${i.compra.parcelas > 1 ? `${i.n}/${i.compra.parcelas}` : 'à vista'}</td>
+      <td class="r">${dinheiro(i.valor)}</td><td>${sit === 'aberta' && !(i.compra.itens || []).some(x => faturaFechada(c, x.fatura)) ? `<button class="btn sm sec" title="Excluir a compra (todas as parcelas)" onclick="excluirCompraCartao('${i.compra.id}','${m}')">🗑️</button>` : ''}</td></tr>`).join('')
+      : '<tr><td colspan="6" class="vazio">Nenhuma compra nesta fatura.</td></tr>'}
+    <tr class="tot"><td colspan="4">Total da fatura</td><td class="r">${dinheiro(valorFatura(id, m))}</td><td></td></tr></table></div>
+    ${sit === 'aberta' && valorFatura(id, m) > 0 ? `<button class="btn full" style="margin-top:10px" onclick="fechar('mVer');fecharFaturaDe('${id}','${m}')">🔒 Fechar esta fatura</button>` : ''}
+    ${sit === 'fechada' ? `<button class="btn sec full" style="margin-top:10px" onclick="reabrirFatura('${id}','${m}')">↩️ Reabrir fatura (apaga a conta a pagar)</button>` : ''}`;
+  $('mVer').classList.add('on');
+}
+async function fecharFaturaDe(id, m) {
+  const c = S.cartoes.find(x => x.id === id); if (!c) return;
+  try { if (await fecharFatura(c, m, false)) toast('Fatura fechada e lançada em 📤 A pagar.'); } catch (e) { erro(e); }
+}
+async function excluirCompraCartao(cid, m) {
+  const x = S.compras.find(k => k.id === cid); if (!x) return;
+  const c = S.cartoes.find(k => k.id === x.cartaoId);
+  if ((x.itens || []).some(i => faturaFechada(c, i.fatura))) return toast('Esta compra tem parcela em fatura já fechada: reabra a fatura antes.');
+  if (!confirm(`Excluir a compra "${x.descricao}" (${dinheiro(x.valor)}${x.parcelas > 1 ? `, ${x.parcelas}x` : ''})?`)) return;
+  try { await Fin.apagar('fin_cartao_compras', cid); verFatura(x.cartaoId, m); toast('Compra excluída.'); } catch (e) { erro(e); }
+}
+
 /* ================= RELATÓRIOS ================= */
 const PER_REL = [['mes', 'Este mês'], ['mesPassado', 'Mês passado'], ['3m', 'Últimos 3 meses'], ['ano', 'Este ano']];
 function intervaloRel() {
@@ -1260,7 +1442,7 @@ function dreMes(m) {
   const de = F.inicioMes(m), ate = F.fimDoMes(m), ped = pedidos.filter(p => p.data >= de && p.data <= ate);
   const fiadosSem = S.fiados.reduce((t, f) => t + (f.movimentos || []).filter(x => x.tipo === 'compra' && !x.pedido && x.data >= de && x.data <= ate).reduce((a, x) => a + x.valor, 0), 0);
   const cm = cmvPedidos(ped), consumo = F.resumoConsumo(ped, custoItem);
-  const d = F.dre({ pedidos: ped.filter(p => p.data >= desdeVendas()), lanc: S.lanc.filter(l => l.data >= de && l.data <= ate), cats: cfg().categorias, taxaCartaoPct: taxaCartao(), cmvPedidos: cm, fiadosSemPedido: fiadosSem, consumo });
+  const d = F.dre({ pedidos: ped.filter(p => p.data >= desdeVendas()), lanc: lancDespesas(S.lanc).filter(l => l.data >= de && l.data <= ate), cats: cfg().categorias, taxaCartaoPct: taxaCartao(), cmvPedidos: cm, fiadosSemPedido: fiadosSem, consumo });
   d.pizzas = cm.pizzas;
   return d;
 }
@@ -1309,7 +1491,7 @@ function csvDre() {
 }
 function renderCat() {
   const [de, ate] = intervaloRel(), o = {};
-  todosLanc().forEach(l => { if (l.tipo === 'saida' && l.data >= de && l.data <= ate) o[l.categoria || 'Outros'] = (o[l.categoria || 'Outros'] || 0) + l.valor; });
+  lancDespesas(todosLanc()).forEach(l => { if (l.tipo === 'saida' && l.data >= de && l.data <= ate) o[l.categoria || 'Outros'] = (o[l.categoria || 'Outros'] || 0) + l.valor; });
   const e = Object.entries(o).sort((a, b) => b[1] - a[1]), tot = e.reduce((t, x) => t + x[1], 0), max = e.length ? e[0][1] : 1;
   $('rCat').innerHTML = e.length ? e.map(([k, v]) => `<div class="hb" data-dica="${esc(k)}\n${dinheiro(v)} (${pct(v / tot * 100)})"><span class="n">${esc(k)}</span><span class="t"><i style="width:${(v / max * 100).toFixed(1)}%"></i></span><span class="v">${dinheiro(v)} <small class="muted">${pct(v / tot * 100)}</small></span></div>`).join('') +
     `<div class="linha total"><span>Total de saídas</span><b>${dinheiro(tot)}</b></div>` : '<div class="vazio">Nenhuma saída no período.</div>';
@@ -1318,7 +1500,9 @@ function render6m() {
   const meses = Array.from({ length: 6 }, (_, i) => F.addMes(mesAtual(), i - 5)), L = todosLanc();
   const cat = {}, tot = meses.map(() => ({ e: 0, s: 0 }));
   L.forEach(l => { const i = meses.indexOf(F.mesDe(l.data)); if (i < 0 || l.tipo === 'transferencia') return;
-    if (l.tipo === 'entrada') tot[i].e += l.valor; else { tot[i].s += l.valor; const k = l.categoria || 'Outros'; (cat[k] = cat[k] || meses.map(() => 0))[i] += l.valor; } });
+    if (l.tipo === 'entrada') tot[i].e += l.valor; else tot[i].s += l.valor; });
+  // categorias por competência: compras no cartão no mês da compra; pagamento de fatura não entra de novo
+  lancDespesas(L).forEach(l => { const i = meses.indexOf(F.mesDe(l.data)); if (i < 0 || l.tipo !== 'saida') return; const k = l.categoria || 'Outros'; (cat[k] = cat[k] || meses.map(() => 0))[i] += l.valor; });
   const ds = meses.map(m => dreMes(m));
   $('r6m').innerHTML = graficoBarras(meses.map((m, i) => ({ rot: brMes(m), vals: [tot[i].e, tot[i].s], dica: `${brMes(m)}\nEntradas ${dinheiro(tot[i].e)}\nSaídas ${dinheiro(tot[i].s)}\nLucro (DRE) ${dinheiro(ds[i].lucro)}` })), [{ nome: 'Entradas', cor: COR_E }, { nome: 'Saídas', cor: COR_S }]) +
     `<table style="margin-top:10px"><tr><th></th>${meses.map(m => `<th class="r">${brMes(m)}</th>`).join('')}</tr>
