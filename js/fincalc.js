@@ -176,22 +176,32 @@ window.FinCalc = (function () {
   }
 
   /* ---------------- CAIXA DO DIA (turno) ----------------
-     Esperado em dinheiro = abertura + vendas em dinheiro + suprimentos − sangrias
-                          + entradas manuais em dinheiro − saídas em dinheiro (conta do caixa físico, no dia) */
-  function esperadoCaixa(turno, vendasDia, lancDia, contaCaixa) {
-    const movs = turno.movimentos || [];
-    const sup = r2(movs.filter(m => m.tipo === 'suprimento').reduce((s, m) => s + (Number(m.valor) || 0), 0));
-    const san = r2(movs.filter(m => m.tipo === 'sangria').reduce((s, m) => s + (Number(m.valor) || 0), 0));
-    let entMan = 0, saiMan = 0;
-    (lancDia || []).forEach(l => {
-      if (l.virtual || l.origem === 'caixa' || l.data !== turno.data) return;   // sangria/suprimento/ajuste já contam acima
-      const e = efeito(l, contaCaixa);
-      if (e > 0) entMan += e; else saiMan -= e;
-    });
+     Esperado em dinheiro = abertura + vendas em dinheiro do turno
+                          + TODAS as entradas − TODAS as saídas da conta "Caixa físico" lançadas DURANTE o turno
+     (sangria, suprimento, retirada do dono, despesas, contas pagas, vales, folha, fiado recebido, transferências),
+     venha de onde vier (aba Lançamentos, Contas, Fiados, Funcionários ou o próprio Caixa).
+     "Durante o turno" = lançamento criado entre a abertura e o fechamento (criadoEm), não a data digitada:
+     assim turno que passa da meia-noite e lançamento com data retroativa contam certo.
+     Ajustes de fechamento (sobra/quebra e correções) não entram. */
+  const ehAjusteCaixa = l => !!l.ajusteCaixa || (l.origem === 'caixa' && /^(Sobra|Quebra) de caixa$/.test(l.categoria || ''));
+  function noTurno(l, turno, fim) {
+    if (l.virtual || ehAjusteCaixa(l)) return false;
+    if (l.criadoEm) return l.criadoEm >= (turno.abertoEm || 0) && l.criadoEm <= (fim || Infinity);
+    return l.data === turno.data;   // lançamento antigo sem hora: pela data
+  }
+  // Linhas que mexem na gaveta durante o turno: [{ id, em, descricao, categoria, valor (+ entra / − sai), l }]
+  function linhasTurno(turno, lancs, contaCaixa, fim) {
+    return (lancs || []).filter(l => noTurno(l, turno, fim)).map(l => ({ l, v: efeito(l, contaCaixa) })).filter(x => Math.abs(x.v) > 0.004)
+      .map(({ l, v }) => ({ id: l.id, em: l.criadoEm || null, data: l.data, descricao: l.descricao || '', categoria: l.categoria || (l.tipo === 'transferencia' ? 'Transferência' : ''),
+        origem: l.origem || 'manual', valor: r2(v) }))
+      .sort((a, b) => (a.em || 0) - (b.em || 0));
+  }
+  function esperadoCaixa(turno, vendasDia, lancs, contaCaixa, fim) {
+    const linhas = linhasTurno(turno, lancs, contaCaixa, fim);
+    const ent = r2(linhas.filter(x => x.valor > 0).reduce((s, x) => s + x.valor, 0)), sai = r2(-linhas.filter(x => x.valor < 0).reduce((s, x) => s + x.valor, 0));
     const v = vendasDia || {};
-    const dinheiro = r2((Number(turno.trocoInicial) || 0) + (v.dinheiro || 0) + sup - san + entMan - saiMan);
-    return { abertura: r2(turno.trocoInicial), vendasDinheiro: r2(v.dinheiro), suprimentos: sup, sangrias: san,
-      entradasDinheiro: r2(entMan), saidasDinheiro: r2(saiMan), dinheiro, pix: r2(v.pix), cartao: r2(v.cartao) };
+    const dinheiro = r2((Number(turno.trocoInicial) || 0) + (v.dinheiro || 0) + ent - sai);
+    return { abertura: r2(turno.trocoInicial), vendasDinheiro: r2(v.dinheiro), entradasDinheiro: ent, saidasDinheiro: sai, linhas, dinheiro, pix: r2(v.pix), cartao: r2(v.cartao) };
   }
   function diferencas(esperado, contado) {
     const o = {};
@@ -423,7 +433,7 @@ window.FinCalc = (function () {
 
   return {
     r2, addDias, addMeses, diasEntre, mesDe, inicioMes, fimDoMes, addMes, RECORRENCIAS, proxima, proximaOcorrencia, projetar, parcelas, situacao,
-    valido, ehConsumo, TIPOS_CONSUMO, custoConsumo, resumoConsumo, vendasPorDia, lancamentosVendas, chavesFiado, efeito, saldos, totais, fluxo, fluxoMensal, esperadoCaixa, diferencas,
+    valido, ehConsumo, TIPOS_CONSUMO, custoConsumo, resumoConsumo, vendasPorDia, lancamentosVendas, chavesFiado, efeito, saldos, totais, fluxo, fluxoMensal, esperadoCaixa, linhasTurno, noTurno, ehAjusteCaixa, diferencas,
     resumoFiado, TIPOS_PAG, periodoFolha, entregasDe, calcularFolha, folhaEstimada, CATEGORIAS, GRUPOS, grupoDe, dre, pontoEquilibrio, previsao, csv
   };
 })();
