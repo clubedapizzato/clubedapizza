@@ -239,9 +239,24 @@ function abrirForm(titulo, campos, salvar, o = {}) {
     return `<div class="${c.w2 ? 'w2' : ''} ${c.oculto ? 'hide' : ''}" id="box_${c.k}"><label for="${id}">${c.l}</label>${inp}</div>`;
   }).join('') + (o.datalist || '');
   $('formOk').onclick = enviarForm;
+  // forma "dinheiro" = sai/entra da gaveta → conta Caixa físico (evita pagar em dinheiro lançando no Banco)
+  const fForma = $('ff_forma'), fConta = $('ff_conta');
+  if (fConta) {
+    if (fForma) fForma.addEventListener('change', () => { if (fForma.value === 'dinheiro' && contaCaixa()) fConta.value = contaCaixa(); avisoGaveta(); });
+    fConta.addEventListener('change', avisoGaveta);
+    fConta.insertAdjacentHTML('afterend', '<div id="avisoGaveta"></div>');
+    setTimeout(avisoGaveta, 0);
+  }
   $('mForm').classList.add('on');
   if (o.aoAbrir) o.aoAbrir();
   const p = $('formCampos').querySelector('input:not([type=checkbox]),select,textarea'); p && setTimeout(() => p.focus(), 50);
+}
+function avisoGaveta() {
+  const c = $('ff_conta'), f = $('ff_forma'), el = $('avisoGaveta'); if (!c || !el) return;
+  const t = turnoAberto(), cx = c.value === contaCaixa();
+  el.innerHTML = cx ? (t ? `<div class="muted" style="margin-top:4px">💵 Mexe no dinheiro da gaveta: entra no caixa aberto (${br(t.data)}).</div>`
+      : '<div class="aviso">⚠️ Caixa fechado: este valor mexe na gaveta e entra no <b>troco sugerido da próxima abertura</b>.</div>')
+    : f && f.value === 'dinheiro' ? `<div class="aviso">⚠️ Forma dinheiro, mas conta ${esc(nomeConta(c.value))}: não entra no caixa do dia. Se o dinheiro saiu/entrou da gaveta, escolha ${esc(nomeConta(contaCaixa()))}.</div>` : '';
 }
 function valoresForm() {
   const v = {};
@@ -278,60 +293,107 @@ const opFormas = () => Object.entries(FORMAS);
 
 /* ================= CAIXA DO DIA ================= */
 const turnoAberto = () => S.caixas.filter(c => c.status === 'aberto').sort((a, b) => b.data.localeCompare(a.data))[0] || null;
-function esperadoDe(t) {
-  const lancDia = S.lanc.filter(l => l.data === t.data);
-  return F.esperadoCaixa(t, vendasDias()[t.data] || {}, lancDia, contaCaixa());
+// Esperado do turno: abertura + vendas em dinheiro + tudo que entrou/saiu da conta Caixa físico DURANTE o turno (qualquer aba)
+function esperadoDe(t, fim) { return F.esperadoCaixa(t, vendasDias()[t.data] || {}, S.lanc, contaCaixa(), fim || t.fechadoEm || Date.now()); }
+const hora = ms => ms ? new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
+const ORIGEM_TXT = { manual: '📒 Lançamentos', caixa: '🧾 Caixa', conta_pagar: '📤 Conta paga', conta_receber: '📥 Conta recebida', fiado: '📝 Fiado', folha: '👷 Folha/vale' };
+function tabelaLinhas(linhas, vazio) {
+  return linhas.length ? `<div class="rolar"><table><tr><th>Hora</th><th>Descrição</th><th>Categoria</th><th>Lançado em</th><th class="r">Gaveta</th></tr>${linhas.map(x => `<tr><td>${hora(x.em) || br(x.data)}</td>
+    <td>${esc(x.descricao)}</td><td>${esc(x.categoria)}</td><td class="muted">${ORIGEM_TXT[x.origem] || esc(x.origem)}</td><td class="r">${sinal(Math.abs(x.valor), x.valor > 0 ? 'entrada' : 'saida')}</td></tr>`).join('')}</table></div>`
+    : `<div class="vazio">${vazio}</div>`;
+}
+// Lançamentos em dinheiro (conta Caixa físico) feitos com o caixa FECHADO, depois do último fechamento → entram no troco da próxima abertura
+function semTurno() {
+  if (turnoAberto()) return [];
+  const ult = S.caixas.filter(c => c.status === 'fechado').reduce((m, c) => Math.max(m, c.fechadoEm || 0), 0);
+  const cx = contaCaixa();
+  return S.lanc.filter(l => !l.virtual && !F.ehAjusteCaixa(l) && l.criadoEm > ult && Math.abs(F.efeito(l, cx)) > 0.004)
+    .map(l => ({ id: l.id, em: l.criadoEm, data: l.data, descricao: l.descricao || '', categoria: l.categoria || 'Transferência', origem: l.origem || 'manual', valor: r2(F.efeito(l, cx)) }))
+    .sort((a, b) => a.em - b.em);
 }
 function renderCaixa() {
   const t = turnoAberto(), dc = diaCaixa();
   if (!t) {
-    const ult = S.caixas.filter(c => c.status === 'fechado').sort((a, b) => b.fechadoEm - a.fechadoEm)[0];
-    $('turno').innerHTML = `<h2>🧾 Caixa do dia — ${br(dc)}</h2><div class="muted">Nenhum caixa aberto.${ult ? ` Último fechamento: ${br(ult.data)} (contado em dinheiro ${dinheiro((ult.contado || {}).dinheiro)}).` : ''}</div>
+    const ult = S.caixas.filter(c => c.status === 'fechado').sort((a, b) => b.fechadoEm - a.fechadoEm)[0], st = semTurno();
+    $('turno').innerHTML = `<h2>🧾 Caixa do dia — ${br(dc)}</h2><div class="muted">Nenhum caixa aberto.${ult ? ` Último fechamento: ${br(ult.data)} (contado em dinheiro ${dinheiro((ult.contado || {}).dinheiro)}${ult.ficouNaGaveta != null ? `, ficou na gaveta ${dinheiro(ult.ficouNaGaveta)}` : ''}).` : ''}</div>
+      ${st.length ? `<div class="aviso" style="margin-top:10px">⚠️ <b>Movimentos em dinheiro com o caixa fechado</b> (depois do último fechamento). Eles mudam o dinheiro da gaveta e entram no <b>troco sugerido</b> da próxima abertura:</div>${tabelaLinhas(st, '')}` : ''}
       <button class="btn" style="margin-top:12px" onclick="abrirCaixa()">🔓 Abrir caixa</button>`;
   } else {
     const e = esperadoDe(t), v = vendasDias()[t.data] || {};
     const lin = (n, val, cls = '') => `<div class="linha ${cls}"><span>${n}</span><b>${val}</b></div>`;
     $('turno').innerHTML = `<div class="barraTopo"><h2>🧾 Caixa aberto — ${br(t.data)}</h2>
-      <div class="acoes"><button class="btn sm sec" onclick="movCaixa('suprimento')">➕ Suprimento</button><button class="btn sm sec" onclick="movCaixa('sangria')">➖ Sangria</button>
+      <div class="acoes"><button class="btn sm" onclick="retirada()">➖ Retirada</button><button class="btn sm sec" onclick="movCaixa('suprimento')">➕ Suprimento</button><button class="btn sm sec" onclick="movCaixa('sangria')">➖ Sangria</button>
       <button class="btn sm dark" onclick="fecharCaixa()">🔒 Fechar caixa</button></div></div>
-      <div class="muted">Aberto por ${esc(t.abertoPor || '—')} às ${new Date(t.abertoEm).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}${t.data !== dc ? ` • <b style="color:#b91c1c">turno de outro dia — feche este caixa</b>` : ''}</div>
+      <div class="muted">Aberto por ${esc(t.abertoPor || '—')} às ${hora(t.abertoEm)}${t.data !== dc ? ` • <b style="color:#b91c1c">turno de outro dia — feche este caixa</b>` : ''}</div>
       <div class="grade" style="margin-top:10px"><div>
         <h3>💵 Dinheiro na gaveta (esperado)</h3>
-        ${lin('Troco inicial', dinheiro(e.abertura))}${lin('+ Vendas em dinheiro', dinheiro(e.vendasDinheiro))}${lin('+ Suprimentos', dinheiro(e.suprimentos))}
-        ${lin('− Sangrias', dinheiro(e.sangrias))}${e.entradasDinheiro ? lin('+ Outras entradas no caixa', dinheiro(e.entradasDinheiro)) : ''}${lin('− Saídas pagas do caixa', dinheiro(e.saidasDinheiro))}
+        ${lin('Troco inicial', dinheiro(e.abertura))}${lin('+ Vendas em dinheiro', dinheiro(e.vendasDinheiro))}
+        ${lin('+ Entradas no caixa (suprimento, fiado, outras)', dinheiro(e.entradasDinheiro))}${lin('− Saídas do caixa (retiradas, sangrias, despesas, contas, vales)', dinheiro(e.saidasDinheiro))}
         ${lin('= Esperado na gaveta', dinheiro(e.dinheiro), 'total')}
       </div><div>
         <h3>🛒 Vendas do turno (${v.qtd || 0} pedido(s))</h3>
         ${lin('💵 Dinheiro', dinheiro(v.dinheiro))}${lin('⚡ Pix', dinheiro(v.pix))}${lin('💳 Cartão', dinheiro(v.cartao))}${v.fiado ? lin('📝 Fiado', dinheiro(v.fiado)) : ''}${v.outros ? lin('Outras', dinheiro(v.outros)) : ''}
         ${lin('Total', dinheiro(v.total), 'total')}<div class="muted">Taxa estimada da maquininha: ${dinheiro(v.taxaCartao)} (${pct(taxaCartao())})</div>
       </div></div>
-      <h3 style="margin-top:12px">Movimentos do caixa</h3>
-      ${(t.movimentos || []).length ? `<table>${t.movimentos.map(m => `<tr><td>${new Date(m.em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</td><td>${m.tipo === 'sangria' ? '➖ Sangria' : '➕ Suprimento'}</td>
-        <td>${esc(m.motivo || '')} <span class="muted">${m.tipo === 'sangria' ? '→' : '←'} ${esc(m.destino === 'retirada' ? 'Retirada do dono' : m.destino === 'aporte' ? 'Aporte do dono' : nomeConta(m.destino))}</span></td>
-        <td class="r">${sinal(m.valor, m.tipo === 'sangria' ? 'saida' : 'entrada')}</td></tr>`).join('')}</table>` : '<div class="vazio">Nenhuma sangria ou suprimento.</div>'}`;
+      <h3 style="margin-top:12px">Entradas e saídas da gaveta neste turno</h3>
+      <div class="muted" style="margin-bottom:6px">Tudo lançado na conta <b>${esc(nomeConta(contaCaixa()))}</b> desde a abertura, venha de qualquer aba (Lançamentos, Contas, Fiados, Funcionários ou aqui).</div>
+      ${tabelaLinhas(e.linhas, 'Nenhuma entrada ou saída de dinheiro neste turno.')}`;
   }
   const h = S.caixas.filter(c => c.status === 'fechado').sort((a, b) => b.data.localeCompare(a.data) || b.fechadoEm - a.fechadoEm);
-  $('histCaixa').innerHTML = h.length ? `<table><tr><th>Dia</th><th>Fechado por</th><th class="r">Abertura</th><th class="r">Esperado 💵</th><th class="r">Contado 💵</th><th class="r">Diferença 💵</th><th class="r">Pix</th><th class="r">Cartão</th><th>Justificativa</th></tr>
-    ${h.map(c => { const d = c.diferencas || {};
+  $('histCaixa').innerHTML = h.length ? `<table><tr><th>Dia</th><th>Fechado por</th><th class="r">Abertura</th><th class="r">Esperado 💵</th><th class="r">Contado 💵</th><th class="r">Diferença 💵</th><th class="r">Pix</th><th class="r">Cartão</th><th>Justificativa</th><th></th></tr>
+    ${h.map(c => { const d = c.diferencas || {}, rc = recalculo(c), ult = (c.recalculos || []).slice(-1)[0];
       return `<tr><td>${br(c.data)}</td><td>${esc(c.fechadoPor || '')}<div class="muted">${new Date(c.fechadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div></td>
-      <td class="r">${dinheiro(c.trocoInicial)}</td><td class="r">${dinheiro((c.esperado || {}).dinheiro)}</td><td class="r">${dinheiro((c.contado || {}).dinheiro)}</td>
-      <td class="r">${difTxt(d.dinheiro)}</td><td class="r">${difTxt(d.pix)}</td><td class="r">${difTxt(d.cartao)}</td><td>${esc(c.justificativa || '')}</td></tr>`; }).join('')}</table>`
+      <td class="r">${dinheiro(c.trocoInicial)}</td><td class="r">${dinheiro((c.esperado || {}).dinheiro)}${ult ? `<div class="muted">corrigido: ${dinheiro(ult.esperadoNovo)}</div>` : ''}</td><td class="r">${dinheiro((c.contado || {}).dinheiro)}</td>
+      <td class="r">${difTxt(d.dinheiro)}${ult ? `<div>corrigida: ${difTxt(ult.diferencaNova)}</div>` : ''}</td><td class="r">${difTxt(d.pix)}</td><td class="r">${difTxt(d.cartao)}</td><td>${esc(c.justificativa || '')}</td>
+      <td style="white-space:nowrap"><button class="btn sm sec" onclick="verFechamento('${c.id}')">🔍</button>${rc ? ` <button class="btn sm dark" title="O esperado gravado não bate com as saídas/entradas lançadas" onclick="recalcularFechamento('${c.id}')">♻️ Recalcular</button>` : ''}</td></tr>`; }).join('')}</table>`
     : '<div class="vazio">Nenhum caixa fechado ainda.</div>';
 }
 const difTxt = d => d == null ? '—' : Math.abs(d) < 0.005 ? '<span class="tag verde">ok</span>' : d > 0 ? `<span class="pos">sobra ${dinheiro(d)}</span>` : `<span class="neg">falta ${dinheiro(-d)}</span>`;
 function abrirCaixa() {
-  const ult = S.caixas.filter(c => c.status === 'fechado').sort((a, b) => b.fechadoEm - a.fechadoEm)[0];
+  const ult = S.caixas.filter(c => c.status === 'fechado').sort((a, b) => b.fechadoEm - a.fechadoEm)[0], st = semTurno();
+  const mov = r2(st.reduce((t, x) => t + x.valor, 0)), base = ult && ult.ficouNaGaveta != null ? ult.ficouNaGaveta : null;
   abrirForm('🔓 Abrir caixa', [
     { k: 'data', l: 'Dia do turno', t: 'date', v: diaCaixa() },
-    { k: 'troco', l: 'Troco inicial na gaveta (R$)', t: 'number', v: ult && ult.ficouNaGaveta != null ? ult.ficouNaGaveta : '' },
+    { k: 'troco', l: 'Troco inicial na gaveta (R$) — conte o dinheiro', t: 'number', v: base != null ? r2(base + mov) : '' },
     { k: 'obs', l: 'Observação', w2: true }
   ], async v => {
     if (!exigir(v.troco != null && v.troco >= 0, 'Informe o troco inicial (0 se não tiver).') || !exigir(v.data, 'Informe o dia.')) return false;
     if (turnoAberto()) return exigir(false, 'Já existe um caixa aberto.');
     const id = 'cx-' + v.data + '-' + Date.now().toString(36);
-    await Fin.substituir('fin_caixas', id, { data: v.data, trocoInicial: v.troco, obs: v.obs, status: 'aberto', abertoEm: Date.now(), abertoPor: Fin.usuario(), movimentos: [] });
+    await Fin.substituir('fin_caixas', id, { data: v.data, trocoInicial: v.troco, obs: v.obs, status: 'aberto', abertoEm: Date.now(), abertoPor: Fin.usuario(), movimentos: [],
+      semTurno: st.length ? { valor: mov, ids: st.map(x => x.id) } : null });
     toast('Caixa aberto.');
-  }, { ok: 'Abrir caixa' });
+  }, { ok: 'Abrir caixa', topo: st.length ? `<div class="aviso">Com o caixa fechado houve ${st.length} movimento(s) em dinheiro: ${mov >= 0 ? 'entrou' : 'saiu'} <b>${dinheiro(Math.abs(mov))}</b>${base != null ? ` — troco sugerido = ${dinheiro(base)} que ficou na gaveta ${mov >= 0 ? '+' : '−'} ${dinheiro(Math.abs(mov))}` : ''}. Confira contando o dinheiro.</div>` : '' });
+}
+// ➖ Retirada rápida: gera o lançamento certo sem ir até Lançamentos
+function retirada() {
+  const t = turnoAberto(); if (!t) return toast('Abra o caixa primeiro.');
+  const outras = contasAtivas().filter(c => c.id !== contaCaixa());
+  const banco = (outras.find(c => c.tipo === 'banco') || outras[0] || {}).id;
+  abrirForm('➖ Retirada de dinheiro do caixa', [
+    { k: 'valor', l: 'Valor (R$)', t: 'number' },
+    { k: 'motivo', l: 'Motivo', t: 'select', op: [['dono', '💸 Retirada do dono (pró-labore)'], ['pagamento', '🧾 Pagamento (despesa/compra)'], ['deposito', '🏦 Depósito no banco / Pix'], ['outro', 'Outro']], v: 'dono', on: 'formRetirada()' },
+    { k: 'categoria', l: 'Categoria do pagamento', t: 'select', op: opCats('saida'), v: 'Insumos/ingredientes', oculto: true },
+    { k: 'destino', l: 'Depositado em', t: 'select', op: outras.map(c => [c.id, c.nome]), v: banco, oculto: true },
+    { k: 'descricao', l: 'Descrição', w2: true, ph: 'ex.: gás, mussarela, depósito do dia' }
+  ], async v => {
+    if (!exigir(v.valor > 0, 'Informe o valor.')) return false;
+    if (v.motivo === 'pagamento' && !exigir(v.descricao, 'Descreva o pagamento.')) return false;
+    const cx = contaCaixa(), agora = Date.now(), data = t.data;
+    checarMes(data);
+    let l;
+    if (v.motivo === 'dono') l = { tipo: 'saida', conta: cx, categoria: 'Pró-labore/retirada do dono', descricao: v.descricao || 'Retirada do dono' };
+    else if (v.motivo === 'deposito') l = { tipo: 'transferencia', conta: cx, contaDestino: v.destino, descricao: v.descricao || `Depósito do caixa em ${nomeConta(v.destino)}` };
+    else if (v.motivo === 'pagamento') l = { tipo: 'saida', conta: cx, categoria: v.categoria, descricao: v.descricao };
+    else l = { tipo: 'saida', conta: cx, categoria: 'Outros', descricao: v.descricao || 'Retirada do caixa' };
+    await Fin.substituir('fin_lancamentos', Fin.novoId('l'), Object.assign(l, { data, valor: v.valor, forma: 'dinheiro', origem: 'manual', turnoId: t.id, criadoEm: agora, criadoPor: Fin.usuario() }));
+    toast(`Retirada de ${dinheiro(v.valor)} lançada e descontada do esperado.`);
+  }, { ok: 'Lançar retirada', aoAbrir: formRetirada });
+}
+function formRetirada() {
+  const m = $('ff_motivo').value;
+  $('box_categoria').classList.toggle('hide', m !== 'pagamento');
+  $('box_destino').classList.toggle('hide', m !== 'deposito');
 }
 function movCaixa(tipo) {
   const t = turnoAberto(); if (!t) return;
@@ -367,28 +429,67 @@ function fecharCaixa() {
     { k: 'just', l: 'Justificativa da diferença (obrigatória se houver)', t: 'textarea', w2: true }
   ], async v => {
     if (!exigir(v.dinheiro != null && v.dinheiro >= 0, 'Informe o dinheiro contado.')) return false;
-    const dif = F.diferencas(e, v);
+    const agora = Date.now(), e2 = esperadoDe(t, agora);   // recalcula na hora (lançamentos feitos com a tela aberta)
+    const dif = F.diferencas(e2, v);
     if (Object.values(dif).some(d => Math.abs(d) >= 0.01) && !exigir(v.just, 'Explique a diferença (justificativa).')) return false;
     checarMes(t.data);
     const ops = [], dd = dif.dinheiro || 0;
-    const doc = { status: 'fechado', fechadoEm: Date.now(), fechadoPor: Fin.usuario(), esperado: e, contado: { dinheiro: v.dinheiro, pix: v.pix, cartao: v.cartao },
+    const doc = { status: 'fechado', fechadoEm: agora, fechadoPor: Fin.usuario(), esperado: e2, contado: { dinheiro: v.dinheiro, pix: v.pix, cartao: v.cartao },
       diferencas: dif, justificativa: v.just, ficouNaGaveta: v.fica != null ? v.fica : null };
     if (Math.abs(dd) >= 0.01) {   // acerta o saldo do caixa físico com a contagem
       const lid = Fin.novoId('l');
       doc.lancamentoAjusteId = lid;
-      ops.push({ op: 'replace', col: 'fin_lancamentos', id: lid, dados: { tipo: dd > 0 ? 'entrada' : 'saida', data: t.data, valor: r2(Math.abs(dd)), conta: contaCaixa(), forma: 'dinheiro',
-        categoria: dd > 0 ? 'Sobra de caixa' : 'Quebra de caixa', descricao: `${dd > 0 ? 'Sobra' : 'Falta'} no fechamento do caixa de ${br(t.data)}`, obs: v.just, origem: 'caixa', refId: t.id, criadoEm: Date.now() } });
+      ops.push({ op: 'replace', col: 'fin_lancamentos', id: lid, dados: { tipo: dd > 0 ? 'entrada' : 'saida', data: t.data, valor: r2(Math.abs(dd)), conta: contaCaixa(), forma: 'dinheiro', ajusteCaixa: true,
+        categoria: dd > 0 ? 'Sobra de caixa' : 'Quebra de caixa', descricao: `${dd > 0 ? 'Sobra' : 'Falta'} no fechamento do caixa de ${br(t.data)}`, obs: v.just, origem: 'caixa', refId: t.id, criadoEm: agora } });
     }
     ops.push({ op: 'set', col: 'fin_caixas', id: t.id, dados: doc });
     await Fin.lote(ops);
     toast(Math.abs(dd) >= 0.01 ? `Caixa fechado com ${dd > 0 ? 'sobra' : 'falta'} de ${dinheiro(Math.abs(dd))} (lançada).` : 'Caixa fechado e conferido. ✅');
-  }, { ok: 'Fechar caixa', topo: '<div id="difBox" class="aviso">Digite os valores contados.</div>' });
-  difFech.e = e;
+  }, { ok: 'Fechar caixa', topo: `<div id="difBox" class="aviso">Digite os valores contados.</div><details><summary class="muted" style="cursor:pointer">Ver entradas e saídas da gaveta (${e.linhas.length})</summary>${tabelaLinhas(e.linhas, 'Nenhuma.')}</details>` });
+  difFech.t = t;
 }
 function difFech() {
-  if (!_form) return;
-  const v = valoresForm(), d = F.diferencas(difFech.e, v);
+  if (!_form || !difFech.t) return;
+  const v = valoresForm(), d = F.diferencas(esperadoDe(difFech.t), v);
   $('difBox').innerHTML = ['dinheiro', 'pix', 'cartao'].filter(k => d[k] != null).map(k => `${FORMAS[k]}: ${difTxt(d[k])}`).join(' • ') || 'Digite os valores contados.';
+}
+/* Fechamento antigo com esperado errado (versão anterior só somava lançamentos com a MESMA data do turno):
+   recalcula pelo período do turno; a correção vira um lançamento (sem apagar o histórico) */
+function recalculo(c) {
+  if (c.status !== 'fechado' || !c.esperado || !c.contado || c.contado.dinheiro == null) return null;
+  const novo = esperadoDe(c, c.fechadoEm), feito = (c.recalculos || []).slice(-1)[0];
+  const atual = feito ? feito.esperadoNovo : c.esperado.dinheiro;
+  if (Math.abs(novo.dinheiro - atual) < 0.01) return null;
+  return { novo, antes: atual, difNova: r2(c.contado.dinheiro - novo.dinheiro), correcao: r2(atual - novo.dinheiro) };
+}
+function verFechamento(id) {
+  const c = S.caixas.find(x => x.id === id); if (!c) return;
+  const e = esperadoDe(c, c.fechadoEm), rc = recalculo(c);
+  $('verBox').innerHTML = `<div class="barraTopo"><h2>🧾 Fechamento de ${br(c.data)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
+    <div class="muted">Aberto ${new Date(c.abertoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} • fechado ${new Date(c.fechadoEm).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div>
+    <div class="linha"><span>Troco inicial</span><b>${dinheiro(e.abertura)}</b></div><div class="linha"><span>+ Vendas em dinheiro</span><b>${dinheiro(e.vendasDinheiro)}</b></div>
+    <div class="linha"><span>+ Entradas</span><b>${dinheiro(e.entradasDinheiro)}</b></div><div class="linha"><span>− Saídas</span><b>${dinheiro(e.saidasDinheiro)}</b></div>
+    <div class="linha total"><span>Esperado (cálculo atual)</span><b>${dinheiro(e.dinheiro)}</b></div>
+    <div class="linha"><span>Esperado gravado no fechamento</span><b>${dinheiro(c.esperado.dinheiro)}</b></div><div class="linha"><span>Contado</span><b>${dinheiro(c.contado.dinheiro)}</b></div>
+    ${(c.recalculos || []).map(r => `<div class="okbox">♻️ Recalculado em ${new Date(r.em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} por ${esc(r.por || '')}: esperado ${dinheiro(r.esperadoAntes)} → ${dinheiro(r.esperadoNovo)}, diferença ${difTxt(r.diferencaNova)}${r.correcao ? ` (correção lançada: ${dinheiro(Math.abs(r.correcao))})` : ''}</div>`).join('')}
+    <h3 style="margin-top:10px">Entradas e saídas da gaveta</h3>${tabelaLinhas(e.linhas, 'Nenhuma.')}
+    ${rc ? `<button class="btn full" style="margin-top:12px" onclick="recalcularFechamento('${c.id}')">♻️ Recalcular: esperado ${dinheiro(rc.antes)} → ${dinheiro(rc.novo.dinheiro)}</button>` : ''}`;
+  $('mVer').classList.add('on');
+}
+async function recalcularFechamento(id) {
+  const c = S.caixas.find(x => x.id === id), rc = c && recalculo(c); if (!rc) return;
+  if (!confirm(`Recalcular o fechamento de ${br(c.data)}?\n\nEsperado: ${dinheiro(rc.antes)} → ${dinheiro(rc.novo.dinheiro)}\nDiferença com o contado (${dinheiro(c.contado.dinheiro)}): ${rc.difNova === 0 ? 'nenhuma' : (rc.difNova > 0 ? 'sobra ' : 'falta ') + dinheiro(Math.abs(rc.difNova))}\n\n${rc.correcao ? `Será lançada uma correção de ${dinheiro(Math.abs(rc.correcao))} (${rc.correcao > 0 ? 'entrada' : 'saída'}) no ${nomeConta(contaCaixa())} para desfazer a sobra/falta errada.` : ''} O histórico original é mantido.`)) return;
+  try {
+    checarMes(c.data);
+    const ops = [], r = { em: Date.now(), por: Fin.usuario(), esperadoAntes: rc.antes, esperadoNovo: rc.novo.dinheiro, diferencaNova: rc.difNova, correcao: rc.correcao };
+    if (Math.abs(rc.correcao) >= 0.01) {
+      r.lancamentoId = Fin.novoId('l');
+      ops.push({ op: 'replace', col: 'fin_lancamentos', id: r.lancamentoId, dados: { tipo: rc.correcao > 0 ? 'entrada' : 'saida', data: c.data, valor: Math.abs(rc.correcao), conta: contaCaixa(), forma: 'dinheiro', ajusteCaixa: true,
+        categoria: rc.correcao > 0 ? 'Sobra de caixa' : 'Quebra de caixa', descricao: `Correção do fechamento de ${br(c.data)} (recalculado)`, origem: 'caixa', refId: c.id, criadoEm: Date.now(), criadoPor: Fin.usuario() } });
+    }
+    ops.push({ op: 'set', col: 'fin_caixas', id: c.id, dados: { recalculos: (c.recalculos || []).concat([r]) } });
+    await Fin.lote(ops); fechar('mVer'); toast('Fechamento recalculado e correção registrada.');
+  } catch (e) { erro(e); }
 }
 
 /* ================= LANÇAMENTOS ================= */
