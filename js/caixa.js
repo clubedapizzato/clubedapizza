@@ -1261,21 +1261,23 @@ function renderCartoes() {
   const sit = { aberta: '<span class="tag azul">aberta</span>', fechada: '<span class="tag amar">fechada • a pagar</span>', paga: '<span class="tag verde">paga</span>' };
   $('listaCartoes').innerHTML = l.length ? l.map(c => {
     const r = resumoCartao(c), uso = r.limite ? Math.min(100, r.usado / r.limite * 100) : 0;
-    const fats = r.meses.filter(m => valorFatura(c.id, m) > 0 || faturaFechada(c, m)).slice(-6).reverse();
+    const todas = r.meses.filter(m => valorFatura(c.id, m) > 0 || faturaFechada(c, m));
+    const fats = todas.filter(m => situacaoFatura(c, m) !== 'paga'), pagas = todas.filter(m => situacaoFatura(c, m) === 'paga').reverse();
     return `<div class="card" style="margin:0 0 12px">
       <div class="barraTopo"><h2>💳 ${esc(c.nome)}${c.bandeira ? ` <span class="muted" style="font-weight:400">${esc(c.bandeira)}</span>` : ''}${c.ativo === false ? ' <span class="tag">inativo</span>' : ''}</h2>
         <div class="acoes"><button class="btn sm" onclick="compraCartao('${c.id}')">🛒 Nova compra</button><button class="btn sm sec" onclick="verFatura('${c.id}','${r.atual}')">📄 Fatura</button>
-          <button class="btn sm dark" onclick="fecharFaturaAgora('${c.id}')">🔒 Fechar fatura agora</button><button class="btn sm sec" onclick="editarCartao('${c.id}')">✏️</button></div></div>
+          <button class="btn sm dark" onclick="fecharFaturaAgora('${c.id}')">🔒 Fechar fatura agora</button><button class="btn sm sec" onclick="editarCartao('${c.id}')">✏️ Editar cartão</button></div></div>
       <div class="kpis" style="margin-bottom:6px">
         <div class="kpi"><small>Limite</small><b>${dinheiro(r.limite)}</b></div>
         <div class="kpi ${r.usado > r.limite ? 'verm' : ''}"><small>Usado (em aberto)</small><b>${dinheiro(r.usado)}</b></div>
         <div class="kpi ${r.disponivel < 0 ? 'verm' : r.limite && r.disponivel < r.limite * 0.2 ? 'amar' : 'verde'}"><small>Disponível</small><b>${corV(r.disponivel)}</b></div>
-        <div class="kpi"><small>Fatura atual (${r.atual.slice(5)}/${r.atual.slice(0, 4)})</small><b>${dinheiro(r.valorAtual)}</b><span>fecha ${br(r.fech)} • vence ${br(r.venc)}</span></div>
+        <div class="kpi"><small>Fatura atual (vence ${br(r.venc).slice(0, 5)})</small><b>${dinheiro(r.valorAtual)}</b><span>fecha ${br(r.fech)} • vence ${br(r.venc)}</span></div>
       </div>
       <div class="meta"><i style="width:${uso.toFixed(1)}%;background:${uso >= 100 ? 'var(--brand)' : uso >= 80 ? 'var(--warn)' : 'var(--ok)'}"></i></div>
       <div class="muted" style="margin-top:4px">${pct(uso)} do limite usado • vence dia ${c.diaVenc}, fecha ${c.diasFechamento != null ? c.diasFechamento : 7} dia(s) antes • paga pela conta ${esc(nomeConta(c.contaPg))}</div>
-      ${fats.length ? `<div class="rolar" style="margin-top:8px"><table><tr><th>Fatura</th><th>Fecha</th><th>Vence</th><th class="r">Valor</th><th>Situação</th><th></th></tr>${fats.map(m => `<tr><td>${m.slice(5)}/${m.slice(0, 4)}</td><td>${br(fechDe(c, m))}</td><td>${br(vencDe(c, m))}</td>
-        <td class="r"><b>${dinheiro(valorFatura(c.id, m))}</b></td><td>${sit[situacaoFatura(c, m)]}</td><td><button class="btn sm sec" onclick="verFatura('${c.id}','${m}')">📄</button></td></tr>`).join('')}</table></div>` : ''}
+      ${fats.length ? `<div class="rolar" style="margin-top:8px"><table><tr><th>Fatura (vencimento)</th><th>Fecha</th><th class="r">Valor</th><th>Situação</th><th></th></tr>${fats.map(m => `<tr${m === r.atual ? ' style="background:#eff6ff"' : ''}><td><b>${br(vencDe(c, m))}</b>${m === r.atual ? ' <span class="tag azul">atual</span>' : ''}</td><td>${br(fechDe(c, m))}</td>
+        <td class="r"><b>${dinheiro(valorFatura(c.id, m))}</b></td><td>${sit[situacaoFatura(c, m)]}</td><td><button class="btn sm sec" title="Ver compras desta fatura" onclick="verFatura('${c.id}','${m}')">📄 Ver</button></td></tr>`).join('')}</table></div>` : ''}
+      ${pagas.length ? `<details style="margin-top:6px"><summary class="muted" style="cursor:pointer">Faturas pagas (${pagas.length})</summary>${pagas.map(m => `<div class="linha"><span>${br(vencDe(c, m))} <a href="#" onclick="verFatura('${c.id}','${m}');return false">ver</a></span><b>${dinheiro(valorFatura(c.id, m))}</b></div>`).join('')}</details>` : ''}
     </div>`;
   }).join('') : '<div class="vazio">Nenhum cartão cadastrado. Toque em ➕ Cartão.</div>';
 }
@@ -1297,32 +1299,74 @@ function editarCartao(id) {
     toast('Cartão salvo.');
   });
 }
-function compraCartao(id) {
-  const c = S.cartoes.find(x => x.id === id); if (!c) return;
-  const r = resumoCartao(c);
-  abrirForm(`🛒 Compra no ${c.nome}`, [
-    { k: 'data', l: 'Data da compra', t: 'date', v: hoje(), on: 'prevCompra()' }, { k: 'valor', l: 'Valor total (R$)', t: 'number', on: 'prevCompra()' },
-    { k: 'descricao', l: 'Descrição', w2: true, ph: 'ex.: mussarela no atacado' },
-    { k: 'categoria', l: 'Categoria', t: 'select', op: opCats('saida'), v: 'Insumos/ingredientes' },
-    { k: 'parcelas', l: 'Parcelas', t: 'select', op: Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}x`]), v: 1, on: 'prevCompra()' }
+/* Editar/excluir compra que tem parcela em fatura FECHADA (não paga): a fatura e a conta a pagar dela são ajustadas
+   (novo valor; se zerar, a fatura volta a aberta e a conta é apagada). Fatura PAGA: não deixa mexer. */
+function opsFaturasAfetadas(c, compraId, itensNovos) {
+  const outras = itensCartao(c.id).filter(i => i.compra.id !== compraId), velhos = (S.compras.find(k => k.id === compraId) || {}).itens || [];
+  const meses = [...new Set(velhos.concat(itensNovos || []).map(i => i.fatura))].filter(m => faturaFechada(c, m));
+  if (meses.some(m => situacaoFatura(c, m) === 'paga')) return { erro: 'Esta compra tem parcela numa fatura já PAGA: desfaça o pagamento em 📤 A pagar antes.' };
+  if (!meses.length) return { ops: [], meses };
+  const { id, atualizadoEm, atualizadoPor, ...doc } = c, faturas = Object.assign({}, c.faturas), ops = [];
+  meses.forEach(m => {
+    const v = r2(outras.filter(i => i.fatura === m).reduce((t, i) => t + i.valor, 0) + (itensNovos || []).filter(i => i.fatura === m).reduce((t, i) => t + i.valor, 0));
+    const f = faturas[m];
+    if (v > 0) { faturas[m] = Object.assign({}, f, { valor: v }); if (f.contaId) ops.push({ op: 'set', col: 'fin_contas', id: f.contaId, dados: { valor: v } }); }
+    else { delete faturas[m]; if (f.contaId) ops.push({ op: 'delete', col: 'fin_contas', id: f.contaId }); }
+  });
+  ops.push({ op: 'replace', col: 'fin_cartoes', id: c.id, dados: Object.assign(doc, { faturas }) });
+  return { ops, meses };
+}
+// Opções de "1ª parcela na fatura de": da fatura anterior à calculada até 12 meses depois (sem as já fechadas)
+function opFaturas(c, data, atual) {
+  const m0 = faturaDaData(c, data || hoje()), l = [];
+  for (let i = -2; i <= 12; i++) { const m = F.addMes(m0, i), sit = situacaoFatura(c, m); if (sit !== 'paga' || m === atual) l.push([m, `vence ${br(vencDe(c, m))}${m === m0 ? ' (pela data da compra)' : ''}${sit === 'fechada' ? ' — já fechada' : ''}`]); }
+  return l;
+}
+/* Nova compra (id do cartão) ou editar compra (cid). A 1ª parcela vai para a fatura calculada pela data,
+   mas dá para escolher outra (quando o banco lançou em outro mês). */
+function compraCartao(id, cid) {
+  const x = cid ? S.compras.find(k => k.id === cid) : null;
+  const c = S.cartoes.find(k => k.id === (x ? x.cartaoId : id)); if (!c) return;
+  if (x && (x.itens || []).some(i => situacaoFatura(c, i.fatura) === 'paga')) return toast('Esta compra tem parcela numa fatura já PAGA: desfaça o pagamento em 📤 A pagar antes de editar.');
+  const r = resumoCartao(c), data = x ? x.data : hoje(), ini = x ? x.itens[0].fatura : faturaDaData(c, data);
+  abrirForm(x ? `✏️ Compra no ${c.nome}` : `🛒 Compra no ${c.nome}`, [
+    { k: 'data', l: 'Data da compra', t: 'date', v: data, on: 'trocouDataCompra()' }, { k: 'valor', l: 'Valor total (R$)', t: 'number', v: x ? x.valor : '', on: 'prevCompra()' },
+    { k: 'descricao', l: 'Descrição', w2: true, v: x ? x.descricao : '', ph: 'ex.: mussarela no atacado' },
+    { k: 'categoria', l: 'Categoria', t: 'select', op: opCats('saida'), v: x ? x.categoria : 'Insumos/ingredientes' },
+    { k: 'parcelas', l: 'Parcelas', t: 'select', op: Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}x`]), v: x ? x.parcelas : 1, on: 'prevCompra()' },
+    { k: 'inicio', l: '1ª parcela na fatura que', t: 'select', op: opFaturas(c, data, ini), v: ini, w2: true, on: 'prevCompra()' }
   ], async v => {
     if (!exigir(v.valor > 0, 'Informe o valor.') || !exigir(v.descricao, 'Informe a descrição.') || !exigir(v.data, 'Informe a data.')) return false;
-    const r2_ = resumoCartao(S.cartoes.find(x => x.id === id));
-    if (v.valor > r2_.disponivel + 0.004 && !confirm(`A compra (${dinheiro(v.valor)}) passa do disponível no cartão (${dinheiro(r2_.disponivel)}). Lançar mesmo assim?`)) return false;
-    const n = Number(v.parcelas) || 1, itens = parcelasCompra(c, v.data, v.valor, n);
-    await Fin.substituir('fin_cartao_compras', Fin.novoId('cc'), { cartaoId: id, data: v.data, descricao: v.descricao, categoria: v.categoria, valor: v.valor, parcelas: n, itens, criadoEm: Date.now(), criadoPor: Fin.usuario() });
-    toast(`Compra lançada: ${n}x de ${dinheiro(itens[0].valor)} — 1ª na fatura ${itens[0].fatura.slice(5)}/${itens[0].fatura.slice(0, 4)}.`);
-  }, { topo: `<div class="muted" style="margin-bottom:6px">Disponível: <b>${dinheiro(r.disponivel)}</b> de ${dinheiro(r.limite)}</div><div id="prevCompraBox"></div>`, aoAbrir: () => { prevCompra.c = c; } });
+    const atualizado = S.cartoes.find(k => k.id === c.id), r2_ = resumoCartao(atualizado), jaUsado = x ? x.valor : 0;
+    if (v.valor - jaUsado > r2_.disponivel + 0.004 && !confirm(`A compra (${dinheiro(v.valor)}) passa do disponível no cartão (${dinheiro(r2_.disponivel + jaUsado)}). Lançar mesmo assim?`)) return false;
+    const n = Number(v.parcelas) || 1, itens = parcelasCompra(atualizado, v.data, v.valor, n, v.inicio), cid2 = x ? x.id : Fin.novoId('cc');
+    if (itens.some(i => situacaoFatura(atualizado, i.fatura) === 'paga')) return exigir(false, 'Alguma parcela cairia numa fatura já paga: escolha outra fatura para a 1ª parcela.');
+    const af = opsFaturasAfetadas(atualizado, cid2, itens);
+    if (af.erro) return exigir(false, af.erro);
+    if (af.meses.length && !confirm(`Fatura(s) já fechada(s) com vencimento ${af.meses.map(m => br(vencDe(c, m))).join(', ')}: o valor da fatura e da conta a pagar será ajustado (se zerar, a fatura reabre e a conta é apagada). Continuar?`)) return false;
+    await Fin.lote([{ op: 'replace', col: 'fin_cartao_compras', id: cid2, dados: Object.assign({}, x || { criadoEm: Date.now(), criadoPor: Fin.usuario() },
+      { cartaoId: c.id, data: v.data, descricao: v.descricao, categoria: v.categoria, valor: v.valor, parcelas: n, itens, inicioManual: v.inicio !== faturaDaData(atualizado, v.data) }) }].concat(af.ops));
+    if ($('mVer').classList.contains('on')) fechar('mVer');
+    toast(`${x ? 'Compra alterada' : 'Compra lançada'}: ${n}x de ${dinheiro(itens[0].valor)} — 1ª na fatura que vence ${br(vencDe(c, itens[0].fatura))}.`);
+  }, { topo: `<div class="muted" style="margin-bottom:6px">Disponível: <b>${dinheiro(r.disponivel + (x ? x.valor : 0))}</b> de ${dinheiro(r.limite)} • compra até ${br(fechDe(c, faturaDaData(c, hoje())))} cai na fatura que vence ${br(vencDe(c, faturaDaData(c, hoje())))}</div><div id="prevCompraBox"></div>`,
+    aoAbrir: () => { prevCompra.c = c; prevCompra.atual = x ? ini : null; prevCompra(); } });
+}
+// Mudou a data: a 1ª fatura volta para a calculada pela data
+function trocouDataCompra() {
+  const c = prevCompra.c, d = $('ff_data').value; if (!c || !d) return;
+  const sel = $('ff_inicio'), m0 = faturaDaData(c, d);
+  sel.innerHTML = opFaturas(c, d, prevCompra.atual).map(([v, n]) => `<option value="${v}">${esc(n)}</option>`).join('');
+  sel.value = m0; prevCompra();
 }
 // Parcelas: centavos que sobram na 1ª; a 1ª cai na fatura da data, as demais nos meses seguintes
-function parcelasCompra(c, data, total, n) {
-  const cent = Math.round(total * 100), base = Math.floor(cent / n), resto = cent - base * n, m0 = faturaDaData(c, data);
+function parcelasCompra(c, data, total, n, inicio) {
+  const cent = Math.round(total * 100), base = Math.floor(cent / n), resto = cent - base * n, m0 = inicio || faturaDaData(c, data);
   return Array.from({ length: n }, (_, i) => ({ n: i + 1, valor: (base + (i === 0 ? resto : 0)) / 100, fatura: F.addMes(m0, i) }));
 }
 function prevCompra() {
   const v = valoresForm(), c = prevCompra.c; if (!c || !(v.valor > 0) || !v.data) { $('prevCompraBox').innerHTML = ''; return; }
-  const it = parcelasCompra(c, v.data, v.valor, Number(v.parcelas) || 1);
-  $('prevCompraBox').innerHTML = `<div class="muted">${it.map(i => `${i.n}ª ${dinheiro(i.valor)} → fatura ${i.fatura.slice(5)}/${i.fatura.slice(0, 4)} (vence ${br(vencDe(c, i.fatura))})`).join('<br>')}</div>`;
+  const it = parcelasCompra(c, v.data, v.valor, Number(v.parcelas) || 1, v.inicio);
+  $('prevCompraBox').innerHTML = `<div class="muted">${it.map(i => `${i.n}ª ${dinheiro(i.valor)} → fatura que vence ${br(vencDe(c, i.fatura))}`).join('<br>')}</div>`;
 }
 async function fecharFaturaAgora(id) {
   const c = S.cartoes.find(x => x.id === id); if (!c) return;
@@ -1345,12 +1389,12 @@ function verFatura(id, m) {
   const r = resumoCartao(c), meses = [...new Set(r.meses.concat([r.atual, m]))].sort(), sit = situacaoFatura(c, m);
   const it = itensCartao(id).filter(i => i.fatura === m).sort((a, b) => a.compra.data.localeCompare(b.compra.data));
   $('verBox').innerHTML = `<div class="barraTopo"><h2>📄 Fatura ${esc(c.nome)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
-    <div class="filtros"><select onchange="verFatura('${id}',this.value)" style="width:auto">${meses.map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>${x.slice(5)}/${x.slice(0, 4)}</option>`).join('')}</select>
+    <div class="filtros"><select onchange="verFatura('${id}',this.value)" style="width:auto">${meses.map(x => `<option value="${x}" ${x === m ? 'selected' : ''}>vence ${br(vencDe(c, x))}</option>`).join('')}</select>
       <span class="tag ${sit === 'paga' ? 'verde' : sit === 'fechada' ? 'amar' : 'azul'}">${sit === 'paga' ? 'paga' : sit === 'fechada' ? 'fechada • a pagar' : 'aberta'}</span>
       <span class="muted">fecha ${br(fechDe(c, m))} • vence ${br(vencDe(c, m))}</span></div>
     <div class="rolar"><table><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Parcela</th><th class="r">Valor</th><th></th></tr>
     ${it.length ? it.map(i => `<tr><td>${br(i.compra.data)}</td><td>${esc(i.compra.descricao)}</td><td>${esc(i.compra.categoria || '')}</td><td>${i.compra.parcelas > 1 ? `${i.n}/${i.compra.parcelas}` : 'à vista'}</td>
-      <td class="r">${dinheiro(i.valor)}</td><td>${sit === 'aberta' && !(i.compra.itens || []).some(x => faturaFechada(c, x.fatura)) ? `<button class="btn sm sec" title="Excluir a compra (todas as parcelas)" onclick="excluirCompraCartao('${i.compra.id}','${m}')">🗑️</button>` : ''}</td></tr>`).join('')
+      <td class="r">${dinheiro(i.valor)}</td><td style="white-space:nowrap">${sit !== 'paga' && !(i.compra.itens || []).some(x => situacaoFatura(c, x.fatura) === 'paga') ? `<button class="btn sm sec" title="Editar a compra (data, valor, parcelas, fatura)" onclick="fechar('mVer');compraCartao(null,'${i.compra.id}')">✏️</button> <button class="btn sm sec" title="Excluir a compra (todas as parcelas)" onclick="excluirCompraCartao('${i.compra.id}','${m}')">🗑️</button>` : ''}</td></tr>`).join('')
       : '<tr><td colspan="6" class="vazio">Nenhuma compra nesta fatura.</td></tr>'}
     <tr class="tot"><td colspan="4">Total da fatura</td><td class="r">${dinheiro(valorFatura(id, m))}</td><td></td></tr></table></div>
     ${sit === 'aberta' && valorFatura(id, m) > 0 ? `<button class="btn full" style="margin-top:10px" onclick="fechar('mVer');fecharFaturaDe('${id}','${m}')">🔒 Fechar esta fatura</button>` : ''}
@@ -1363,10 +1407,10 @@ async function fecharFaturaDe(id, m) {
 }
 async function excluirCompraCartao(cid, m) {
   const x = S.compras.find(k => k.id === cid); if (!x) return;
-  const c = S.cartoes.find(k => k.id === x.cartaoId);
-  if ((x.itens || []).some(i => faturaFechada(c, i.fatura))) return toast('Esta compra tem parcela em fatura já fechada: reabra a fatura antes.');
-  if (!confirm(`Excluir a compra "${x.descricao}" (${dinheiro(x.valor)}${x.parcelas > 1 ? `, ${x.parcelas}x` : ''})?`)) return;
-  try { await Fin.apagar('fin_cartao_compras', cid); verFatura(x.cartaoId, m); toast('Compra excluída.'); } catch (e) { erro(e); }
+  const c = S.cartoes.find(k => k.id === x.cartaoId), af = opsFaturasAfetadas(c, cid, []);
+  if (af.erro) return toast(af.erro);
+  if (!confirm(`Excluir a compra "${x.descricao}" (${dinheiro(x.valor)}${x.parcelas > 1 ? `, ${x.parcelas}x` : ''})?${af.meses.length ? `\n\nA(s) fatura(s) já fechada(s) (${af.meses.map(k => br(vencDe(c, k))).join(', ')}) e a conta a pagar serão ajustadas.` : ''}`)) return;
+  try { await Fin.lote([{ op: 'delete', col: 'fin_cartao_compras', id: cid }].concat(af.ops)); verFatura(x.cartaoId, m); toast('Compra excluída.'); } catch (e) { erro(e); }
 }
 
 /* ================= RELATÓRIOS ================= */
