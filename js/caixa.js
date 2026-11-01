@@ -900,11 +900,13 @@ function msgFiado(f, tipo, valor) {
   if (tipo === 'quitacao') return r.saldo <= 0.004
     ? `Olá, ${nome}! 😊\nRecebemos seu pagamento${valor ? ` de *${dinheiro(valor)}*` : ''}. Seu crediário no *${loja}* está *quitado* ✅.\n\nMuito obrigado pela confiança e pela parceria! Quando bater a fome, é só chamar. 🍕`
     : `Olá, ${nome}! 😊\nRecebemos seu pagamento de *${dinheiro(valor)}*. Obrigado!\nSaldo restante no crediário: *${dinheiro(r.saldo)}*.\n\n${loja} 🍕`;
-  if (tipo === 'extrato') return `Olá, ${nome}! Segue o resumo do seu crediário no *${loja}*:\n\n` + (f.movimentos || []).slice().sort((a, b) => a.data.localeCompare(b.data))
-    .map(m => `${br(m.data)} • ${m.tipo === 'compra' ? 'Compra' : 'Pagamento'}${m.descricao ? ' (' + m.descricao + ')' : ''}: ${m.tipo === 'compra' ? '' : '−'}${dinheiro(m.valor)}`).join('\n') + `\n\n*Saldo: ${dinheiro(r.saldo)}*`;
-  return `Olá, ${nome}! Tudo bem? 😊\nAqui é do *${loja}*. Passando para lembrar, com carinho, do seu saldo em aberto no crediário: *${dinheiro(r.saldo)}*` +
-    `${r.vencimento ? ` (vencimento combinado: ${br(r.vencimento)})` : ''}.\n\nPode pagar por Pix (chave: ${CONFIG.pix.chave}) ou em dinheiro na próxima compra.` +
-    `\nSe já pagou, por favor desconsidere esta mensagem. Muito obrigado! 🍕`;
+  // Resumo do crediário (compras e pagamentos, sem os estornados): "22/10/2026 • Compra (2 Pizzas…): R$ 175,00"
+  const resumo = (f.movimentos || []).filter(m => !m.cancelado).sort((a, b) => a.data.localeCompare(b.data) || (a.em || 0) - (b.em || 0))
+    .map(m => `${br(m.data)} • ${m.tipo === 'compra' ? 'Compra' : 'Pagamento'}${m.descricao ? ' (' + m.descricao + ')' : ''}: ${m.tipo === 'compra' ? '' : '−'}${dinheiro(m.valor)}`).join('\n');
+  if (tipo === 'extrato') return `Olá, ${nome}! Segue o resumo do seu crediário no *${loja}*:\n\n${resumo}\n\n*Saldo: ${dinheiro(r.saldo)}*`;
+  return `Olá, ${nome}! Tudo bem? 😊\nAqui é do *${loja}*. Passando para lembrar, do seu saldo em aberto no crediário: *${dinheiro(r.saldo)}*` +
+    `${r.vencimento ? ` (vencimento: ${br(r.vencimento)})` : ''}.\nSegue o resumo:\n\n${resumo}\n\n*Saldo: ${dinheiro(r.saldo)}*\n\n` +
+    `Pode pagar por Pix (chave: ${CONFIG.pix.chave}).\nSe já pagou, por favor desconsidere esta mensagem. Muito obrigado! 🍕`;
 }
 function whatsFiado(id, tipo, valor) {
   const f = S.fiados.find(x => x.id === id); if (!f || !f.telefone) return;
