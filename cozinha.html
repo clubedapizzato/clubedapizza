@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261105">
+<link rel="stylesheet" href="css/app.css?v=20261106">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:1400px;flex-wrap:wrap}
@@ -123,16 +123,18 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 </main>
 <footer class="rodape">2024-2026 Clube da Pizza Delivery. Todos os direitos reservados.</footer>
 
+<!-- ✏️ Editar pedido: acrescentar/remover itens, desconto e pagamento (dividido) -->
+<div class="modal" id="mEditPed" onclick="if(event.target===this)fecharEdicao()"><div class="box" id="edBox" style="max-width:640px"></div></div>
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261105"></script>
-<script src="js/cardapio.js?v=20261105"></script>
-<script src="js/db.js?v=20261105"></script>
-<script src="js/catalogo.js?v=20261105"></script>
-<script src="js/ficha.js?v=20261105"></script>
-<script src="js/impressora.js?v=20261105"></script>
-<script src="js/financeiro.js?v=20261105"></script>
+<script src="js/config.js?v=20261106"></script>
+<script src="js/cardapio.js?v=20261106"></script>
+<script src="js/db.js?v=20261106"></script>
+<script src="js/catalogo.js?v=20261106"></script>
+<script src="js/ficha.js?v=20261106"></script>
+<script src="js/impressora.js?v=20261106"></script>
+<script src="js/financeiro.js?v=20261106"></script>
 <script src="js/temporizador.js?v=20261031"></script>
 <script>
 let pedidos = [];
@@ -286,14 +288,16 @@ function render() {
 function cartao(p) {
   const e = p.entrega, pg = p.pagamento, min = minutos(p);
   const taxaCalc = Preco.taxa(e);
-  const conferido = !!p.consumoInterno || Math.abs(Preco.subtotal(p.itens, p.cortesiaPorPizza || 0) + (taxaCalc || 0) - p.total) < 0.01;
+  const desc = (p.desconto && Number(p.desconto.valor)) || 0;
+  const conferido = !!p.consumoInterno || Math.abs(Preco.subtotal(p.itens, p.cortesiaPorPizza || 0) + (p.editadoEm ? (p.taxaEntrega || 0) : (taxaCalc || 0)) - desc - p.total) < 0.01;
   const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
   const hora = new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5);
   const ativo = !['entregue', 'cancelado'].includes(p.status);
 
   const balcao = e.tipo === 'balcao';
   let pgTag;
-  if (pg.forma === 'consumo_interno') pgTag = '<span class="tag erro">🍽️ CONSUMO INTERNO — SEM COBRANÇA</span>';
+  if (pg.forma === 'misto') pgTag = `<span class="tag ${pg.confirmado || balcao ? 'ok' : 'info'}">${pg.confirmado || balcao ? '✔ PAGO • ' : 'COBRAR: '}${esc(Pagto.texto(p).toUpperCase())}</span>`;
+  else if (pg.forma === 'consumo_interno') pgTag = '<span class="tag erro">🍽️ CONSUMO INTERNO — SEM COBRANÇA</span>';
   else if (pg.forma === 'fiado') pgTag = `<span class="tag pend">📒 FIADO${p.cliente.nome ? ' • ' + esc(p.cliente.nome) : ''} — NÃO COBRAR</span>`;
   else if (balcao) pgTag = `<span class="tag ok">✔ PAGO • ${({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTÃO' })[pg.forma] || pg.forma}${pg.trocoPara ? ' • troco ' + dinheiro(pg.trocoPara - p.total) : ''}</span>`;
   else if (pg.forma === 'pix') pgTag = pg.confirmado ? '<span class="tag ok">PIX ✔ PAGO</span>' : '<span class="tag pend">PIX AGUARDANDO</span>';
@@ -321,6 +325,8 @@ function cartao(p) {
     ${p.entregador && ['saiu', 'entregue', 'nao_entregue'].includes(p.status) && e.tipo === 'entrega' ? `<div class="muted">🛵 ${esc(p.entregador.nome)}${p.rota && p.rota.ordem ? ` • parada ${p.rota.ordem}` : ''}</div>` : ''}
     ${p.status === 'nao_entregue' && p.naoEntregue ? `<div class="tag erro" style="font-size:13px;display:block;margin:6px 0">❌ NÃO ENTREGUE: ${esc(p.naoEntregue.motivo)}${p.naoEntregue.obs ? ' — ' + esc(p.naoEntregue.obs) : ''}${p.naoEntregue.em ? ' • ' + new Date(p.naoEntregue.em).toLocaleTimeString('pt-BR').slice(0, 5) : ''}</div>` : ''}
     ${p.obs ? `<div class="aviso" style="margin:4px 0">📝 ${esc(p.obs)}</div>` : ''}
+    ${desc ? `<div class="muted">🏷️ Desconto −${dinheiro(desc)}${p.desconto.motivo ? ' (' + esc(p.desconto.motivo) + ')' : ''}</div>` : ''}
+    ${p.editadoEm ? `<div class="muted">✏️ Alterado às ${new Date(p.editadoEm).toLocaleTimeString('pt-BR').slice(0, 5)}</div>` : ''}
     <div><b>Total ${dinheiro(p.total)}</b> ${pgTag}
       ${conferido ? '' : '<span class="tag erro" title="O total enviado não bate com os preços do cardápio">⚠️ CONFERIR VALOR</span>'}
       ${p.impresso ? '' : '<span class="tag pend">NÃO IMPRESSO</span>'}
@@ -329,12 +335,137 @@ function cartao(p) {
       ${p.status === 'nao_entregue' ? `<button class="btn avancar" onclick="reenviar('${p.id}')">🔁 Reenviar para entrega</button>`
         : STATUS.proximo(p.status, e.tipo) ? `<button class="btn avancar ${p.status === 'pronto' ? 'sec' : ''}" onclick="mudarStatus('${p.id}','${STATUS.proximo(p.status, e.tipo)}')">${botaoAvancar(p)}</button>` : ''}
       ${pg.forma === 'pix' && ativo && !balcao ? `<button class="btn sm ${pg.confirmado ? 'sec' : 'dark'}" onclick="alternarPix('${p.id}',${!pg.confirmado})">${pg.confirmado ? 'Desfazer Pix' : '💰 Confirmar Pix'}</button>` : ''}
+      ${p.status !== 'cancelado' ? `<button class="btn sm sec" onclick="editarPedido('${p.id}')">✏️ Editar</button>` : ''}
       <button class="btn sm sec" onclick="imprimirManual('${p.id}')">🖨️ Imprimir</button>
       ${p.cliente.telefone ? `<a class="btn sm wa" style="text-decoration:none" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, p.status))}">💬 WhatsApp</a>` : ''}
       ${ativo || (p.status === 'entregue' && p.origem === 'balcao' && e.tipo === 'balcao') ? `<button class="btn sm sec" onclick="cancelar('${p.id}')">Cancelar</button>` : ''}
     </div>
   </div>`;
 }
+/* ---------------- ✏️ EDITAR PEDIDO ----------------
+   Acrescentar/remover itens (ex.: cliente pediu uma Coca na hora de sair), desconto e pagamento dividido
+   (ex.: metade cartão, metade dinheiro). Estoque: se o pedido já tinha baixado, devolve o antigo e baixa o novo. */
+let ed = null;
+const r2c = v => Math.round(v * 100) / 100;
+const numBR = t => { const s = String(t == null ? '' : t).trim().replace(/[^\d,.-]/g, ''); if (!s) return 0; const v = parseFloat(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s); return isNaN(v) ? 0 : v; };
+function editarPedido(id) {
+  const p = achar(id); if (!p) return;
+  const pg = p.pagamento || {};
+  ed = { id, itens: JSON.parse(JSON.stringify(p.itens || [])).map(it => Object.assign(it, { qtdOriginal: it.qtd || 1 })), desconto: (p.desconto && p.desconto.valor) || 0, motivo: (p.desconto && p.desconto.motivo) || '',
+    partes: Pagto.partes(p).map(x => ({ forma: x.forma, valor: x.valor })), confirmado: !!pg.confirmado, aba: 'produto',
+    pz: { tamanho: 'G', sabores: [(CARDAPIO.sabores[0] || {}).nome || ''], qtd: 1 }, prod: '', qtdProd: 1 };
+  desenharEdicao();
+  document.getElementById('mEditPed').classList.add('on');
+}
+function fecharEdicao() { document.getElementById('mEditPed').classList.remove('on'); ed = null; }
+const especial = p => ['fiado', 'consumo_interno'].includes((p.pagamento || {}).forma);
+// Depois que a produção começou, o que já estava no pedido não pode ser tirado (só acrescentar)
+const travado = p => p.status !== 'novo';
+function totaisEd(p) {
+  const sub = r2c(Preco.subtotal(ed.itens, p.cortesiaPorPizza || 0)), taxa = Number(p.taxaEntrega) || 0;
+  const total = p.consumoInterno ? 0 : Math.max(0, r2c(sub + taxa - (Number(ed.desconto) || 0)));
+  return { sub, taxa, total };
+}
+// a 1ª forma recebe o que falta para fechar o total
+function ajustarPrimeira(p) {
+  const { total } = totaisEd(p), resto = ed.partes.slice(1).reduce((t, x) => t + (Number(x.valor) || 0), 0);
+  ed.partes[0].valor = r2c(Math.max(0, total - resto));
+}
+function desenharEdicao() {
+  const p = achar(ed.id); if (!p) return fecharEdicao();
+  const { sub, taxa, total } = totaisEd(p), somaPg = r2c(ed.partes.reduce((t, x) => t + (Number(x.valor) || 0), 0));
+  const prods = Catalogo.categoriasVenda().flatMap(c => c.produtos.map(x => [x.id, `${c.nome} • ${x.nome} — ${dinheiro(x.preco)}`])).concat(Catalogo.sachesVenda().map(x => [x.id, `Sachê • ${x.nome} — ${dinheiro(x.preco)}`]));
+  if (!ed.prod && prods.length) ed.prod = prods[0][0];
+  const t = Preco.tamanho(ed.pz.tamanho) || { maxSabores: 1 }, sabores = Catalogo.saboresAtivos().map(({ s }) => s.nome);
+  const opt = (l, v) => l.map(([a, b]) => `<option value="${esc(a)}" ${String(a) === String(v) ? 'selected' : ''}>${esc(b)}</option>`).join('');
+  const FORMAS_ED = [['dinheiro', '💵 Dinheiro'], ['cartao', '💳 Cartão'], ['pix', '⚡ Pix']];
+  document.getElementById('edBox').innerHTML = `
+    <h2>✏️ Editar pedido #${p.numero}${p.cliente.nome ? ' — ' + esc(p.cliente.nome) : ''}</h2>
+    <h3>Itens</h3>
+    ${travado(p) ? '<div class="muted" style="margin-bottom:4px">🔒 Produção já começou: dá para acrescentar, mas não tirar o que já estava no pedido.</div>' : ''}
+    ${ed.itens.map((it, i) => { const pode = !travado(p) || it.novo || (it.qtd || 1) > (it.qtdOriginal || 0);
+      return `<div class="linha" style="align-items:center"><span>${Preco.ehSache(it) ? '🥫 ' : ''}${esc(Preco.descricao(it))}${it.novo ? ' <span class="tag info">novo</span>' : ''}<br><span class="muted">${dinheiro(Preco.unitario(it))} cada</span></span>
+      <span style="display:flex;gap:6px;align-items:center;white-space:nowrap">${pode ? `<button class="btn sm sec" onclick="qtdItemEd(${i},-1)">−</button>` : '<span title="Produção já começou: não dá para tirar">🔒</span>'}<b>${it.qtd || 1}</b><button class="btn sm sec" onclick="qtdItemEd(${i},1)">+</button></span></div>`; }).join('') || '<div class="muted">Sem itens.</div>'}
+    <h3 style="margin-top:12px">➕ Acrescentar</h3>
+    <div class="chips" style="margin-bottom:8px"><span class="chip ${ed.aba === 'produto' ? 'on' : ''}" onclick="ed.aba='produto';desenharEdicao()">🥤 Bebida / produto</span><span class="chip ${ed.aba === 'pizza' ? 'on' : ''}" onclick="ed.aba='pizza';desenharEdicao()">🍕 Pizza</span></div>
+    ${ed.aba === 'produto' ? `<div style="display:flex;gap:6px;flex-wrap:wrap"><select id="edProd" style="flex:1;min-width:200px" onchange="ed.prod=this.value">${opt(prods, ed.prod)}</select>
+        <input id="edQtdP" type="number" min="1" value="${ed.qtdProd}" style="width:70px" onchange="ed.qtdProd=Math.max(1,parseInt(this.value)||1)"><button class="btn sm dark" onclick="addProdEd()">Adicionar</button></div>`
+    : `<div style="display:flex;gap:6px;flex-wrap:wrap"><select style="width:auto" onchange="ed.pz.tamanho=this.value;ed.pz.sabores=ed.pz.sabores.slice(0,(Preco.tamanho(this.value)||{maxSabores:1}).maxSabores);desenharEdicao()">${opt(CARDAPIO.tamanhos.map(x => [x.id, x.nome + ' (' + x.id + ')']), ed.pz.tamanho)}</select>
+        ${Array.from({ length: t.maxSabores }, (_, k) => `<select style="flex:1;min-width:140px" onchange="ed.pz.sabores[${k}]=this.value;ed.pz.sabores=ed.pz.sabores.filter(Boolean)">${k ? '<option value="">— inteira —</option>' : ''}${opt(sabores.map(n => [n, n]), ed.pz.sabores[k] || '')}</select>`).join('')}
+        <input type="number" min="1" value="${ed.pz.qtd}" style="width:70px" onchange="ed.pz.qtd=Math.max(1,parseInt(this.value)||1)"><button class="btn sm dark" onclick="addPizzaEd()">Adicionar</button></div>`}
+    <div class="linha" style="margin-top:12px"><span>Subtotal</span><b>${dinheiro(sub)}</b></div>
+    ${taxa ? `<div class="linha"><span>Taxa de entrega</span><b>${dinheiro(taxa)}</b></div>` : ''}
+    ${p.consumoInterno ? '<div class="aviso">Consumo interno: sem cobrança (o valor de referência é atualizado).</div>' : `
+    <div style="display:flex;gap:6px;align-items:end;flex-wrap:wrap"><div style="width:130px"><label for="edDesc">🏷️ Desconto (R$)</label><input id="edDesc" inputmode="decimal" value="${ed.desconto ? String(ed.desconto).replace('.', ',') : ''}" onchange="ed.desconto=Math.max(0,numBR(this.value));ajustarPrimeira(achar(ed.id));desenharEdicao()"></div>
+      <div style="flex:1;min-width:160px"><label for="edMot">Motivo</label><input id="edMot" value="${esc(ed.motivo)}" placeholder="ex.: atraso, cliente fiel" oninput="ed.motivo=this.value"></div></div>`}
+    <div class="linha total"><span>TOTAL</span><span>${dinheiro(total)}</span></div>
+    ${especial(p) ? `<div class="muted">Pagamento: ${esc(Pagto.texto(p))}${p.pagamento.forma === 'fiado' ? ' — o valor da compra no fiado é atualizado.' : ''}</div>` : `
+    <h3 style="margin-top:12px">💳 Pagamento</h3>
+    ${ed.partes.map((x, i) => `<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center"><select style="flex:1" onchange="ed.partes[${i}].forma=this.value">${opt(FORMAS_ED, x.forma)}</select>
+      <input inputmode="decimal" style="width:120px" value="${String(x.valor).replace('.', ',')}" ${i === 0 && ed.partes.length > 1 ? 'title="Ajusta sozinho com o que falta"' : ''} onchange="ed.partes[${i}].valor=numBR(this.value);${i ? 'ajustarPrimeira(achar(ed.id));' : ''}desenharEdicao()">
+      ${i ? `<button class="btn sm sec" onclick="ed.partes.splice(${i},1);ajustarPrimeira(achar(ed.id));desenharEdicao()">✖</button>` : ''}</div>`).join('')}
+    <button class="btn sm sec" onclick="ed.partes.push({forma:ed.partes[0].forma==='dinheiro'?'cartao':'dinheiro',valor:0});desenharEdicao()">➗ Dividir em outra forma</button>
+    <label class="muted" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" style="width:auto" ${ed.confirmado ? 'checked' : ''} onchange="ed.confirmado=this.checked"> Pagamento já recebido</label>
+    ${Math.abs(somaPg - total) >= 0.01 ? `<div class="tag erro" style="display:block;margin-top:6px">A soma das formas (${dinheiro(somaPg)}) não fecha o total (${dinheiro(total)}).</div>` : ''}`}
+    <div style="display:flex;gap:8px;margin-top:14px"><button class="btn sec" onclick="fecharEdicao()">Cancelar</button><button class="btn" style="flex:1" id="edSalvar" onclick="salvarEdicao()">Salvar alterações</button></div>`;
+}
+function qtdItemEd(i, d) {
+  const it = ed.itens[i], p = achar(ed.id);
+  if (d < 0 && p && travado(p) && !it.novo && (it.qtd || 1) <= (it.qtdOriginal || 0)) return toast('Produção já começou: não dá para tirar este item (só acrescentar).');
+  it.qtd = (it.qtd || 1) + d;
+  if (it.qtd <= 0) { if (!confirm(`Tirar "${Preco.descricao(it)}" do pedido?`)) { it.qtd = 1; return; } ed.itens.splice(i, 1); }
+  ajustarPrimeira(achar(ed.id)); desenharEdicao();
+}
+function addProdEd() {
+  if (!ed.prod) return;
+  const q = Math.max(1, parseInt(document.getElementById('edQtdP').value) || 1);
+  const ex = ed.itens.find(x => x.tipo === 'produto' && x.id === ed.prod && x.novo);
+  if (ex) ex.qtd += q; else ed.itens.push(Object.assign(Catalogo.itensPedido([{ tipo: 'produto', id: ed.prod, qtd: q }])[0], { novo: true }));
+  ajustarPrimeira(achar(ed.id)); desenharEdicao();
+}
+function addPizzaEd() {
+  const s = ed.pz.sabores.filter(Boolean); if (!s.length) return toast('Escolha o sabor.');
+  ed.itens.push(Object.assign(Catalogo.itensPedido([{ tipo: 'pizza', tamanho: ed.pz.tamanho, sabores: s, adicionais: [], qtd: ed.pz.qtd, obs: '' }])[0], { novo: true }));
+  ajustarPrimeira(achar(ed.id)); desenharEdicao();
+}
+async function salvarEdicao() {
+  const p = achar(ed.id); if (!p) return fecharEdicao();
+  if (!ed.itens.length) return toast('O pedido precisa de pelo menos um item (para desistir de tudo, use Cancelar).');
+  const { sub, total } = totaisEd(p), desc = p.consumoInterno ? 0 : r2c(Number(ed.desconto) || 0);
+  const partes = ed.partes.map(x => ({ forma: x.forma, valor: r2c(Number(x.valor) || 0) })).filter((x, i) => i === 0 || x.valor > 0);
+  if (!especial(p) && Math.abs(partes.reduce((t, x) => t + x.valor, 0) - total) >= 0.01) return toast('A soma das formas de pagamento precisa fechar o total.');
+  if (desc && !ed.motivo.trim() && !confirm('Desconto sem motivo. Salvar mesmo assim?')) return;
+  if (travado(p) && (p.itens || []).some((o, i) => !ed.itens.some(x => !x.novo && x.qtdOriginal === (o.qtd || 1) && Preco.descricao(x) === Preco.descricao(o) && (x.qtd || 1) >= (o.qtd || 1))))
+    return toast('Produção já começou: os itens que já estavam no pedido não podem ser tirados.');
+  const itens = ed.itens.map(({ novo, qtdOriginal, ...it }) => it);
+  const mudouItens = JSON.stringify(itens) !== JSON.stringify(p.itens);
+  const campos = { itens, subtotal: sub, total, desconto: desc ? { valor: desc, motivo: ed.motivo.trim() } : null, editadoEm: Date.now(),
+    edicoes: (p.edicoes || []).concat([{ em: Date.now(), por: (window.Fin && Fin.usuario()) || '', totalAntes: p.total, totalDepois: total }]) };
+  if (p.consumoInterno) Object.assign(campos, { total: 0, valorReferencia: sub });
+  else if (!especial(p)) {
+    const pg = p.pagamento || {};
+    campos.pagamento = partes.length > 1 ? { forma: 'misto', partes, confirmado: ed.confirmado, trocoPara: null }
+      : { forma: partes[0].forma, confirmado: ed.confirmado, trocoPara: partes[0].forma === 'dinheiro' && pg.forma === 'dinheiro' && pg.trocoPara > total ? pg.trocoPara : null };
+  }
+  const b = document.getElementById('edSalvar'); b.disabled = true; b.textContent = 'Salvando...';
+  try {
+    const baixou = mudouItens && p.estoqueBaixado, baixouIns = mudouItens && p.estoqueInsumosBaixado;
+    // estoque: devolve o que o pedido antigo baixou, grava, e baixa de novo com os itens novos
+    if (baixou) await DB.estornarEstoque(p.id);
+    if (baixouIns) await DB.estornarInsumos(p.id);
+    await DB.atualizarPedido(p.id, campos);
+    if (baixou) await DB.baixarEstoque(p.id);
+    if (baixouIns) await moverInsumos(p.id, -1, p.numero);
+    // fiado: a compra no crediário acompanha o novo total
+    if ((p.pagamento || {}).forma === 'fiado' && p.pagamento.fiadoId && window.Fin) {
+      const f = await Fin.ler('fin_fiados', p.pagamento.fiadoId);
+      if (f && (f.movimentos || []).some(m => m.id === 'ped-' + p.id)) await Fin.lote([{ op: 'set', col: 'fin_fiados', id: f.id, dados: { movimentos: f.movimentos.map(m => m.id === 'ped-' + p.id ? Object.assign({}, m, { valor: total }) : m) } }]);
+    }
+    fecharEdicao();
+    toast(`Pedido #${p.numero} alterado: total ${dinheiro(total)}.${mudouItens && p.impresso ? ' Imprima de novo se precisar (🖨️).' : ''}`);
+  } catch (e) { avisarErro(e); b.disabled = false; b.textContent = 'Salvar alterações'; }
+}
+
 /* ---------------- ⏱️ TEMPORIZADOR (faixa no topo do cartão) ----------------
    Atualiza a cada 1 s só textos/classes da faixa (sem refazer o DOM). Bipe uma vez quando o pedido fica vermelho. */
 // var/function: render() pode rodar antes destas linhas (login e pedidos chegam durante o carregamento)

@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261105">
+<link rel="stylesheet" href="css/app.css?v=20261106">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -317,17 +317,17 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261105"></script>
-<script src="js/cardapio.js?v=20261105"></script>
-<script src="js/db.js?v=20261105"></script>
-<script src="js/catalogo.js?v=20261105"></script>
-<script src="js/ficha.js?v=20261105"></script>
+<script src="js/config.js?v=20261106"></script>
+<script src="js/cardapio.js?v=20261106"></script>
+<script src="js/db.js?v=20261106"></script>
+<script src="js/catalogo.js?v=20261106"></script>
+<script src="js/ficha.js?v=20261106"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
 let aba = location.hash === '#insumos' ? 'insumos' : (() => { try { return localStorage.getItem('cdp_gestao_aba') || 'relatorios'; } catch { return 'relatorios'; } })();
 const PERIODOS = [{ id: 'hoje', nome: 'Hoje' }, { id: '7d', nome: '7 dias' }, { id: 'mes', nome: 'Este mês' }, { id: 'mesPassado', nome: 'Mês passado' }];
-const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão', fiado: '📒 Fiado' };
+const FORMAS = { pix: '⚡ Pix', dinheiro: '💵 Dinheiro', cartao: '💳 Cartão', fiado: '📒 Fiado', misto: 'Dividido' };
 const TIPOS_CI = { funcionario: 'Funcionário', dono: 'Dono', cortesia: 'Cortesia/brinde', degustacao: 'Degustação', perda: 'Perda' };
 const TIPOS = { entrega: '🛵 Entrega', retirada: '🏪 Retirada', balcao: '🍽️ Balcão' };
 const num = v => (Math.round(v * 10) / 10).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
@@ -447,7 +447,8 @@ function calcular(lista, de, ate) {
     r.taxas += p.taxaEntrega || 0;
     soma(r.dias, p.data, total);
     soma(r.origem, p.origem || 'site', total);
-    soma(r.formas, p.pagamento.forma, total);
+    Pagto.partes(p).forEach(x => soma(r.formas, x.forma, x.valor));   // pagamento dividido conta em cada forma
+    r.descontos = (r.descontos || 0) + ((p.desconto && Number(p.desconto.valor)) || 0);
     soma(r.tipos, p.entrega.tipo, total);
     const sc = Preco.saches(p.itens, p.cortesiaPorPizza || 0);
     (p.itens || []).forEach((it, i) => {
@@ -505,7 +506,7 @@ function render(r) {
     <div class="kpis">
       ${kpi('💰 Faturamento', dinheiro(r.faturamento), 'cancelados fora')}
       ${kpi('🧾 Pedidos', r.pedidos, `${num(r.pedidos / dias.length)} por dia`)}
-      ${kpi('🎯 Ticket médio', dinheiro(r.ticketMedio))}
+      ${kpi('🎯 Ticket médio', dinheiro(r.ticketMedio))}${r.descontos ? kpi('🏷️ Descontos dados', dinheiro(r.descontos)) : ''}
       ${kpi('🍕 Pizzas', num(r.pizzas))}
       ${kpi('❌ Cancelados', r.cancelados, (r.cancelados ? dinheiro(r.valorCancelado) + ' não faturados' : '') + (r.naoEntregues ? ` • ${r.naoEntregues} não entregue(s) pendente(s)` : ''))}
       ${kpi('🛵 Taxas de entrega', dinheiro(r.taxas))}
@@ -596,14 +597,14 @@ function exportarCSV() {
   if (!pedidos.length) return toast('Nenhum pedido no período.');
   const n = v => (Number(v) || 0).toFixed(2).replace('.', ',');
   const cel = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
-  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Pagamento', 'Pago', 'Entregador', 'Consumo interno', 'Valor referência']];
+  const linhas = [['Data', 'Numero', 'Hora', 'Origem', 'Status', 'Cliente', 'Telefone', 'Tipo', 'Consumo', 'Agendado para', 'Itens', 'Subtotal', 'Taxa entrega', 'Total', 'Desconto', 'Pagamento', 'Pago', 'Entregador', 'Consumo interno', 'Valor referência']];
   pedidos.forEach(p => linhas.push([
     br(p.data), p.numero, p.criadoEm ? new Date(p.criadoEm).toLocaleTimeString('pt-BR').slice(0, 5) : '',
     p.origem || 'site', p.status, p.cliente.nome, p.cliente.telefone, p.entrega.tipo,
     p.entrega.consumo === 'local' ? 'comer aqui' : p.entrega.consumo === 'levar' ? 'para levar' : '',
     p.agendadoPara ? Horario.formatar(p.agendadoPara) : '',
     (p.itens || []).map(it => `${it.qtd}x ${Preco.descricao(it)}`).join(' | '),
-    n(p.subtotal), n(p.taxaEntrega), n(p.total), p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao',
+    n(p.subtotal), n(p.taxaEntrega), n(p.total), n(p.desconto ? p.desconto.valor : 0), p.pagamento.forma === 'misto' ? Pagto.texto(p) : p.pagamento.forma, p.pagamento.confirmado ? 'sim' : 'nao',
     p.entregador ? p.entregador.nome : '',
     p.consumoInterno ? `${TIPOS_CI[p.consumoInterno.tipo] || p.consumoInterno.tipo}${p.consumoInterno.quem ? ': ' + p.consumoInterno.quem : ''}` : '',
     p.consumoInterno ? n(p.valorReferencia) : ''
