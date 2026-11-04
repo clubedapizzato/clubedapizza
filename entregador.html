@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261105">
+<link rel="stylesheet" href="css/app.css?v=20261106">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -101,11 +101,11 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261105"></script>
-<script src="js/cardapio.js?v=20261105"></script>
-<script src="js/db.js?v=20261105"></script>
-<script src="js/catalogo.js?v=20261105"></script>
-<script src="js/rota.js?v=20261105"></script>
+<script src="js/config.js?v=20261106"></script>
+<script src="js/cardapio.js?v=20261106"></script>
+<script src="js/db.js?v=20261106"></script>
+<script src="js/catalogo.js?v=20261106"></script>
+<script src="js/rota.js?v=20261106"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }
@@ -199,6 +199,12 @@ function marcar(id, on) { if (on) marcados.add(id); else marcados.delete(id); re
 /* ---------------- VALOR A COBRAR ---------------- */
 function textoCobrar(p) {
   const pg = p.pagamento, t = dinheiro(p.total);
+  if (pg.forma === 'misto') {
+    if (pg.confirmado) return { classe: 'pago', longo: `✅ Já pago (${Pagto.texto(p)}) — não cobrar`, curto: '✅ Pago' };
+    const ic = { dinheiro: '💵', cartao: '💳', pix: '⚡' }, l = Pagto.partes(p);
+    return { classe: Pagto.valorEm(p, 'dinheiro') ? 'dinheiro' : 'cartao', longo: `Cobrar ${t}: ${l.map(x => `${ic[x.forma] || ''} ${dinheiro(x.valor)} ${(Pagto.NOMES[x.forma] || x.forma).toLowerCase()}`).join(' + ')}${Pagto.valorEm(p, 'cartao') ? ' — levar a maquininha' : ''}`,
+      curto: `Cobrar ${l.map(x => `${ic[x.forma] || ''} ${dinheiro(x.valor)}`).join(' + ')}` };
+  }
   if (pg.forma === 'dinheiro') {
     const longo = pg.trocoPara && pg.trocoPara > p.total
       ? `💵 Cobrar ${t} – levar troco para ${dinheiro(pg.trocoPara)} (troco ${dinheiro(pg.trocoPara - p.total)})`
@@ -250,7 +256,7 @@ function renderRota(pend, feitas) {
     if (pt) at = pt;
     return d;
   });
-  const dinheiroReceber = pend.filter(p => p.pagamento.forma === 'dinheiro').reduce((s, p) => s + p.total, 0);
+  const dinheiroReceber = pend.filter(p => !p.pagamento.confirmado || p.pagamento.forma === 'dinheiro').reduce((s, p) => s + Pagto.valorEm(p, 'dinheiro'), 0);
   const troco = pend.filter(p => p.pagamento.forma === 'dinheiro' && p.pagamento.trocoPara > p.total).reduce((s, p) => s + (p.pagamento.trocoPara - p.total), 0);
   document.getElementById('resumoRota').innerHTML = `
     <div><b>${pend.length}</b>parada${pend.length > 1 ? 's' : ''}</div>
@@ -322,7 +328,7 @@ function desenharMapa(pend, feitas) {
 const achar = id => pedidos.find(p => p.id === id);
 async function entregue(id) {
   const p = achar(id); if (!p) return;
-  if (!confirm(`Confirmar ENTREGA do pedido #${p.numero} (${p.cliente.nome})?${p.pagamento.forma === 'dinheiro' ? `\n\n💵 Recebeu ${dinheiro(p.total)}?` : p.pagamento.forma === 'cartao' ? `\n\n💳 Passou ${dinheiro(p.total)} no cartão?` : ''}`)) return;
+  if (!confirm(`Confirmar ENTREGA do pedido #${p.numero} (${p.cliente.nome})?${p.pagamento.forma === 'misto' && !p.pagamento.confirmado ? `\n\nRecebeu ${Pagto.texto(p)}?` : p.pagamento.forma === 'dinheiro' ? `\n\n💵 Recebeu ${dinheiro(p.total)}?` : p.pagamento.forma === 'cartao' ? `\n\n💳 Passou ${dinheiro(p.total)} no cartão?` : ''}`)) return;
   const jan = p.cliente.telefone ? window.open('', '_blank') : null;   // abre já no clique (pop-up)
   try {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');

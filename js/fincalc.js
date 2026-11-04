@@ -82,6 +82,8 @@ window.FinCalc = (function () {
   const valido = p => ativo(p) && !p.consumoInterno;
   const ehConsumo = p => ativo(p) && !!p.consumoInterno;
   const FORMAS_VENDA = ['dinheiro', 'pix', 'cartao'];
+  // Pagamento dividido (pagamento.partes) ou forma única com o total
+  const partesPag = p => { const pg = p.pagamento || {}; return pg.partes && pg.partes.length ? pg.partes.map(x => ({ forma: x.forma, valor: Number(x.valor) || 0 })) : [{ forma: pg.forma, valor: Number(p.total) || 0 }]; };
   /* pedidos → { dias: { data: { dinheiro, pix, cartao, fiado, outros, total, taxaCartao, qtd } }, ... }
      excluirFiado: Set de 'data#numero' de pedidos lançados como fiado (saem da forma original e viram "fiado") */
   function vendasPorDia(pedidos, taxaCartaoPct, excluirFiado) {
@@ -89,11 +91,14 @@ window.FinCalc = (function () {
     (pedidos || []).forEach(p => {
       if (!valido(p) || !p.data) return;
       const d = dias[p.data] = dias[p.data] || { dinheiro: 0, pix: 0, cartao: 0, fiado: 0, outros: 0, total: 0, taxaCartao: 0, qtd: 0, taxasEntrega: 0 };
-      const v = Number(p.total) || 0, f = (p.pagamento || {}).forma;
+      const v = Number(p.total) || 0;
       d.qtd++; d.total += v; d.taxasEntrega += Number(p.taxaEntrega) || 0;
-      if (f === 'fiado' || (excluirFiado && excluirFiado.has(p.data + '#' + p.numero))) d.fiado += v;
-      else if (FORMAS_VENDA.includes(f)) d[f] += v;
-      else d.outros += v;
+      if (excluirFiado && excluirFiado.has(p.data + '#' + p.numero)) { d.fiado += v; return; }
+      partesPag(p).forEach(({ forma: f, valor }) => {
+        if (f === 'fiado') d.fiado += valor;
+        else if (FORMAS_VENDA.includes(f)) d[f] += valor;
+        else d.outros += valor;
+      });
     });
     Object.values(dias).forEach(d => {
       ['dinheiro', 'pix', 'cartao', 'fiado', 'outros', 'total', 'taxasEntrega'].forEach(k => { d[k] = r2(d[k]); });
@@ -341,7 +346,7 @@ window.FinCalc = (function () {
            fiadosSemPedido (R$ vendido fiado sem nº de pedido no mês) } */
   function dre(o) {
     const vendasPed = r2((o.pedidos || []).filter(valido).reduce((s, p) => s + (Number(p.total) || 0), 0));
-    const cartao = r2((o.pedidos || []).filter(p => valido(p) && (p.pagamento || {}).forma === 'cartao').reduce((s, p) => s + (Number(p.total) || 0), 0));
+    const cartao = r2((o.pedidos || []).filter(valido).reduce((s, p) => s + partesPag(p).filter(x => x.forma === 'cartao').reduce((a, x) => a + x.valor, 0), 0));
     let vendasManuais = 0, outras = 0, aportes = 0, recFiado = 0, taxasBanco = 0, retiradas = 0, comprasCmv = 0;
     const desp = { variavel: {}, fixa: {}, folha: {} };
     (o.lanc || []).forEach(l => {

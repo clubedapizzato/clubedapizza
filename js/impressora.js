@@ -70,7 +70,13 @@ window.Impressora = (function () {
       if (ci.motivo) s += `MOTIVO: ${ci.motivo}\n`;
       return semAcento(s + linha('=') + '\n\n\n').replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[^\n\x20-\x7E]/g, '');
     }
+    if (p.desconto && p.desconto.valor) s += duasColunas(`DESCONTO${p.desconto.motivo ? ' (' + p.desconto.motivo.slice(0, 14) + ')' : ''}`, '-' + dinheiro(p.desconto.valor));
     s += duasColunas('TOTAL', dinheiro(p.total));
+    if (pg.forma === 'misto') {
+      s += `PAGAMENTO:${pg.confirmado ? ' (PAGO)' : ''}\n`;
+      (pg.partes || []).forEach(x => { s += duasColunas(`  ${({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: 'CARTAO' })[x.forma] || x.forma}`, dinheiro(x.valor)); });
+      return semAcento(s + linha('=') + '\n\n\n').replace(/[\u00a0\u2007\u202f]/g, ' ').replace(/[^\n\x20-\x7E]/g, '');
+    }
     let fp = ({ pix: 'PIX', dinheiro: 'DINHEIRO', cartao: tipo === 'balcao' ? 'CARTAO' : 'CARTAO NA ENTREGA' })[pg.forma] || pg.forma;
     if (pg.forma === 'fiado') {
       s += `PAGAMENTO: FIADO - ${p.cliente.nome || ''}\n`;

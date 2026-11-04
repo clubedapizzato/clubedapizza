@@ -276,9 +276,27 @@ window.Previsao = {
   }
 };
 
+/* ---------- pagamento dividido (ex.: metade cartão, metade dinheiro) e desconto ----------
+   pedido.pagamento = { forma: 'misto', partes: [{ forma, valor }], confirmado } quando há mais de uma forma.
+   pedido.desconto = { valor, motivo } (já descontado do total). */
+window.Pagto = {
+  NOMES: { pix: 'Pix', dinheiro: 'Dinheiro', cartao: 'Cartão', fiado: 'Fiado', consumo_interno: 'Consumo interno', misto: 'Dividido' },
+  partes(p) {
+    const pg = (p && p.pagamento) || {};
+    if (pg.partes && pg.partes.length) return pg.partes.map(x => ({ forma: x.forma, valor: Number(x.valor) || 0 }));
+    return [{ forma: pg.forma, valor: Number(p && p.total) || 0 }];
+  },
+  valorEm(p, forma) { return Math.round(this.partes(p).filter(x => x.forma === forma).reduce((t, x) => t + x.valor, 0) * 100) / 100; },
+  texto(p) {
+    const l = this.partes(p);
+    return l.length > 1 ? l.map(x => `${this.NOMES[x.forma] || x.forma} ${dinheiro(x.valor)}`).join(' + ') : (this.NOMES[l[0].forma] || l[0].forma || '');
+  }
+};
+
 // Lembrete de pagamento na mensagem de "saiu para entrega"
 function cobrar(p) {
   const pg = p.pagamento || {};
+  if (pg.forma === 'misto') return ` Valor: ${dinheiro(p.total)} (${Pagto.texto(p)}).`;
   if (pg.forma === 'dinheiro') return ` Valor: ${dinheiro(p.total)} em dinheiro${pg.trocoPara ? ` (troco para ${dinheiro(pg.trocoPara)})` : ''}.`;
   if (pg.forma === 'cartao') return ` Valor: ${dinheiro(p.total)} no cartão (levamos a maquininha).`;
   return '';
