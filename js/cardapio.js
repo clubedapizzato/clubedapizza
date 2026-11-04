@@ -284,6 +284,30 @@ function cobrar(p) {
   return '';
 }
 
+/* ---------- telefone: sempre DDD + número (sem o 55 do país e sem o 0 da operadora) ----------
+   "+55 63 99272-1600" / "063 99272-1600" → "63992721600". Antes, a máscara cortava em 11 dígitos ANTES de tirar o 55
+   e gravava "55639927216" (DDD errado e número incompleto). */
+window.Telefone = {
+  limpar(t) {
+    let d = String(t || '').replace(/\D/g, '');
+    if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+    if (d.length > 10 && d.startsWith('0')) d = d.slice(1);
+    return d.slice(0, 11);
+  },
+  mascara(t) {
+    const d = this.limpar(t);
+    return d.length > 6 ? `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}` : d.length > 2 ? `(${d.slice(0, 2)}) ${d.slice(2)}` : d;
+  },
+  // '' = ok; senão a mensagem para o cliente/atendente
+  erro(t) {
+    const d = this.limpar(t);
+    if (d.length < 10) return 'Informe o telefone com DDD, ex.: (63) 99999-9999.';
+    if (d[0] === '0' || d[1] === '0') return 'DDD inválido. Digite DDD + número, ex.: (63) 99999-9999.';
+    if (d.length === 11 && d[2] !== '9') return 'Telefone incompleto: digite só DDD + número (sem o 55), ex.: (63) 99999-9999.';
+    return '';
+  }
+};
+
 window.linkWhats = function (telefone, texto) {
   let d = String(telefone || '').replace(/\D/g, '');
   if (d.length === 10 || d.length === 11) d = '55' + d;

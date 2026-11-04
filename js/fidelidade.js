@@ -118,5 +118,14 @@ window.Fidelidade = (function () {
     return { config, entregas: p.nNovas };
   }
 
-  return { init, observar, salvarConfig, marcarEntregue, desfazer, legado, pendencias, migrar, limparLegado };
+  // Telefone do cliente corrigido: leva as recompensas entregues para o número novo e apaga o antigo
+  async function moverTelefone(de, para, entregas) {
+    await init();
+    if (!entregas || !entregas.length || de === para) return;
+    await adicionarEntregas(para, entregas);
+    if (DB.modo() === 'demo') { const o = lerLS(LS, {}); delete o[de]; gravarLS(LS, o); return; }
+    await comCaminho('fidelidade/' + de, fs.deleteDoc(fs.doc(db, 'fidelidade', de)));
+  }
+
+  return { init, observar, salvarConfig, marcarEntregue, desfazer, legado, pendencias, migrar, limparLegado, moverTelefone };
 })();

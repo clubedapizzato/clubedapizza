@@ -21,7 +21,7 @@
 <meta property="og:image:height" content="1200">
 <meta property="og:image:alt" content="Logo do Clube da Pizza">
 <meta name="twitter:card" content="summary">
-<link rel="stylesheet" href="css/app.css?v=20261030">
+<link rel="stylesheet" href="css/app.css?v=20261105">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
 .codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
@@ -141,12 +141,12 @@
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261030"></script>
-<script src="js/cardapio.js?v=20261030"></script>
-<script src="js/pix.js?v=20261030"></script>
-<script src="js/db.js?v=20261030"></script>
-<script src="js/catalogo.js?v=20261030"></script>
-<script src="js/endereco.js?v=20261030"></script>
+<script src="js/config.js?v=20261105"></script>
+<script src="js/cardapio.js?v=20261105"></script>
+<script src="js/pix.js?v=20261105"></script>
+<script src="js/db.js?v=20261105"></script>
+<script src="js/catalogo.js?v=20261105"></script>
+<script src="js/endereco.js?v=20261105"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -426,24 +426,21 @@ function preencherCliente() {
   ['nome', 'telefone'].forEach(k => { if (c[k]) document.getElementById(k).value = c[k]; });
   Endereco.preencher(c);
 }
-document.getElementById('telefone').addEventListener('input', e => {
-  let d = e.target.value.replace(/\D/g, '').slice(0, 11);
-  if (d.length > 6) d = `(${d.slice(0, 2)}) ${d.slice(2, d.length - 4)}-${d.slice(-4)}`;
-  else if (d.length > 2) d = `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  e.target.value = d;
-});
+// Sempre DDD + número: tira o 55 do país (inclusive do preenchimento automático do celular)
+document.getElementById('telefone').addEventListener('input', e => { e.target.value = Telefone.mascara(e.target.value); });
 
 /* ---------------- ENVIAR PEDIDO ---------------- */
 let enviando = false;
 async function enviarPedido() {
   if (enviando) return;
-  const nome = val('nome'), tel = val('telefone').replace(/\D/g, '');
+  const nome = val('nome'), tel = Telefone.limpar(val('telefone'));
   if (!carrinho.length) return toast('Seu carrinho está vazio.');
   const falta = Catalogo.faltas(carrinho)[0];
   if (falta) return toast(falta.tem ? `Só restam ${falta.tem} de ${falta.nome}. Ajuste a quantidade.` : `${falta.nome} acabou. Retire do pedido.`);
   if (!carrinho.some(it => !Preco.ehSache(it))) return toast('Adicione pelo menos uma pizza ou bebida.');
   if (nome.length < 2) return foco('nome', 'Informe seu nome.');
-  if (tel.length < 10) return foco('telefone', 'Informe um telefone com DDD.');
+  const erroTel = Telefone.erro(val('telefone'));
+  if (erroTel) return foco('telefone', erroTel);
 
   let entrega = { tipo: tipoEntrega };
   if (tipoEntrega === 'entrega') {
