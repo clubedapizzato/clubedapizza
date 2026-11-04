@@ -18,6 +18,8 @@ window.Clientes = (function () {
     if (d.length === 10 && /[6-9]/.test(d[2])) d = d.slice(0, 2) + '9' + d.slice(2);
     return d.length === 10 || d.length === 11 ? d : '';
   }
+  // Telefone gravado errado: 11 dígitos que não são celular (ex.: "55639927216" = 55 do país + número cortado)
+  const telSuspeito = d => d.length === 11 && d[2] !== '9';
   const fmtTel = d => d.length === 11 ? `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}` : d.length === 10 ? `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}` : d;
 
   // Fora do faturamento: cancelado e não entregue (pendente), como nos relatórios
@@ -242,5 +244,5 @@ window.Clientes = (function () {
     return '\uFEFF' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
   }
 
-  return { normTel, fmtTel, valido, analisar, segmento, SEGMENTOS, FID_PADRAO, fidelidade, mensagem, csv, chaveTexto, diasEntre };
+  return { normTel, fmtTel, telSuspeito, valido, analisar, segmento, SEGMENTOS, FID_PADRAO, fidelidade, mensagem, csv, chaveTexto, diasEntre };
 })();

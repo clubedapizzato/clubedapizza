@@ -327,6 +327,14 @@ window.DB = (function () {
     return l.sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0))[0] || null;
   }
 
+  // Todos os pedidos com este telefone (texto exato gravado no pedido) — correção de cadastro na página Clientes
+  async function listarPedidosPorTelefone(tel) {
+    await init();
+    if (modo() === 'demo') return Object.values(lerTodos()).filter(p => p.cliente && p.cliente.telefone === tel);
+    const q = fs.query(fs.collection(db, 'pedidos'), fs.where('cliente.telefone', '==', tel));
+    return (await fs.getDocs(q)).docs.map(d => Object.assign({ id: d.id }, d.data()));
+  }
+
   // Pedidos de dias FUTUROS (agendamentos), em tempo real
   async function observarPedidosFuturos(data, cb, erro) {
     await init();
@@ -628,7 +636,7 @@ window.DB = (function () {
   }
 
   return {
-    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, buscarCodigo, observarFila, salvarFila, observarDisponibilidade, salvarDisponibilidade, atualizarPedido,
+    init, modo, criarPedido, observarPedido, observarPedidosDoDia, observarPedidosFuturos, listarPedidos, ultimoPedidoPorTelefone, listarPedidosPorTelefone, buscarCodigo, observarFila, salvarFila, observarDisponibilidade, salvarDisponibilidade, atualizarPedido,
     observarInsumos, observarFichas, salvarInsumo, salvarFicha, mensagemErro, logErro,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario,

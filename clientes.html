@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261030">
+<link rel="stylesheet" href="css/app.css?v=20261105">
 <style>
 main{max-width:1200px;padding-bottom:30px}
 .topo .in{max-width:1200px}
@@ -168,6 +168,19 @@ th.ord:hover{color:var(--ink)}
 
 <!-- ficha do cliente -->
 <div class="modal" id="mFicha" onclick="if(event.target===this)fechar('mFicha')"><div class="box largo" id="fichaBox"></div></div>
+<!-- editar cadastro do cliente (nome e telefone em todos os pedidos dele) -->
+<div class="modal" id="mEditar" onclick="if(event.target===this)fechar('mEditar')"><div class="box">
+  <h2>✏️ Editar cadastro</h2>
+  <div class="muted" id="eInfo"></div>
+  <label for="eNome">Nome</label><input id="eNome" autocomplete="off">
+  <label for="eTel">Telefone / WhatsApp (DDD + número)</label>
+  <input id="eTel" type="tel" inputmode="tel" autocomplete="off" placeholder="(63) 99999-9999" oninput="this.value=Telefone.mascara(this.value)">
+  <div id="eAviso"></div>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn sec" onclick="fechar('mEditar')">Cancelar</button>
+    <button class="btn" style="flex:1" id="eSalvar" onclick="salvarCliente()">Salvar</button>
+  </div>
+</div></div>
 <!-- mensagem de WhatsApp editável -->
 <div class="modal" id="mWhats" onclick="if(event.target===this)fechar('mWhats')"><div class="box">
   <h2>💬 WhatsApp para <span id="wNome"></span></h2>
@@ -182,11 +195,11 @@ th.ord:hover{color:var(--ink)}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261030"></script>
-<script src="js/cardapio.js?v=20261030"></script>
-<script src="js/db.js?v=20261030"></script>
-<script src="js/clientes.js?v=20261030"></script>
-<script src="js/fidelidade.js?v=20261030"></script>
+<script src="js/config.js?v=20261105"></script>
+<script src="js/cardapio.js?v=20261105"></script>
+<script src="js/db.js?v=20261105"></script>
+<script src="js/clientes.js?v=20261105"></script>
+<script src="js/fidelidade.js?v=20261105"></script>
 <script>
 let periodo = '90d';
 let pedidos = [], A = null;            // A = resultado de Clientes.analisar
@@ -313,7 +326,7 @@ function renderLista() {
   document.getElementById('tabClientes').innerHTML = `<tr>${COLS.map(([k, n, , r]) => `<th class="ord ${r ? 'r' : ''}" onclick="ordenarPor('${k}')">${n}${seta(k)}</th>`).join('')}</tr>` +
     (l.length ? l.map(c => `<tr class="cli" onclick="abrirFicha('${c.chave}')">
       <td><b>${esc(c.nome)}</b>${c.outrosNomes.length ? ` <span class="muted" title="Também usou: ${esc(c.outrosNomes.join(', '))}">+${c.outrosNomes.length}</span>` : ''}</td>
-      <td>${segTag(c)}</td><td>${Clientes.fmtTel(c.telefone)}</td><td>${esc(c.bairro) || '<span class="muted">—</span>'}</td>
+      <td>${segTag(c)}</td><td>${Clientes.fmtTel(c.telefone)}${Clientes.telSuspeito(c.telefone) ? ' <span title="Telefone gravado errado: abra a ficha e edite o cadastro">⚠️</span>' : ''}</td><td>${esc(c.bairro) || '<span class="muted">—</span>'}</td>
       <td class="r">${c.n}</td><td class="r"><b>${dinheiro(c.total)}</b></td><td class="r">${dinheiro(c.ticket)}</td>
       <td>${br(c.primeira)}</td><td>${br(c.ultima)}</td><td class="r">${c.diasSemPedir}</td>
       <td class="r">${c.freqMedia == null ? '—' : num(c.freqMedia) + ' d'}</td><td>${esc(c.saborFav) || '—'}</td>
@@ -357,8 +370,9 @@ function abrirFicha(chave) {
   document.getElementById('fichaBox').innerHTML = `
     <div class="fichaTopo">
       <div><h2 style="margin:0">${esc(c.nome)} ${segTag(c)}</h2>
-        <div class="muted">📞 ${Clientes.fmtTel(c.telefone)}${c.outrosNomes.length ? ` • também usou: ${esc(c.outrosNomes.join(', '))}` : ''}</div></div>
-      <div style="display:flex;gap:6px"><button class="btn wa sm" onclick="abrirWhats('${c.chave}')">💬 WhatsApp</button><button class="btn sec sm" onclick="fechar('mFicha')">Fechar</button></div>
+        <div class="muted">📞 ${Clientes.fmtTel(c.telefone)}${c.outrosNomes.length ? ` • também usou: ${esc(c.outrosNomes.join(', '))}` : ''}</div>
+        ${Clientes.telSuspeito(c.telefone) ? `<div class="alerta" style="margin:6px 0 0">⚠️ Telefone gravado errado (provavelmente com o 55 do país e faltando dígitos). Toque em <b>✏️ Editar cadastro</b> e corrija para DDD + número.</div>` : ''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn sec sm" onclick="editarCliente('${c.chave}')">✏️ Editar cadastro</button><button class="btn wa sm" onclick="abrirWhats('${c.chave}')">💬 WhatsApp</button><button class="btn sec sm" onclick="fechar('mFicha')">Fechar</button></div>
     </div>
     <div class="miniKpis">
       ${mini('Total gasto', dinheiro(c.total))}${mini('Pedidos', c.n + (c.cancelados ? ` <small class="muted">+${c.cancelados} canc.</small>` : ''))}
@@ -387,7 +401,50 @@ function abrirFicha(chave) {
   document.getElementById('mFicha').classList.add('on');
 }
 function fechar(id) { document.getElementById(id).classList.remove('on'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') ['mWhats', 'mFicha'].forEach(id => { const m = document.getElementById(id); if (m.classList.contains('on')) { fechar(id); e.stopImmediatePropagation(); } }); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ['mEditar', 'mWhats', 'mFicha'].forEach(id => { const m = document.getElementById(id); if (m.classList.contains('on')) { fechar(id); e.stopImmediatePropagation(); } }); });
+
+/* ---------------- EDITAR CADASTRO ----------------
+   O cliente é o telefone dos pedidos: corrigir = gravar nome/telefone novos em TODOS os pedidos dele
+   (também os de fora do período carregado, pelo mesmo telefone gravado) e levar a fidelidade junto. */
+let editando = null;
+function editarCliente(chave) {
+  const c = porChave(chave); if (!c) return;
+  editando = c;
+  document.getElementById('eNome').value = c.nome;
+  document.getElementById('eTel').value = Clientes.telSuspeito(c.telefone) ? '' : Telefone.mascara(c.telefone);
+  document.getElementById('eInfo').innerHTML = `Telefone atual: <b>${Clientes.fmtTel(c.telefone)}</b>${Clientes.telSuspeito(c.telefone) ? ' <span style="color:#b91c1c">(errado)</span>' : ''} • ${c.pedidos.length} pedido(s) no período carregado.`;
+  document.getElementById('eAviso').innerHTML = Clientes.telSuspeito(c.telefone) ? '<div class="aviso">Digite o número completo do cliente com DDD (confirme com ele se precisar).</div>' : '';
+  document.getElementById('mEditar').classList.add('on');
+  document.getElementById(Clientes.telSuspeito(c.telefone) ? 'eTel' : 'eNome').focus();
+}
+async function salvarCliente() {
+  const c = editando; if (!c) return;
+  const nome = document.getElementById('eNome').value.trim(), digitado = document.getElementById('eTel').value, tel = Telefone.limpar(digitado);
+  if (nome.length < 2) return toast('Informe o nome.');
+  const erroTel = Telefone.erro(digitado);
+  if (erroTel) return toast(erroTel);
+  const novaChave = Clientes.normTel(tel);
+  const outro = A.clientes.find(x => x.chave === novaChave && x !== c);
+  if (outro && !confirm(`Já existe o cliente ${outro.nome} com ${Clientes.fmtTel(novaChave)}. Juntar os pedidos dos dois nesse número?`)) return;
+  const b = document.getElementById('eSalvar'); b.disabled = true; b.textContent = 'Salvando...';
+  try {
+    // todos os pedidos do cliente: os do período + os de qualquer data com o mesmo telefone gravado
+    const todos = pedidos.filter(p => Clientes.normTel(p.cliente && p.cliente.telefone) === c.chave);
+    const brutos = [...new Set(todos.map(p => p.cliente.telefone))];
+    const mapa = {}; todos.forEach(p => { mapa[p.id] = p; });
+    for (const t of brutos) (await DB.listarPedidosPorTelefone(t)).forEach(p => { mapa[p.id] = p; });
+    const lista = Object.values(mapa);
+    for (const p of lista) await DB.atualizarPedido(p.id, { cliente: Object.assign({}, p.cliente, { nome, telefone: tel }) });
+    // fidelidade (recompensas entregues) vai para o número novo
+    const ent = (FID.entregas || {})[c.chave];
+    if (ent && ent.length && novaChave !== c.chave) await Fidelidade.moverTelefone(c.chave, novaChave, ent);
+    fechar('mEditar'); fechar('mFicha');
+    toast(`Cadastro corrigido em ${lista.length} pedido(s).`);
+    await carregar();
+    if (porChave(novaChave)) abrirFicha(novaChave);
+  } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+  finally { b.disabled = false; b.textContent = 'Salvar'; }
+}
 
 /* ---------------- WHATSAPP (mensagem editável) ---------------- */
 function abrirWhats(chave, tipo) {
