@@ -9,17 +9,39 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261106">
+<link rel="stylesheet" href="css/app.css?v=20261107">
 <style>
 main{max-width:1400px;padding-bottom:30px}
-.topo .in{max-width:1400px;flex-wrap:wrap}
-.ferramentas{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ferramentas .btn{padding:7px 10px;font-size:13px}
-.toggle{display:flex;align-items:center;gap:6px;font-size:13px;background:#ffffff14;border-radius:9px;padding:6px 10px;cursor:pointer;user-select:none}
+.topo .in{max-width:none;flex-wrap:wrap}
+/* Menu lateral (esquerda). Telas largas: fixo ao lado dos pedidos; ☰ esconde. Estreitas: gaveta por cima, fecha ao tocar fora */
+:root{--menu-w:250px}
+.topo .in{justify-content:flex-start}
+#btnMenu{margin-left:auto;background:#ffffff1f;color:#fff;border:1px solid #ffffff40;font-size:15px;padding:8px 12px}
+#btnMenu[aria-expanded="true"]{background:#fff;color:var(--dark)}
+.menuLateral{position:fixed;left:0;top:var(--topo-h);bottom:0;width:var(--menu-w);background:var(--dark);color:#fff;overflow-y:auto;padding:12px 12px calc(16px + env(safe-area-inset-bottom));z-index:45;transform:translateX(-100%);visibility:hidden;transition:transform .2s,visibility .2s;box-shadow:2px 0 8px #0003}
+body.menuAberto .menuLateral{transform:none;visibility:visible}
+body:not(.logado) .menuLateral,body:not(.logado) #btnMenu,body:not(.logado) #menuFundo{display:none}
+.menuCab{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px;margin-bottom:6px}
+.menuCab button{background:none;border:0;color:#fff;font-size:20px;cursor:pointer;padding:4px 8px;border-radius:8px}
+.menuGrupo{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;opacity:.6;margin:12px 2px 4px}
+.ferramentas{display:flex;flex-direction:column;gap:6px;align-items:stretch}
+.ferramentas .btn{padding:9px 12px;font-size:14px;text-align:left;display:flex;align-items:center;gap:6px}
+.ferramentas input[type=date]{width:100%;padding:8px;border-radius:9px}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;background:#ffffff14;border-radius:9px;padding:9px 12px;cursor:pointer;user-select:none}
 .toggle input{width:auto;margin:0}
+#movimento{flex-wrap:wrap;cursor:default}
+#menuFundo{display:none}
+@media(min-width:901px){body.logado.menuAberto main,body.logado.menuAberto .rodape{margin-left:var(--menu-w)}body.logado.menuAberto main{max-width:none}}
+@media(max-width:900px){
+  .menuLateral{top:0;width:min(290px,86vw);z-index:70;box-shadow:4px 0 18px #0006}
+  body.menuAberto #menuFundo{display:block;position:fixed;inset:0;background:#0007;z-index:65}
+}
+@media(prefers-reduced-motion:reduce){.menuLateral{transition:none}}
+/* Colunas de pedidos seguem a largura que sobra (com ou sem menu) */
+main{container-type:inline-size}
 .colunas{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
-@media(max-width:1100px){.colunas{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:640px){.colunas{grid-template-columns:1fr}}
+@container(max-width:960px){.colunas{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container(max-width:600px){.colunas{grid-template-columns:1fr}}
 .coluna h2{display:flex;justify-content:space-between;align-items:center;font-size:15px;background:var(--dark);color:#fff;border-radius:12px;padding:10px 12px;margin-bottom:10px}
 .coluna h2 span{background:#fff;color:var(--dark);border-radius:999px;padding:1px 9px;font-size:13px}
 .ped{background:#fff;border:1px solid var(--line);border-left:6px solid var(--muted);border-radius:12px;padding:12px;margin-bottom:10px;font-size:14px}
@@ -85,20 +107,30 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <header class="topo">
   <div class="in">
     <div class="marca"><a class="logoTopo" href="#" onclick="scrollTo({top:0,behavior:'smooth'});return false" title="Clube da Pizza" aria-label="Clube da Pizza — voltar ao topo"><picture><source type="image/webp" srcset="img/cdp-cabecalho-96.webp 96w, img/cdp-cabecalho-144.webp 144w, img/cdp-cabecalho-180.webp 180w" sizes="(min-width: 768px) 60px, 48px"><img src="img/cdp-cabecalho-96.png" srcset="img/cdp-cabecalho-96.png 96w, img/cdp-cabecalho-144.png 144w, img/cdp-cabecalho-180.png 180w" sizes="(min-width: 768px) 60px, 48px" width="48" height="48" alt="Clube da Pizza Delivery"></picture></a><span class="marcaNome">Clube da Pizza</span><h1>👨‍🍳 Cozinha <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1></div>
-    <div class="ferramentas hide" id="ferramentas">
-      <input type="date" id="dataFiltro" style="width:auto;padding:6px;border-radius:8px">
-      <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
-      <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
-      <span class="toggle" id="movimento" title="Tempo extra na previsão que o cliente vê no acompanhamento"></span>
-      <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
-      <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
-      <a class="btn sm sec" style="text-decoration:none" href="balcao.html" target="_blank">🏪 Balcão</a>
-      <a class="btn sm sec" style="text-decoration:none" href="entregador.html" target="_blank">🛵 Entregador</a>
-      <a class="btn sm sec" style="text-decoration:none" href="relatorios.html" target="_blank">📊 Gestão</a>
-      <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">Sair</button>
-    </div>
+    <button class="btn sm" id="btnMenu" onclick="alternarMenu()" aria-controls="menuLateral" aria-expanded="false" title="Mostrar/esconder o menu">☰ Menu</button>
   </div>
 </header>
+
+<nav class="menuLateral" id="menuLateral" aria-label="Menu da cozinha">
+  <div class="menuCab"><span>☰ Menu</span><button onclick="abrirMenu(false, true)" aria-label="Esconder o menu" title="Esconder o menu">✕</button></div>
+  <div class="ferramentas hide" id="ferramentas">
+    <div class="menuGrupo">📋 Pedidos</div>
+    <input type="date" id="dataFiltro" aria-label="Dia dos pedidos">
+    <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
+    <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
+    <div class="menuGrupo">⏱️ Previsão do cliente</div>
+    <span class="toggle" id="movimento" title="Tempo extra na previsão que o cliente vê no acompanhamento"></span>
+    <div class="menuGrupo">🔧 Aparelho</div>
+    <button class="btn sm sec" id="btnSom" onclick="ativarSom()">🔔 Ativar som</button>
+    <button class="btn sm sec" id="btnBT" onclick="conectarBT()">🛜 Conectar JP58H</button>
+    <div class="menuGrupo">↗️ Ir para</div>
+    <a class="btn sm sec" style="text-decoration:none" href="balcao.html" target="_blank">🏪 Balcão</a>
+    <a class="btn sm sec" style="text-decoration:none" href="entregador.html" target="_blank">🛵 Entregador</a>
+    <a class="btn sm sec" style="text-decoration:none" href="relatorios.html" target="_blank">📊 Gestão</a>
+    <button class="btn sm sec hide" id="btnSair" onclick="DB.sair()">🚪 Sair</button>
+  </div>
+</nav>
+<div id="menuFundo" onclick="abrirMenu(false)"></div>
 
 <main>
   <div id="avisoDemo" class="aviso hide">⚠️ <b>Modo demonstração:</b> só aparecem pedidos feitos na loja aberta neste mesmo navegador. Configure o Firebase em <code>js/config.js</code>.</div>
@@ -128,14 +160,14 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <pre id="ticketPrint" class="print-only"></pre>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261106"></script>
-<script src="js/cardapio.js?v=20261106"></script>
-<script src="js/db.js?v=20261106"></script>
-<script src="js/catalogo.js?v=20261106"></script>
-<script src="js/ficha.js?v=20261106"></script>
-<script src="js/impressora.js?v=20261106"></script>
-<script src="js/financeiro.js?v=20261106"></script>
-<script src="js/temporizador.js?v=20261031"></script>
+<script src="js/config.js?v=20261107"></script>
+<script src="js/cardapio.js?v=20261107"></script>
+<script src="js/db.js?v=20261107"></script>
+<script src="js/catalogo.js?v=20261107"></script>
+<script src="js/ficha.js?v=20261107"></script>
+<script src="js/impressora.js?v=20261107"></script>
+<script src="js/financeiro.js?v=20261107"></script>
+<script src="js/temporizador.js?v=20261107"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -161,6 +193,19 @@ elAuto.checked = pref('autoPrint', false);
 elWa.checked = pref('autoWhats', true);
 elAuto.onchange = () => { setPref('autoPrint', elAuto.checked); if (elAuto.checked) verificarImpressao(); };
 elWa.onchange = () => setPref('autoWhats', elWa.checked);
+
+/* ---------------- MENU LATERAL ----------------
+   Telas largas: lembra aberto/fechado no aparelho (padrão aberto). Celular/estreita: começa fechado e abre por cima. */
+const telaEstreita = matchMedia('(max-width:900px)');
+function abrirMenu(on, salvar) {
+  document.body.classList.toggle('menuAberto', on);
+  document.getElementById('btnMenu').setAttribute('aria-expanded', on ? 'true' : 'false');
+  if (salvar && !telaEstreita.matches) setPref('menu', on);
+}
+function alternarMenu() { abrirMenu(!document.body.classList.contains('menuAberto'), true); }
+abrirMenu(!telaEstreita.matches && pref('menu', true));
+telaEstreita.addEventListener('change', () => abrirMenu(!telaEstreita.matches && pref('menu', true)));
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && telaEstreita.matches) abrirMenu(false); });
 
 const elData = document.getElementById('dataFiltro');
 elData.value = Horario.dataTurno();   // após a meia-noite continua no dia em que o turno abriu
@@ -192,6 +237,7 @@ DB.observarUsuario(u => {
   document.getElementById('login').classList.toggle('hide', logado);
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
+  document.body.classList.toggle('logado', logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   logadoCoz = logado;
   if (logado) { assinar(); assinarFuturos(); Ficha.iniciar(avisoInsumos); }   // ficha técnica: custo gravado e baixa dos insumos
