@@ -871,18 +871,60 @@ function pagamentoFiado(id) {
     if (f.telefone) setTimeout(() => { if (confirm(resta <= 0.004 ? 'Enviar mensagem de quitação no WhatsApp?' : 'Enviar recibo do pagamento no WhatsApp?')) whatsFiado(id, 'quitacao', v.valor); }, 300);
   }, { ok: 'Lançar pagamento' });
 }
+/* Itens do pedido de cada compra do fiado (busca na coleção pedidos; cache por movimento)
+   S.itensFiado[movId] = [{ txt, valor }] | 'na' (pedido não encontrado) */
+S.itensFiado = {};
+function linhasPedido(p) {
+  const l = [], itens = p.itens || [];
+  itens.filter(it => !Preco.ehSache(it)).forEach(it => {
+    const q = it.qtd || 1;
+    let txt = `${q}× ${Preco.descricao(it)}`;
+    if (it.obs) txt += ` (obs: ${it.obs})`;
+    l.push({ txt, valor: r2(Preco.unitario(it) * q) });
+  });
+  const sc = Preco.saches(itens, p.cortesiaPorPizza || 0);
+  if (sc.qtd) l.push({ txt: `Sachês: ${Preco.listaSaches(itens)}${sc.gratis ? ` (${sc.gratis} grátis)` : ''}`, valor: sc.valor });
+  if (p.taxaEntrega) l.push({ txt: 'Taxa de entrega', valor: p.taxaEntrega });
+  if (p.desconto && p.desconto.valor) l.push({ txt: `Desconto${p.desconto.motivo ? ' (' + p.desconto.motivo + ')' : ''}`, valor: -p.desconto.valor });
+  if (p.obs) l.push({ txt: `Obs.: ${p.obs}` });
+  return l;
+}
+async function carregarItensFiado(f) {
+  const falta = (f.movimentos || []).filter(m => m.tipo === 'compra' && (m.pedidoId || m.pedido) && !S.itensFiado[m.id]);
+  if (!falta.length) return false;
+  const datas = [...new Set(falta.map(m => m.pedidoData || m.data))];
+  const porData = {};
+  await Promise.all(datas.map(d => DB.listarPedidos(d, d).then(l => { porData[d] = l; }).catch(() => { porData[d] = null; })));
+  falta.forEach(m => {
+    const l = porData[m.pedidoData || m.data];
+    if (!l) return;   // erro de leitura: tenta de novo na próxima abertura
+    const p = (m.pedidoId && l.find(x => x.id === m.pedidoId)) || (m.pedido && l.find(x => String(x.numero) === String(m.pedido)));
+    S.itensFiado[m.id] = p && (p.itens || []).length ? linhasPedido(p) : 'na';
+  });
+  return true;
+}
+function htmlItensFiado(m) {
+  if (m.tipo !== 'compra' || !(m.pedidoId || m.pedido)) return '';
+  const it = S.itensFiado[m.id];
+  if (!it) return '<div class="muted itensFiado">carregando itens…</div>';
+  if (it === 'na') return '<div class="muted itensFiado">itens indisponíveis</div>';
+  return `<div class="itensFiado" style="font-size:13px;margin-top:4px;padding-left:8px;border-left:3px solid var(--borda,#ddd)">${it.map(x =>
+    `<div style="display:flex;justify-content:space-between;gap:10px"><span>${esc(x.txt)}</span>${x.valor != null ? `<span style="white-space:nowrap">${x.valor < 0 ? '−' : ''}${dinheiro(Math.abs(x.valor))}</span>` : ''}</div>`).join('')}</div>`;
+}
 function extratoFiado(id) {
   const f = S.fiados.find(x => x.id === id); if (!f) return;
+  carregarItensFiado(f).then(mudou => { if (mudou && $('mVer').classList.contains('on') && $('verBox').dataset.fiado === id) extratoFiado(id); });
   const r = F.resumoFiado(f, hoje());
   let s = 0;
   const movs = (f.movimentos || []).slice().sort((a, b) => a.data.localeCompare(b.data) || a.em - b.em).map(m => { s += m.cancelado ? 0 : m.tipo === 'compra' ? m.valor : -m.valor; return Object.assign({ saldo: r2(s) }, m); });
   $('verBox').innerHTML = `<div class="barraTopo"><h2>📄 Extrato — ${esc(f.nome)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
     <div class="muted">${f.telefone ? Clientes.fmtTel(f.telefone) : ''} • limite ${r.limite ? dinheiro(r.limite) : 'sem limite'} • comprou ${dinheiro(r.totalCompras)} • pagou ${dinheiro(r.totalPago)}</div>
     <div class="rolar" style="margin-top:8px"><table><tr><th>Data</th><th>Lançamento</th><th class="r">Valor</th><th class="r">Saldo</th><th></th></tr>
-    ${movs.map(m => `<tr><td>${br(m.data)}</td><td>${m.tipo === 'compra' ? `🛒 ${esc(m.descricao || 'Compra')}${m.pedido ? ` <span class="tag">pedido #${m.pedido}</span>` : ''}${m.cancelado ? ' <span class="tag verm">estornado (pedido cancelado)</span>' : ''}${m.vencimento ? `<div class="muted">vence ${br(m.vencimento)}</div>` : ''}` : `💵 Pagamento ${FORMAS[m.forma] || ''}${m.obs ? `<div class="muted">${esc(m.obs)}</div>` : ''}`}</td>
+    ${movs.map(m => `<tr><td>${br(m.data)}</td><td>${m.tipo === 'compra' ? `🛒 ${esc(m.descricao || 'Compra')}${m.pedido ? ` <span class="tag">pedido #${m.pedido}</span>` : ''}${m.cancelado ? ' <span class="tag verm">estornado (pedido cancelado)</span>' : ''}${m.vencimento ? `<div class="muted">vence ${br(m.vencimento)}</div>` : ''}${htmlItensFiado(m)}` : `💵 Pagamento ${FORMAS[m.forma] || ''}${m.obs ? `<div class="muted">${esc(m.obs)}</div>` : ''}`}</td>
       <td class="r">${sinal(m.valor, m.tipo === 'compra' ? 'saida' : 'entrada')}</td><td class="r"><b>${dinheiro(m.saldo)}</b></td><td><button class="btn sm sec" title="Excluir (lançado errado)" onclick="excluirMovFiado('${id}','${m.id}')">🗑️</button></td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Sem movimentos.</td></tr>'}
     <tr class="tot"><td colspan="3">Saldo devedor</td><td class="r">${dinheiro(r.saldo)}</td><td></td></tr></table></div>
     ${f.telefone ? `<div style="display:flex;gap:8px;margin-top:12px"><button class="btn wa sm" onclick="whatsFiado('${id}','cobranca')">💬 Cobrar</button><button class="btn wa sm" onclick="whatsFiado('${id}','extrato')">💬 Enviar extrato</button></div>` : ''}`;
+  $('verBox').dataset.fiado = id;
   $('mVer').classList.add('on');
 }
 async function excluirMovFiado(id, mid) {
@@ -902,14 +944,21 @@ function msgFiado(f, tipo, valor) {
     : `Olá, ${nome}! 😊\nRecebemos seu pagamento de *${dinheiro(valor)}*. Obrigado!\nSaldo restante no crediário: *${dinheiro(r.saldo)}*.\n\n${loja} 🍕`;
   // Resumo do crediário (compras e pagamentos, sem os estornados): "22/10/2026 • Compra (2 Pizzas…): R$ 175,00"
   const resumo = (f.movimentos || []).filter(m => !m.cancelado).sort((a, b) => a.data.localeCompare(b.data) || (a.em || 0) - (b.em || 0))
-    .map(m => `${br(m.data)} • ${m.tipo === 'compra' ? 'Compra' : 'Pagamento'}${m.descricao ? ' (' + m.descricao + ')' : ''}: ${m.tipo === 'compra' ? '' : '−'}${dinheiro(m.valor)}`).join('\n');
+    .map(m => `${br(m.data)} • ${m.tipo === 'compra' ? 'Compra' : 'Pagamento'}${m.descricao ? ' (' + m.descricao + ')' : ''}: ${m.tipo === 'compra' ? '' : '−'}${dinheiro(m.valor)}` + (tipo === 'extrato' ? textoItensFiado(m) : '')).join('\n');
   if (tipo === 'extrato') return `Olá, ${nome}! Segue o resumo do seu crediário no *${loja}*:\n\n${resumo}\n\n*Saldo: ${dinheiro(r.saldo)}*`;
   return `Olá, ${nome}! Tudo bem? 😊\nAqui é do *${loja}*. Passando para lembrar, do seu saldo em aberto no crediário: *${dinheiro(r.saldo)}*` +
     `${r.vencimento ? ` (vencimento: ${br(r.vencimento)})` : ''}.\nSegue o resumo:\n\n${resumo}\n\n*Saldo: ${dinheiro(r.saldo)}*\n\n` +
     `Pode pagar por Pix (chave: ${CONFIG.pix.chave}).\nSe já pagou, por favor desconsidere esta mensagem. Muito obrigado! 🍕`;
 }
-function whatsFiado(id, tipo, valor) {
+// Itens da compra no WhatsApp: uma linha curta por item ("   - 1× Pizza Grande (G) - CALABRESA: R$ 60,00")
+function textoItensFiado(m) {
+  const it = m.tipo === 'compra' && S.itensFiado[m.id];
+  if (!it || it === 'na') return '';
+  return it.map(x => `\n   - ${x.txt}${x.valor != null ? ': ' + (x.valor < 0 ? '−' : '') + dinheiro(Math.abs(x.valor)) : ''}`).join('');
+}
+async function whatsFiado(id, tipo, valor) {
   const f = S.fiados.find(x => x.id === id); if (!f || !f.telefone) return;
+  if (tipo === 'extrato') { try { await carregarItensFiado(f); } catch { } }
   telWhats = f.telefone;
   $('wNome').textContent = f.nome; $('wTel').textContent = Clientes.fmtTel(f.telefone);
   $('wTexto').value = msgFiado(f, tipo, valor);
