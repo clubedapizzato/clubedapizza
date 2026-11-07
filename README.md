@@ -22,7 +22,7 @@
 | `js/catalogo.js` | Lê o catálogo do Firestore (`produtos`, `config/loja`); se vazio/offline usa `js/cardapio.js` |
 | `js/endereco.js` | Endereço com mapa, pino, busca e taxa — usado pela loja e pelo delivery do balcão |
 | `js/rota.js` | Rota do entregador (vizinho mais próximo + 2-opt/or-opt) e links do Google Maps |
-| `js/fidelidade.js` | Fidelidade no Firestore (coleção privada `fidelidade`) + migração do aparelho |
+| `js/fidelidade.js` | Fidelidade no Firestore (coleção privada `fidelidade`) + migração do aparelho + saldo de um cliente (mensagem de "entregue") |
 | `js/clientes.js` | Cálculos da página de clientes (agrupamento por telefone, segmentos, fidelidade, CSV) — só leitura |
 | `js/fincalc.js` | Cálculos do financeiro (recorrência, saldos, caixa, folha, DRE, previsão, ponto de equilíbrio, CSV) — sem tela e sem banco |
 | `js/financeiro.js` | Gravação do financeiro nas coleções privadas `fin_*` (lote atômico); modo demo em `localStorage` |
@@ -144,6 +144,12 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - **Fiado:** forma `fiado` no balcão (inclusive delivery). Escolhe/cadastra o cliente (telefone normalizado), mostra saldo e limite; acima do limite ou com atraso exige "Autorizar mesmo assim". O pedido grava `pagamento: { forma: 'fiado', confirmado: false, fiadoId, fiadoVencimento, fiadoSaldo }` e, **na mesma transação**, a compra `ped-{pedidoId}` em `fin_fiados` (vencimento padrão em ⚙️ Config. do Caixa, ou data específica). Não entra em dinheiro/Pix/cartão nem no esperado do caixa; o recebimento (aba Fiados) gera "Recebimento de fiado". Comprovante com saldo e assinatura.
 - **Consumo interno:** forma `consumo_interno` (funcionário, dono, cortesia, degustação, perda): total R$ 0, `valorReferencia` = preço de venda, `consumoInterno: { tipo, quem, funcionarioId, motivo, descontar, descontarModo }`. Estoque e insumos baixam normalmente (movimentos com `consumoInterno`). Fica fora de faturamento, ticket, rankings, Clientes e fidelidade. No DRE do Caixa entra o **custo** em "Consumo interno" (funcionário → alimentação, cortesia/degustação → marketing, perda → perdas; dono → retirada). "Descontar do funcionário" cria `fin_folha/ci-{pedidoId}` (custo ou venda). Limite por funcionário/dia opcional.
 - Regras: logado pode criar pedido de balcão já `entregue`; o site continua só `novo`.
+
+## Promoção Fidelidade por tamanho
+- **Clientes → 🎁 Fidelidade → Conta por: 📏 Pizzas do mesmo tamanho**: a cada *N* pizzas do mesmo tamanho o cliente ganha 1 pizza desse tamanho. Cada tamanho conta separado (10 P = 1 P; P, M e G não se somam). Pizza com preço zero (o próprio prêmio) não conta.
+- **Contar pedidos desde / até** limitam os pedidos que contam; **Resgate até** é o prazo do prêmio (depois dele nada fica "a entregar").
+- Ao marcar **✅ Entregue** (entregador ou cozinha), a mensagem do WhatsApp leva o **saldo do cliente** por tamanho. São só 3 leituras pequenas (regra, prêmios e pedidos daquele telefone); sem resposta em 5 s a mensagem vai sem o saldo. Fora do período ou com outra regra, nada muda.
+- ✅ Marcar recompensa entregue grava de qual tamanho saiu o prêmio (`entregas[].tamanho`).
 
 ## Atualizações e cache
 > Depois de cada atualização, se o site não mudar: confira em GitHub → Actions se o "pages build and deployment" terminou (ícone verde) e aperte Ctrl+F5.

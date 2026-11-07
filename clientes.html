@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261106">
+<link rel="stylesheet" href="css/app.css?v=20261107b">
 <style>
 main{max-width:1200px;padding-bottom:30px}
 .topo .in{max-width:1200px}
@@ -61,7 +61,8 @@ th.ord:hover{color:var(--ink)}
 .prog .vazio{filter:grayscale(1);opacity:.22}
 .barraP{height:10px;background:#f5f5f4;border-radius:5px;overflow:hidden;min-width:90px}
 .barraP i{display:block;height:100%;background:var(--ok)}
-.fidCfg{display:grid;grid-template-columns:150px 120px 1fr 160px auto;gap:10px;align-items:end}
+.fidCfg{display:grid;grid-template-columns:190px 110px 1fr 150px 150px 150px auto;gap:10px;align-items:end}
+@media(max-width:1100px){.fidCfg{grid-template-columns:1fr 1fr 1fr}}
 @media(max-width:760px){.fidCfg{grid-template-columns:1fr 1fr}}
 .premio{background:#f0fdf4}
 .linhaFid{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:8px;padding:8px;border-radius:10px;margin-bottom:6px}
@@ -133,10 +134,12 @@ th.ord:hover{color:var(--ink)}
         <h2>🎁 Fidelidade <span class="muted" style="font-weight:400">(simulador — controle interno)</span></h2>
         <div class="aviso">A loja <b>não</b> mostra nada disso ao cliente. É um controle interno: a regra e os resgates ficam no Firebase (privado, só quem está logado vê) e valem em <b>todos os aparelhos</b>. O resgate é marcado à mão (botão "Marcar recompensa entregue").</div>
         <div class="fidCfg">
-          <div><label for="fidTipo">Conta por</label><select id="fidTipo" onchange="trocarTipoFid()"><option value="pizzas">🍕 Pizzas</option><option value="valor">💰 R$ em compras</option></select></div>
+          <div><label for="fidTipo">Conta por</label><select id="fidTipo" onchange="trocarTipoFid()"><option value="pizzas">🍕 Pizzas</option><option value="tamanho">📏 Pizzas do mesmo tamanho</option><option value="valor">💰 R$ em compras</option></select></div>
           <div id="fidMetaBox"><label for="fidMeta" id="fidMetaLbl">A cada (pizzas)</label><input id="fidMeta" type="number" min="1" step="1"></div>
           <div><label for="fidRecompensa">O cliente ganha</label><input id="fidRecompensa" placeholder="1 pizza G grátis"></div>
           <div><label for="fidInicio">Contar pedidos desde</label><input id="fidInicio" type="date"></div>
+          <div><label for="fidFim">Contar pedidos até</label><input id="fidFim" type="date"></div>
+          <div><label for="fidResgate">Resgate até</label><input id="fidResgate" type="date"></div>
           <button class="btn dark" onclick="salvarFid()">Salvar</button>
         </div>
         <div class="muted" style="margin-top:6px" id="fidRegra"></div>
@@ -195,11 +198,11 @@ th.ord:hover{color:var(--ink)}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261106"></script>
-<script src="js/cardapio.js?v=20261106"></script>
-<script src="js/db.js?v=20261106"></script>
-<script src="js/clientes.js?v=20261106"></script>
-<script src="js/fidelidade.js?v=20261106"></script>
+<script src="js/config.js?v=20261107b"></script>
+<script src="js/cardapio.js?v=20261107b"></script>
+<script src="js/db.js?v=20261107b"></script>
+<script src="js/clientes.js?v=20261107b"></script>
+<script src="js/fidelidade.js?v=20261107b"></script>
 <script>
 let periodo = '90d';
 let pedidos = [], A = null;            // A = resultado de Clientes.analisar
@@ -483,13 +486,31 @@ async function salvarFid() {
   if (tipo === 'valor') cfg.valor = m; else cfg.meta = Math.round(m);
   cfg.recompensa = document.getElementById('fidRecompensa').value.trim() || Clientes.FID_PADRAO.recompensa;
   cfg.inicio = document.getElementById('fidInicio').value || '';
+  cfg.fim = document.getElementById('fidFim').value || '';
+  cfg.resgateAte = document.getElementById('fidResgate').value || '';
+  if (cfg.fim && cfg.inicio && cfg.fim < cfg.inicio) return toast('"Contar pedidos até" não pode ser antes do início.');
+  if (cfg.resgateAte && cfg.fim && cfg.resgateAte < cfg.fim) return toast('"Resgate até" não pode ser antes do fim da contagem.');
   try { await Fidelidade.salvarConfig(cfg); toast('Regra de fidelidade salva (vale em todos os aparelhos).'); } catch (e) { erroFid(e); }
 }
 async function marcarEntregue(chave) {
   const c = porChave(chave); if (!c) return;
-  const obs = prompt(`Marcar 1 recompensa ("${lerFid().recompensa}") como entregue para ${c.nome}?\n\nObservação (opcional, ex.: pedido #12):`, '');
+  const cfg = lerFid(), f = Clientes.fidelidade(c, cfg, lerEntregues()[chave]);
+  let tamanho = '';
+  if (f.porTamanho) {
+    const op = f.usados.filter(id => f.tamanhos[id].disponiveis > 0);
+    if (!op.length) return toast('Este cliente não tem pizza grátis a entregar.');
+    tamanho = op[0];
+    if (op.length > 1) {
+      const r = prompt(`De qual tamanho é a pizza grátis entregue? (${op.map(id => `${id}: ${f.tamanhos[id].disponiveis}`).join(' • ')})`, op[0]);
+      if (r === null) return;
+      tamanho = String(r).trim().toUpperCase();
+      if (!op.includes(tamanho)) return toast(`Tamanho inválido. Use: ${op.join(', ')}.`);
+    }
+  }
+  const premio = f.porTamanho ? `1 pizza tradicional ${tamanho}` : `"${cfg.recompensa}"`;
+  const obs = prompt(`Marcar ${premio} como entregue para ${c.nome}?\n\nObservação (opcional, ex.: pedido #12):`, '');
   if (obs === null) return;
-  try { await Fidelidade.marcarEntregue(chave, obs.trim()); toast('Recompensa marcada como entregue.'); } catch (e) { erroFid(e); }
+  try { await Fidelidade.marcarEntregue(chave, obs.trim(), tamanho); toast('Recompensa marcada como entregue.'); } catch (e) { erroFid(e); }
 }
 async function desfazerEntregue(chave) {
   const l = lerEntregues()[chave] || [];
@@ -518,6 +539,8 @@ async function migrarFid() {
   } catch (e) { erroFid(e); }
 }
 function progresso(f) {
+  if (f.porTamanho) return f.usados.length ? f.usados.map(id => { const x = f.tamanhos[id];
+    return `<span style="white-space:nowrap"><b>${id}</b> ${x.resto}/${f.meta}${x.disponiveis ? ` 🎁${x.disponiveis}` : ''}</span>`; }).join(' • ') : '—';
   if (f.porPizza && f.meta <= 20) return `<span class="prog" title="${f.resto} de ${f.meta}">${'🍕'.repeat(f.resto)}<span class="vazio">${'🍕'.repeat(f.meta - f.resto)}</span></span> <b>${f.resto}/${f.meta}</b>`;
   const txt = f.porPizza ? `${f.resto}/${f.meta}` : `${dinheiro(f.resto)} / ${dinheiro(f.meta)}`;
   return `<span class="barraP" style="display:inline-block;width:110px;vertical-align:middle"><i style="width:${f.pct.toFixed(1)}%"></i></span> <b>${txt}</b>`;
@@ -530,8 +553,12 @@ function renderFid() {
   trocarTipoFid();
   document.getElementById('fidRecompensa').value = cfg.recompensa;
   document.getElementById('fidInicio').value = cfg.inicio;
-  document.getElementById('fidRegra').innerHTML = `Regra atual: a cada <b>${cfg.tipo === 'valor' ? dinheiro(cfg.valor) + ' em compras (sem taxa de entrega)' : cfg.meta + ' pizzas'}</b> o cliente ganha <b>${esc(cfg.recompensa)}</b>` +
-    `${cfg.inicio ? `, contando pedidos desde ${br(cfg.inicio)}` : ''}. Pedidos cancelados não contam; meio a meio conta como 1 pizza.`;
+  document.getElementById('fidFim').value = cfg.fim || '';
+  document.getElementById('fidResgate').value = cfg.resgateAte || '';
+  document.getElementById('fidRegra').innerHTML = `Regra atual: a cada <b>${cfg.tipo === 'valor' ? dinheiro(cfg.valor) + ' em compras (sem taxa de entrega)' : cfg.tipo === 'tamanho' ? cfg.meta + ' pizzas do mesmo tamanho' : cfg.meta + ' pizzas'}</b> o cliente ganha <b>${esc(cfg.recompensa)}</b>` +
+    `${cfg.inicio ? `, contando pedidos desde ${br(cfg.inicio)}` : ''}${cfg.fim ? ` até ${br(cfg.fim)}` : ''}${cfg.resgateAte ? `; resgate até <b>${br(cfg.resgateAte)}</b>` : ''}. Pedidos cancelados não contam; meio a meio conta como 1 pizza.` +
+    (cfg.tipo === 'tamanho' ? ' Cada tamanho conta separado (10 P = 1 P; tamanhos não se somam); pizza com preço zero (o próprio prêmio) não conta. O saldo vai junto na mensagem de "entregue" do entregador e da cozinha.' : '') +
+    (cfg.resgateAte && hojeISO() > cfg.resgateAte ? ' <b style="color:#b91c1c">Prazo de resgate encerrado.</b>' : '');
   const inicioReal = cfg.inicio || '';
   document.getElementById('fidAviso').innerHTML += avisoMigracao() + (periodo !== 'tudo' && de > (inicioReal || '0000')
     ? `<div class="aviso">⚠️ O período carregado começa em ${br(de)}${inicioReal ? `, depois do início do programa (${br(inicioReal)})` : ''}: pizzas mais antigas não entram na conta. Para o progresso completo, escolha <b>Tudo</b>${inicioReal ? ' ou um período que comece antes do início' : ' ou defina "Contar pedidos desde"'}.</div>` : '');
@@ -539,7 +566,7 @@ function renderFid() {
   const l = A.clientes.map(c => ({ c, f: Clientes.fidelidade(c, cfg, ent[c.chave]) })).filter(x => x.f.base > 0);
   const ganharam = l.filter(x => x.f.disponiveis > 0).sort((a, b) => b.f.disponiveis - a.f.disponiveis || b.f.base - a.f.base);
   const quase = l.filter(x => x.f.quaseLa && !x.f.disponiveis).sort((a, b) => a.f.falta - b.f.falta);
-  const faltaTxt = f => f.porPizza ? `falta${f.falta === 1 ? '' : 'm'} ${f.falta} pizza${f.falta === 1 ? '' : 's'}` : `faltam ${dinheiro(f.falta)}`;
+  const faltaTxt = f => f.porTamanho ? `falta${f.falta === 1 ? '' : 'm'} ${f.falta} pizza${f.falta === 1 ? '' : 's'} ${f.tamanhoMelhor}` : f.porPizza ? `falta${f.falta === 1 ? '' : 'm'} ${f.falta} pizza${f.falta === 1 ? '' : 's'}` : `faltam ${dinheiro(f.falta)}`;
   const nomeLink = c => `<a href="#" onclick="abrirFicha('${c.chave}');return false"><b>${esc(c.nome)}</b></a>`;
   document.getElementById('fidGanharam').innerHTML = ganharam.length ? ganharam.map(({ c, f }) => `<div class="premio linhaFid">
       <div>${nomeLink(c)} <b>🎁 ${f.disponiveis}</b><div class="muted">${Clientes.fmtTel(c.telefone)} • ${f.ganhos} ganha(s), ${f.entregues} entregue(s)</div></div>

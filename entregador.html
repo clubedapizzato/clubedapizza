@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261106">
+<link rel="stylesheet" href="css/app.css?v=20261107b">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -101,11 +101,13 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261106"></script>
-<script src="js/cardapio.js?v=20261106"></script>
-<script src="js/db.js?v=20261106"></script>
-<script src="js/catalogo.js?v=20261106"></script>
-<script src="js/rota.js?v=20261106"></script>
+<script src="js/config.js?v=20261107b"></script>
+<script src="js/cardapio.js?v=20261107b"></script>
+<script src="js/db.js?v=20261107b"></script>
+<script src="js/catalogo.js?v=20261107b"></script>
+<script src="js/rota.js?v=20261107b"></script>
+<script src="js/clientes.js?v=20261107b"></script>
+<script src="js/fidelidade.js?v=20261107b"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }
@@ -326,13 +328,21 @@ function desenharMapa(pend, feitas) {
 
 /* ---------------- ENTREGUE / NÃO ENTREGUE ---------------- */
 const achar = id => pedidos.find(p => p.id === id);
+// Mensagem de "entregue" + saldo da Promoção Fidelidade (se ativa). Sem resposta em 5 s, vai sem o saldo.
+async function mensagemEntregue(p) {
+  const txt = STATUS.mensagem(Object.assign({}, p, { status: 'entregue' }), 'entregue');
+  try {
+    const saldo = await Promise.race([Fidelidade.saldoCliente(p.cliente.telefone), new Promise(r => setTimeout(() => r(''), 5000))]);
+    return saldo ? `${txt}\n\n${saldo}` : txt;
+  } catch (e) { DB.logErro(e); return txt; }
+}
 async function entregue(id) {
   const p = achar(id); if (!p) return;
   if (!confirm(`Confirmar ENTREGA do pedido #${p.numero} (${p.cliente.nome})?${p.pagamento.forma === 'misto' && !p.pagamento.confirmado ? `\n\nRecebeu ${Pagto.texto(p)}?` : p.pagamento.forma === 'dinheiro' ? `\n\n💵 Recebeu ${dinheiro(p.total)}?` : p.pagamento.forma === 'cartao' ? `\n\n💳 Passou ${dinheiro(p.total)} no cartão?` : ''}`)) return;
   const jan = p.cliente.telefone ? window.open('', '_blank') : null;   // abre já no clique (pop-up)
   try {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');
-    if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { status: 'entregue' }), 'entregue'));
+    if (jan) jan.location.href = linkWhats(p.cliente.telefone, await mensagemEntregue(p));
     toast(`✅ #${p.numero} entregue!`);
   } catch (e) { if (jan) jan.close(); avisarErro(e); }
 }
