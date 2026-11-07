@@ -180,13 +180,18 @@ window.Clientes = (function () {
     return 'ocasional';
   }
 
-  /* ---------------- FIDELIDADE (simulador, controle interno) ----------------
-     cfg = { tipo: 'pizzas'|'valor', meta (pizzas), valor (R$), recompensa, inicio ('AAAA-MM-DD' ou '') }
-     entregues = [ms, ...] recompensas já entregues a este cliente */
-  const FID_PADRAO = { tipo: 'pizzas', meta: 10, valor: 300, recompensa: '1 pizza G grátis', inicio: '' };
-  function fidelidade(c, cfg, entregues) {
+  /* ---------------- FIDELIDADE (controle interno) ----------------
+     cfg = { tipo: 'pizzas'|'tamanho'|'valor', meta (pizzas), valor (R$), recompensa,
+             inicio / fim ('AAAA-MM-DD' ou '': pedidos que contam), resgateAte ('AAAA-MM-DD' ou '': prazo do prêmio) }
+     tipo 'tamanho' = a cada {meta} pizzas DO MESMO TAMANHO ganha 1 pizza desse tamanho (cada tamanho conta separado)
+     entregues = [{ em, por, obs, tamanho? }] recompensas já entregues a este cliente */
+  const FID_PADRAO = { tipo: 'pizzas', meta: 10, valor: 300, recompensa: '1 pizza G grátis', inicio: '', fim: '', resgateAte: '' };
+  const TAMANHOS_FID = () => (window.CARDAPIO && CARDAPIO.tamanhos ? CARDAPIO.tamanhos.map(t => t.id) : ['P', 'M', 'G']);
+  function fidelidade(c, cfg, entregues, hoje = hojeISO()) {
     cfg = Object.assign({}, FID_PADRAO, cfg || {});
-    const ped = c.pedidos.filter(p => valido(p) && (!cfg.inicio || p.data >= cfg.inicio));
+    const ped = c.pedidos.filter(p => valido(p) && (!cfg.inicio || p.data >= cfg.inicio) && (!cfg.fim || p.data <= cfg.fim));
+    const expirado = !!cfg.resgateAte && hoje > cfg.resgateAte;   // passou o prazo de resgate: nada a entregar
+    if (cfg.tipo === 'tamanho') return fidTamanho(ped, cfg, entregues || [], expirado);
     const porPizza = cfg.tipo !== 'valor';
     const meta = porPizza ? Math.max(1, Math.round(Number(cfg.meta) || 10)) : Math.max(1, Number(cfg.valor) || 300);
     const base = porPizza
@@ -197,11 +202,60 @@ window.Clientes = (function () {
     const resto = r2(base - ganhos * meta);
     const falta = r2(meta - resto);
     return {
-      porPizza, meta, base, ganhos, entregues: nEnt, disponiveis: Math.max(0, ganhos - nEnt), resto, falta,
+      porPizza, meta, base, ganhos, entregues: nEnt, disponiveis: expirado ? 0 : Math.max(0, ganhos - nEnt), resto, falta, expirado,
       // "Quase lá": faltam 1–2 pizzas (ou até 20% do valor)
       quaseLa: porPizza ? falta <= 2 : falta <= meta * 0.2,
       pct: Math.min(100, resto / meta * 100)
     };
+  }
+
+  /* Por tamanho: conta só pizzas pagas (preço > 0 — a pizza grátis do prêmio não entra na conta).
+     Recompensa entregue com "tamanho" sai daquele tamanho; sem tamanho (registro antigo) sai do que tiver mais a entregar. */
+  function fidTamanho(ped, cfg, entregues, expirado) {
+    const meta = Math.max(1, Math.round(Number(cfg.meta) || 10));
+    const ids = TAMANHOS_FID(), t = {};
+    ids.forEach(id => { t[id] = { base: 0, entregues: 0 }; });
+    ped.forEach(p => (p.itens || []).forEach(it => {
+      if (it.tipo !== 'pizza' || !(precoItem(it) > 0)) return;
+      const id = it.tamanho; if (!t[id]) t[id] = { base: 0, entregues: 0 };
+      t[id].base += it.qtd || 1;
+    }));
+    Object.values(t).forEach(x => { x.ganhos = Math.floor(x.base / meta); });
+    const semTam = [];
+    entregues.forEach(e => { if (e && e.tamanho && t[e.tamanho]) t[e.tamanho].entregues++; else semTam.push(e); });
+    semTam.forEach(() => {
+      const alvo = Object.values(t).filter(x => x.ganhos - x.entregues > 0).sort((a, b) => (b.ganhos - b.entregues) - (a.ganhos - a.entregues))[0];
+      if (alvo) alvo.entregues++;
+    });
+    Object.values(t).forEach(x => {
+      x.disponiveis = expirado ? 0 : Math.max(0, x.ganhos - x.entregues);
+      x.resto = x.base - x.ganhos * meta; x.falta = meta - x.resto;
+    });
+    const usados = Object.keys(t).filter(id => t[id].base > 0);
+    // o tamanho mais perto do próximo prêmio resume o progresso nas listas
+    const melhor = usados.slice().sort((a, b) => t[b].resto - t[a].resto)[0];
+    const m = melhor ? t[melhor] : { resto: 0, falta: meta };
+    const soma = k => Object.values(t).reduce((s, x) => s + x[k], 0);
+    return {
+      porPizza: true, porTamanho: true, tamanhos: t, usados, tamanhoMelhor: melhor || '', meta,
+      base: soma('base'), ganhos: soma('ganhos'), entregues: entregues.length, disponiveis: soma('disponiveis'),
+      resto: m.resto, falta: m.falta, expirado, quaseLa: !!melhor && m.falta <= 2, pct: Math.min(100, m.resto / meta * 100)
+    };
+  }
+
+  // Texto do saldo para o WhatsApp (só no tipo 'tamanho'): uma linha por tamanho já comprado + prazos
+  const brData = iso => iso ? iso.split('-').reverse().join('/') : '';
+  function textoSaldo(f, cfg) {
+    cfg = Object.assign({}, FID_PADRAO, cfg || {});
+    if (!f || !f.porTamanho || !f.usados.length) return '';
+    const nomeT = id => { const x = (window.CARDAPIO && CARDAPIO.tamanhos || []).find(z => z.id === id); return x ? `${x.nome} (${id})` : id; };
+    const linhas = f.usados.map(id => {
+      const x = f.tamanhos[id];
+      const premio = x.disponiveis ? ` 🎉 *${x.disponiveis} pizza${x.disponiveis > 1 ? 's' : ''} ${id} grátis* para resgatar!` : '';
+      return `🍕 ${nomeT(id)}: *${x.resto}/${f.meta}* — falta${x.falta === 1 ? '' : 'm'} ${x.falta} para ganhar 1 ${id}.${premio}`;
+    });
+    const prazos = [cfg.fim ? `compras até ${brData(cfg.fim)}` : '', cfg.resgateAte ? `resgate até ${brData(cfg.resgateAte)}` : ''].filter(Boolean).join(', ');
+    return `🎁 *Seu saldo na Promoção Fidelidade*\n${linhas.join('\n')}\nA cada ${f.meta} pizzas do mesmo tamanho, você ganha 1 pizza tradicional desse tamanho.${prazos ? ` Válido para ${prazos}.` : ''}`;
   }
 
   /* ---------------- MENSAGENS DE WHATSAPP ---------------- */
@@ -212,6 +266,10 @@ window.Clientes = (function () {
     const oi = nome && c.nome !== '(sem nome)' ? `Oi, ${nome}!` : 'Oi!';
     const sabor = c.saborFav ? ` A sua preferida é a *${fav(c.saborFav)}* 😋` : '';
     cfg = Object.assign({}, FID_PADRAO, cfg || {});
+    if (tipo === 'fidelidade' && f && f.porTamanho) {
+      const s = textoSaldo(f, cfg);
+      return `${oi} ${f.disponiveis > 0 ? 'Você ganhou pizza grátis no ' + loja + '! É só avisar no próximo pedido que quer usar o prêmio. 🎉' : 'Olha como está o seu saldo no ' + loja + ' 🍕'}\n\n${s}\n\n${Number(f.meta) === 10 ? 'Pediu 10, a 11ª é por conta do Clube! ' : ''}${site}`;
+    }
     if (tipo === 'fidelidade' && f) {
       if (f.disponiveis > 0) return `${oi} 🎉 Você completou ${f.porPizza ? f.meta + ' pizzas' : 'a meta de ' + dinheiro(f.meta) + ' em compras'} no ${loja} e ganhou *${cfg.recompensa}*! É só avisar no próximo pedido que quer usar o prêmio. Obrigado pela preferência ❤️\n${site}`;
       const falta = f.porPizza ? `${f.falta} pizza${f.falta === 1 ? '' : 's'}` : dinheiro(f.falta) + ' em compras';
@@ -244,5 +302,5 @@ window.Clientes = (function () {
     return '\uFEFF' + linhas.map(l => l.map(cel).join(';')).join('\r\n');
   }
 
-  return { normTel, fmtTel, telSuspeito, valido, analisar, segmento, SEGMENTOS, FID_PADRAO, fidelidade, mensagem, csv, chaveTexto, diasEntre };
+  return { normTel, fmtTel, telSuspeito, valido, analisar, segmento, SEGMENTOS, FID_PADRAO, fidelidade, textoSaldo, mensagem, csv, chaveTexto, diasEntre };
 })();

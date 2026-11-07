@@ -1,7 +1,7 @@
 /* =========================================================
    FIDELIDADE (controle interno) — coleção PRIVADA "fidelidade" (só logado)
-   - fidelidade/config      → regra { tipo, meta, valor, recompensa, inicio, atualizadoEm, atualizadoPor }
-   - fidelidade/{telefone}  → { entregas: [{ em, por, obs }], atualizadoEm } (telefone = Clientes.normTel)
+   - fidelidade/config      → regra { tipo, meta, valor, recompensa, inicio, fim, resgateAte, atualizadoEm, atualizadoPor }
+   - fidelidade/{telefone}  → { entregas: [{ em, por, obs, tamanho? }], atualizadoEm } (telefone = Clientes.normTel)
    Modo demonstração: localStorage "cdp_fidelidade". Usa o mesmo app Firebase do js/db.js (não altera o db.js).
    ========================================================= */
 window.Fidelidade = (function () {
@@ -47,7 +47,7 @@ window.Fidelidade = (function () {
 
   async function salvarConfig(cfg) {
     await init();
-    const doc = { tipo: cfg.tipo, meta: Number(cfg.meta) || 10, valor: Number(cfg.valor) || 300, recompensa: cfg.recompensa || '', inicio: cfg.inicio || '',
+    const doc = { tipo: cfg.tipo, meta: Number(cfg.meta) || 10, valor: Number(cfg.valor) || 300, recompensa: cfg.recompensa || '', inicio: cfg.inicio || '', fim: cfg.fim || '', resgateAte: cfg.resgateAte || '',
       atualizadoEm: Date.now(), atualizadoPor: usuario() };
     if (DB.modo() === 'demo') { const o = lerLS(LS, {}); o.config = doc; gravarLS(LS, o); return; }
     await comCaminho('fidelidade/config', fs.setDoc(fs.doc(db, 'fidelidade', 'config'), doc));
@@ -64,7 +64,37 @@ window.Fidelidade = (function () {
     }
     await comCaminho('fidelidade/' + tel, fs.setDoc(fs.doc(db, 'fidelidade', tel), { entregas: fs.arrayUnion(...lista), atualizadoEm: Date.now() }, { merge: true }));
   }
-  const marcarEntregue = (tel, obs) => adicionarEntregas(tel, [{ em: Date.now(), por: usuario(), obs: String(obs || '').slice(0, 200) }]);
+  // tamanho ('P'|'M'|'G') = de qual tamanho saiu o prêmio (regra "por tamanho"); '' nas outras regras
+  const marcarEntregue = (tel, obs, tamanho) => adicionarEntregas(tel, [Object.assign({ em: Date.now(), por: usuario(), obs: String(obs || '').slice(0, 200) }, tamanho ? { tamanho } : {})]);
+
+  /* ---------------- SALDO DE UM CLIENTE (entregador / cozinha) ----------------
+     Lê só a regra, os prêmios deste telefone e os pedidos deste telefone (poucas leituras no Firebase). */
+  async function lerConfig() {
+    await init();
+    if (DB.modo() === 'demo') return lerLS(LS, {}).config || null;
+    const d = await comCaminho('fidelidade/config', fs.getDoc(fs.doc(db, 'fidelidade', 'config')));
+    return d.exists() ? d.data() : null;
+  }
+  async function lerEntregas(tel) {
+    await init();
+    if (DB.modo() === 'demo') return ((lerLS(LS, {})[tel] || {}).entregas) || [];
+    const d = await comCaminho('fidelidade/' + tel, fs.getDoc(fs.doc(db, 'fidelidade', tel)));
+    return d.exists() ? (d.data().entregas || []) : [];
+  }
+  // Texto pronto para o WhatsApp ('' = sem promoção ativa, fora do prazo ou telefone inválido)
+  async function saldoCliente(telefone, hoje = hojeISO()) {
+    const tel = Clientes.normTel(telefone); if (!tel) return '';
+    const cfg = await lerConfig();
+    if (!cfg || cfg.tipo !== 'tamanho') return '';
+    if ((cfg.inicio && hoje < cfg.inicio) || (cfg.resgateAte && hoje > cfg.resgateAte)) return '';
+    // o pedido grava o telefone limpo (Telefone.limpar); pedidos antigos podem ter outro formato
+    const variantes = [...new Set([String(telefone || ''), tel])].filter(Boolean);
+    const [listas, entregas] = await Promise.all([Promise.all(variantes.map(v => DB.listarPedidosPorTelefone(v))), lerEntregas(tel)]);
+    const vistos = new Set(), pedidos = [];
+    listas.flat().forEach(p => { if (!vistos.has(p.id)) { vistos.add(p.id); pedidos.push(p); } });
+    const f = Clientes.fidelidade({ pedidos }, cfg, entregas, hoje);
+    return Clientes.textoSaldo(f, cfg);
+  }
 
   // Remove exatamente esta entrega (desfazer)
   async function desfazer(tel, entrega) {
@@ -127,5 +157,5 @@ window.Fidelidade = (function () {
     await comCaminho('fidelidade/' + de, fs.deleteDoc(fs.doc(db, 'fidelidade', de)));
   }
 
-  return { init, observar, salvarConfig, marcarEntregue, desfazer, legado, pendencias, migrar, limparLegado, moverTelefone };
+  return { init, observar, salvarConfig, marcarEntregue, lerConfig, lerEntregas, saldoCliente, desfazer, legado, pendencias, migrar, limparLegado, moverTelefone };
 })();
