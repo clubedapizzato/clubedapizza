@@ -455,8 +455,9 @@ async function finalizar() {
   };
   if (fiado) Object.assign(pedido.pagamento, { fiadoId: fiado.id, fiadoNome: fiado.nome, fiadoVencimento: fiado.vencimento, fiadoSaldo: fiado.saldoDepois });
   if (ci) Object.assign(pedido, { consumoInterno: consumoInt.info, valorReferencia: subtotalRef });
-  // balcão (comer aqui / levar) sem pizza: já sai entregue, não vai para a cozinha
-  const semPizza = !delivery() && !carrinho.some(it => it.tipo === 'pizza');
+  // balcão (comer aqui / levar) sem pizza e sem esfirra (precisa assar): já sai entregue, não vai para a cozinha
+  const vaiParaCozinha = it => it.tipo === 'pizza' || (Catalogo.doc(it.id) || {}).esfirra === true || (Preco.categoriaDe(it.id) || {}).nome === 'Esfirras';
+  const semCozinha = !delivery() && !carrinho.some(vaiParaCozinha);
   const vinculos = (pid, n) => {
     const l = [];
     if (fiado) l.push({ col: 'fin_fiados', id: fiado.id, dados: fiado.novo ? { nome: fiado.nome, telefone: fiado.telefone, limite: fiado.limite || 0, criadoEm: Date.now(), atualizadoEm: Date.now() } : { atualizadoEm: Date.now() },
@@ -471,14 +472,14 @@ async function finalizar() {
   b.disabled = true; b.textContent = 'Enviando...';
   try {
     // balcão: baixa o estoque na hora, junto com a criação do pedido
-    const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true, entregue: semPizza, vinculos });
+    const { id, numero: n, codigo } = await DB.criarPedido(pedido, { baixarEstoque: true, entregue: semCozinha, vinculos });
     // insumos pela ficha técnica (em segundo plano: nunca trava o caixa)
     DB.baixarInsumos(id).then(r => {
       if (r.feito && r.semFicha.length) toast(`📋 Sem ficha técnica: ${r.semFicha.join(', ')} — insumos não baixados.`);
       else if (r.feito && r.faltas.length) toast(`⚠️ Insumo insuficiente: ${r.faltas.join(', ')} (estoque ficou negativo).`);
     })
       .catch(e => { DB.logErro(e); toast('Insumos não baixados: ' + DB.mensagemErro(e)); });
-    ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now(), status: semPizza ? 'entregue' : 'novo' });
+    ultimo = Object.assign({}, pedido, { numero: n, codigo, criadoEm: Date.now(), status: semCozinha ? 'entregue' : 'novo' });
     mostrarSucesso();
   } catch (e) {
     avisarErro(e);
