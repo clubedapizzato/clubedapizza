@@ -1,7 +1,7 @@
 /* =========================================================
    FICHA TÉCNICA (custo das pizzas e adicionais) — só Gestão/cozinha/balcão (logado)
    - insumos/{id}: { nome, categoria, unidade, precoCompra, qtdEmbalagem, perda %, fornecedor, atualizadoEm, ativo, historico }
-   - fichas/{saborId|adicionalId}: { P: [{ insumoId, qtd }], M: [...], G: [...] }
+   - fichas/{saborId|adicionalId}: { P: [{ insumoId, qtd }], M: [...], G: [...] } • fichas/{esfirraId}: { U: [...] } (tamanho único)
    - fichas/_base: { P, M, G (base comum de toda pizza: massa, caixa, gás...), cmvAlvo }
    - estoque do insumo (opcional): controlaEstoque, estoqueAtual, estoqueMinimo, estoqueIdeal (na unidade do insumo)
    Custos são privados (coleções só para logado). Baixa de insumos por pedido: DB.baixarInsumos.
@@ -10,6 +10,8 @@ window.Ficha = (function () {
   const UNIDADES = ['kg', 'g', 'L', 'ml', 'un'];
   const CATEGORIAS = ['Queijos', 'Carnes', 'Vegetais', 'Molhos', 'Massa', 'Embalagens', 'Gás/Energia', 'Outros'];
   const TAMANHOS = ['P', 'M', 'G'];
+  // Produto com ficha técnica (esfirra, tamanho único): fichas/{produtoId}.U
+  const UNICO = 'U', TODOS_TAM = TAMANHOS.concat(UNICO);
   let insumos = {}, fichas = {}, iniciado = false, erroLeitura = null, carregado = false, fichasCarregadas = false;
   const r2 = v => Math.round(v * 100) / 100;
 
@@ -141,6 +143,12 @@ window.Ficha = (function () {
     });
     const tem = (id, tam) => !!(fs[id] && (fs[id][tam] || []).length);
     (pedido.itens || []).forEach(it => {
+      if (it.tipo === 'produto') {
+        // esfirra (produto com ficha de tamanho único); bebida/sachê sem ficha não baixa nem avisa
+        if (tem(it.id, UNICO)) soma(fs[it.id][UNICO], it.qtd || 1);
+        else if (it.categoria === 'Esfirras') semFicha.push(`${it.nome || it.id} (único)`);
+        return;
+      }
       if (it.tipo !== 'pizza') return;
       const q = it.qtd || 1, tam = it.tamanho, sab = it.sabores || [];
       sab.forEach(n => {
@@ -159,10 +167,11 @@ window.Ficha = (function () {
   }
   // ids de fichas que um pedido pode usar (para ler dentro da transação)
   const fichasDoPedido = pedido => [...new Set(['_base'].concat(...(pedido.itens || []).filter(it => it.tipo === 'pizza')
-    .map(it => (it.sabores || []).map(idSabor).concat((it.adicionais || []).map(a => a.id)))))];
+    .map(it => (it.sabores || []).map(idSabor).concat((it.adicionais || []).map(a => a.id))),
+    (pedido.itens || []).filter(it => it.tipo === 'produto').map(it => it.id)))];
 
   // Fichas (e a base) que usam o insumo
-  const fichasDoInsumo = id => Object.values(fichas).filter(f => TAMANHOS.some(t => (f[t] || []).some(l => l.insumoId === id)));
+  const fichasDoInsumo = id => Object.values(fichas).filter(f => TODOS_TAM.some(t => (f[t] || []).some(l => l.insumoId === id)));
   const usoInsumo = id => fichasDoInsumo(id).length;
 
   /* Resultado de venda: CMV %, taxa da maquininha, lucro e preço sugerido pelo CMV alvo */
@@ -197,7 +206,7 @@ window.Ficha = (function () {
   }
 
   return {
-    UNIDADES, CATEGORIAS, TAMANHOS, iniciar, custoUnit, custoLinha, custoLinhas, custoBase, custoFicha, custoSabor, custoItem,
+    UNIDADES, CATEGORIAS, TAMANHOS, UNICO, TODOS_TAM, iniciar, custoUnit, custoLinha, custoLinhas, custoBase, custoFicha, custoSabor, custoItem,
     temFicha, idSabor, lerQtd, usoInsumo, resultado, corCmv, cmvAlvo, listaExemplo, fichaExemplo,
     porcoesAdicional, disponibilidadeAdicionais, agendarPublicacao, fichasDoInsumo, converter, custoMedio, estado, acabando, sugestaoCompra, consumoPedido, fichasDoPedido, carregado: () => carregado,
     insumo: id => insumos[id] || null, insumos: () => Object.values(insumos).sort((a, b) => a.nome.localeCompare(b.nome)),
