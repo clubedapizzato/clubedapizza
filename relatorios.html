@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261107b">
+<link rel="stylesheet" href="css/app.css?v=20261108b">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -317,11 +317,11 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261107b"></script>
-<script src="js/cardapio.js?v=20261107b"></script>
-<script src="js/db.js?v=20261107b"></script>
-<script src="js/catalogo.js?v=20261107b"></script>
-<script src="js/ficha.js?v=20261107b"></script>
+<script src="js/config.js?v=20261108b"></script>
+<script src="js/cardapio.js?v=20261108b"></script>
+<script src="js/db.js?v=20261108b"></script>
+<script src="js/catalogo.js?v=20261108b"></script>
+<script src="js/ficha.js?v=20261108b"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
@@ -351,7 +351,7 @@ DB.observarUsuario(u => {
     carregar();
     if (!iniciado) {
       iniciado = true;
-      const tudo = () => { renderProdutos(); renderAbaFichas(); renderAbaInsumos(); avisoInsumosRel(); if (fe) renderFicha(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); };
+      const tudo = () => { sincronizarCustoEsfirras(); renderProdutos(); renderAbaFichas(); renderAbaInsumos(); avisoInsumosRel(); if (fe) renderFicha(); if (pedidos.length) render(calcular(pedidos, ...intervalo(periodo))); };
       Catalogo.iniciar(tudo);
       Ficha.iniciar(tudo);   // insumos e fichas (privados)
     }
@@ -421,7 +421,7 @@ function custoItem(it) {
 function calcular(lista, de, ate) {
   const r = {
     faturamento: 0, pedidos: 0, cancelados: 0, valorCancelado: 0, naoEntregues: 0, taxas: 0,
-    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, formas: {}, tipos: {}, adicionais: {},
+    dias: {}, origem: {}, sabores: {}, tamanhos: {}, produtos: {}, esfirras: {}, formas: {}, tipos: {}, adicionais: {},
     lucro: {}, cmv: 0, receitaComCusto: 0, estimado: false, entregadores: {},
     cmvPizzas: 0, receitaPizzas: 0, pizzasComCusto: 0, estPizzas: false, consumo: []
   };
@@ -459,6 +459,8 @@ function calcular(lista, de, ate) {
         // adicionais: quantidade e receita (pedido antigo "adicional: true" conta como Catupiry / Cheddar)
         const lista = it.adicionais || (it.adicional ? [{ nome: CARDAPIO.nomeAdicional, preco: (Preco.tamanho(it.tamanho) || {}).adicional || 0 }] : []);
         lista.forEach(a => { const n = (Preco.adicional(a.id) || a).nome || a.nome; soma(r.adicionais, n, (a.preco != null ? a.preco : Preco.precoAdicional(a, it.tamanho)) * q, q); });
+      } else if (itemEsfirra(it)) {
+        soma(r.esfirras, Preco.descricao(it), (it.preco != null ? it.preco : Preco.unitario(it)) * q, q);
       } else {
         const nome = Preco.descricao(it);
         r.produtos[nome] = (r.produtos[nome] || 0) + q;
@@ -556,6 +558,7 @@ function render(r) {
       <div class="card"><h2>🍕 Pizzas por sabor</h2><div class="muted" style="margin-bottom:6px">Meio a meio conta ½ para cada sabor.</div>${barras(ordenar(r.sabores), num)}</div>
       <div class="card"><h2>📏 Pizzas por tamanho</h2>${barras(CARDAPIO.tamanhos.map(t => [`${t.nome} (${t.id})`, r.tamanhos[t.id] || 0]).filter(x => x[1]), num)}</div>
       <div class="card" id="cardAdicionaisRel"><h2>➕ Adicionais da pizza</h2>${barras(Object.entries(r.adicionais).sort((a, b) => b[1].valor - a[1].valor).map(([n, x]) => [n, x.valor, `${x.qtd} un`]), dinheiro)}</div>
+      <div class="card" id="cardEsfirrasRel"><h2>🥟 Esfirras</h2>${barras(Object.entries(r.esfirras).sort((a, b) => b[1].qtd - a[1].qtd).map(([n, x]) => [n, x.qtd, dinheiro(x.valor)]), num)}</div>
       <div class="card"><h2>🥤 Bebidas, sachês e outros</h2>${barras(ordenar(r.produtos), num)}</div>
       <div class="card"><h2>🛵 Entrega × Retirada × Balcão</h2>${barras(qv(r.tipos, TIPOS), dinheiro)}
         <div class="linha total"><span>Taxas de entrega arrecadadas</span><span>${dinheiro(r.taxas)}</span></div></div>
@@ -647,7 +650,7 @@ function renderProdutos() {
 
   renderHorario();
 
-  const prods = todos.filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');
+  const prods = todos.filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional' && !ehEsfirra(d));   // esfirras têm card próprio
   const adics = todos.filter(d => d.tipo === 'adicional');
   const controlados = prods.filter(d => d.controlaEstoque);   // adicional usa o estoque dos insumos
   const abaixo = controlados.filter(d => (d.estoqueAtual || 0) <= (d.estoqueMinimo || 0) && d.ativo !== false);
@@ -672,6 +675,7 @@ function renderProdutos() {
   </table></div>
   <button class="btn" style="margin-top:10px" onclick="editarSabor(null)">➕ Novo sabor</button>
   <div class="muted" style="margin-top:6px">O sabor novo já aparece na loja e no balcão (se ativo). Depois de criar, monte a 📋 Ficha técnica para o custo e a baixa dos insumos.</div></div>`;
+  h += htmlEsfirras(todos);
   // ➕ Adicionais da pizza (Catupiry, Cheddar...): preço por tamanho; estoque = insumos da ficha técnica
   const esconder = CARDAPIO.loja.esconderAdicionalSemInsumo !== false;
   h += `<div class="card" id="cardAdicionais"><h2>➕ Adicionais da pizza</h2>
@@ -1060,7 +1064,7 @@ async function salvarInsumoForm() {
       min *= f; ideal *= f;
       fichasConv = Ficha.fichasDoInsumo(id).map(fi => {
         const novo = {};
-        TAMS.forEach(t => { novo[t] = (fi[t] || []).map(l => l.insumoId !== id ? l : { insumoId: id, qtd: Math.round(Ficha.converter(l.qtd, l.un || unAntes, un) * 100000) / 100000, un }); });
+        Ficha.TODOS_TAM.filter(t => fi[t]).forEach(t => { novo[t] = (fi[t] || []).map(l => l.insumoId !== id ? l : { insumoId: id, qtd: Math.round(Ficha.converter(l.qtd, l.un || unAntes, un) * 100000) / 100000, un }); });
         return [fi.id, novo];
       });
     }
@@ -1127,6 +1131,10 @@ function linhasFichas() {
     const r = custo == null ? null : Ficha.resultado(venda, custo);
     l.push({ id: d.id, nome: d.nome, tipo: d.tipo, tam: t, venda, custo, r, ativo: d.ativo !== false });
   }));
+  esfirrasCad().forEach(d => {
+    const venda = Number(d.precoVenda) || 0, custo = Ficha.custoFicha(d.id, Ficha.UNICO);
+    l.push({ id: d.id, nome: d.nome, tipo: 'esfirra', tam: Ficha.UNICO, venda, custo, r: custo == null ? null : Ficha.resultado(venda, custo), ativo: d.ativo !== false });
+  });
   return l;
 }
 function renderTabelaFichas() {
@@ -1135,14 +1143,14 @@ function renderTabelaFichas() {
   const grupo = tipo => l.filter(x => x.tipo === tipo).sort((a, b) => chave(a) - chave(b) || a.nome.localeCompare(b.nome) || a.tam.localeCompare(b.tam));
   const tabela = (rows, titulo) => rows.length ? `<h3 style="margin-top:8px">${titulo}</h3><table>
     <tr><th>Item</th><th>Tam.</th><th class="r">Venda</th><th class="r">Custo</th><th class="r">CMV %</th><th class="r">Lucro bruto</th><th></th></tr>
-    ${rows.map(x => `<tr class="${x.ativo ? '' : 'inativo'}"><td><b>${esc(x.nome)}</b></td><td>${x.tam}</td><td class="r">${dinheiro(x.venda)}</td>
+    ${rows.map(x => `<tr class="${x.ativo ? '' : 'inativo'}"><td><b>${esc(x.nome)}</b></td><td>${x.tam === Ficha.UNICO ? 'Único' : x.tam}</td><td class="r">${dinheiro(x.venda)}</td>
       ${x.r ? `<td class="r">${dinheiro(x.custo)}</td><td class="r">${cmvTag(x.r.cmv)}</td><td class="r ${x.r.lucro < 0 ? 'neg' : ''}"><b>${dinheiro(x.r.lucro)}</b></td>`
         : '<td class="r semFicha" colspan="3">⚠️ sem ficha</td>'}
       <td class="r"><button class="btn sm sec" onclick="abrirFicha('${x.id}','${x.tam}')">📋 Ficha</button></td></tr>`).join('')}</table>` : '';
   const sem = l.filter(x => !x.r && x.ativo).length, alto = l.filter(x => x.r && x.r.cmv > 45).length;
   document.getElementById('tabFichas').innerHTML = !l.length ? '<div class="muted">Importe o cardápio primeiro.</div>'
     : `<div class="muted">${sem ? `<span class="semFicha">${sem} sabor/tamanho sem ficha</span> • ` : ''}${alto ? `<span class="neg">${alto} com CMV acima de 45%</span> • ` : ''}Lucro bruto = venda − custo − taxa da maquininha (${pct1(Number(CARDAPIO.loja.taxaMaquininha) || 0)}).</div>`
-      + tabela(grupo('sabor'), '🍕 Sabores') + tabela(grupo('adicional'), '➕ Adicionais');
+      + tabela(grupo('sabor'), '🍕 Sabores') + tabela(grupo('esfirra'), '🥟 Esfirras') + tabela(grupo('adicional'), '➕ Adicionais');
 }
 function exportarFichasCSV() {
   const n = v => v == null ? '' : (Number(v) || 0).toFixed(2).replace('.', ',');
@@ -1170,9 +1178,10 @@ function abaModal(a) {
 }
 function iniciarFicha(id, tam) {
   const f = id === '_base' ? Ficha.base() : (Ficha.ficha(id) || {});
-  const tipo = id === '_base' ? 'base' : (Catalogo.doc(id) || {}).tipo === 'adicional' ? 'adicional' : 'sabor';
-  fe = { id, tipo, tam: tam || 'G', linhas: {}, sujo: false };
-  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
+  const d = Catalogo.doc(id) || {};
+  const tipo = id === '_base' ? 'base' : d.tipo === 'adicional' ? 'adicional' : ehEsfirra(d) ? 'esfirra' : 'sabor';
+  fe = { id, tipo, tam: tipo === 'esfirra' ? Ficha.UNICO : tam || 'G', linhas: {}, sujo: false };
+  tamsFe().forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
 }
 // linha da ficha: quantidade + unidade em que foi digitada (a baixa converte g↔kg, ml↔L se o insumo mudar)
 const linhaFicha = l => Object.assign({ insumoId: l.insumoId, qtd: l.qtd }, l.un ? { un: l.un } : {});
@@ -1185,10 +1194,13 @@ function abrirFicha(id, tam) {
   }
   const d = Catalogo.doc(id);
   if (!d) return toast('Crie o item em 📦 Produtos & Estoque primeiro.');
-  if (d.tipo === 'adicional') editarAdicional(id); else editarSabor(id);
+  if (d.tipo === 'adicional') editarAdicional(id); else if (ehEsfirra(d)) editarEsfirra(id); else editarSabor(id);
   iniciarFicha(id, tam); abaModal('ficha');
 }
-const vendaFe = t => fe.tipo === 'base' ? null : Number(((Catalogo.doc(fe.id) || {}).precos || {})[t]) || 0;
+// tamanhos da ficha em edição: esfirra = tamanho único (U); pizza/adicional/base = P/M/G
+const tamsFe = () => fe.tipo === 'esfirra' ? [Ficha.UNICO] : TAMS;
+const nomeTam = t => t === Ficha.UNICO ? 'Único' : t;
+const vendaFe = t => fe.tipo === 'base' ? null : fe.tipo === 'esfirra' ? Number((Catalogo.doc(fe.id) || {}).precoVenda) || 0 : Number(((Catalogo.doc(fe.id) || {}).precos || {})[t]) || 0;
 const custoFe = t => Ficha.custoLinhas(fe.linhas[t]) + (fe.tipo === 'sabor' ? Ficha.custoBase(t) : 0);
 function renderFicha() {
   const el = document.getElementById('painelFicha');
@@ -1198,11 +1210,12 @@ function renderFicha() {
   const base = fe.tipo === 'sabor' ? Ficha.custoBase(t) : 0, total = custoFe(t);
   const pctDe = v => total > 0 ? v / total * 100 : 0;
   const barra = v => `<div style="display:flex;gap:6px;align-items:center"><div class="barra2" style="flex:1"><i style="width:${Math.min(100, pctDe(v)).toFixed(1)}%"></i></div><span style="min-width:40px;text-align:right">${pctDe(v).toFixed(0)}%</span></div>`;
-  const outros = fe.tipo === 'base' ? [] : Catalogo.todos().filter(d => d.tipo === fe.tipo && d.id !== fe.id && !d.excluido && Ficha.ficha(d.id));
+  const outros = fe.tipo === 'base' ? [] : fe.tipo === 'esfirra' ? esfirrasCad().filter(d => d.id !== fe.id && Ficha.ficha(d.id))
+    : Catalogo.todos().filter(d => d.tipo === fe.tipo && d.id !== fe.id && !d.excluido && Ficha.ficha(d.id));
   const r = fe.tipo === 'base' ? null : Ficha.resultado(vendaFe(t), total);
   el.innerHTML = `
-    <div class="tamCards">${TAMS.map(x => { const v = vendaFe(x), c = custoFe(x), rr = v != null && fe.linhas[x].length ? Ficha.resultado(v, c) : null;
-      return `<div class="tamCard ${x === t ? 'on' : ''}" onclick="feTam('${x}')"><b>${x}</b>${v != null ? ` <small>Venda ${dinheiro(v)}</small>` : ''}<small>Custo ${fe.linhas[x].length || (fe.tipo === 'sabor' && Ficha.custoBase(x)) ? dinheiro(c) : '—'} ${rr ? cmvTag(rr.cmv) : ''}</small></div>`; }).join('')}</div>
+    <div class="tamCards">${tamsFe().map(x => { const v = vendaFe(x), c = custoFe(x), rr = v != null && fe.linhas[x].length ? Ficha.resultado(v, c) : null;
+      return `<div class="tamCard ${x === t ? 'on' : ''}" onclick="feTam('${x}')"><b>${nomeTam(x)}</b>${v != null ? ` <small>Venda ${dinheiro(v)}</small>` : ''}<small>Custo ${fe.linhas[x].length || (fe.tipo === 'sabor' && Ficha.custoBase(x)) ? dinheiro(c) : '—'} ${rr ? cmvTag(rr.cmv) : ''}</small></div>`; }).join('')}</div>
     <div class="fichaGrid"><div>
       <table class="fichaTab" id="fichaTab">
         <tr><th>Insumo</th><th class="r">Qtde.</th><th>Medida</th><th class="r">Custo</th><th style="width:30%">% do custo</th><th></th></tr>
@@ -1220,16 +1233,16 @@ function renderFicha() {
         <input id="feQtdNova" placeholder="Qtde. (ex.: 0,280 ou 280g)" onkeydown="if(event.key==='Enter')feAdd()">
         <button class="btn sm" onclick="feAdd()">➕ Adicionar</button>
       </div>
-      <div class="copiar">📄 Copiar ficha de outro tamanho:
+      ${fe.tipo === 'esfirra' ? '' : `<div class="copiar">📄 Copiar ficha de outro tamanho:
         <select id="feDe">${TAMS.filter(x => x !== t).map(x => `<option>${x}</option>`).join('')}</select>
         × <input id="feFator" value="1" inputmode="decimal" style="width:70px" title="fator de escala (ex.: 0,75)">
         <button class="btn sm sec" onclick="feCopiarTam()">Copiar para ${t}</button>
-      </div>
-      ${outros.length ? `<div class="copiar">🍕 Copiar de outro ${fe.tipo === 'sabor' ? 'sabor' : 'adicional'}:
+      </div>`}
+      ${outros.length ? `<div class="copiar">${fe.tipo === 'esfirra' ? '🥟' : '🍕'} Copiar de outr${fe.tipo === 'esfirra' ? 'a esfirra' : fe.tipo === 'sabor' ? 'o sabor' : 'o adicional'}:
         <select id="feOutro">${outros.map(d => `<option value="${esc(d.id)}">${esc(d.nome)}</option>`).join('')}</select>
-        <button class="btn sm sec" onclick="feCopiarOutro()">Copiar (P, M e G)</button></div>` : ''}
+        <button class="btn sm sec" onclick="feCopiarOutro()">Copiar${fe.tipo === 'esfirra' ? '' : ' (P, M e G)'}</button></div>` : ''}
     </div>
-    ${r ? `<div class="painelRes" id="feResultado"><h3>Resultado ${t}</h3>
+    ${r ? `<div class="painelRes" id="feResultado"><h3>Resultado ${nomeTam(t)}</h3>
       <div class="linha"><span>Preço de venda</span><b>${dinheiro(r.venda)}</b></div>
       <div class="linha"><span>Custo (CMV R$)</span><b>${dinheiro(r.custo)}</b></div>
       <div class="linha"><span>CMV %</span>${cmvTag(r.cmv)}</div>
@@ -1272,15 +1285,122 @@ function feCopiarTam() {
 }
 function feCopiarOutro() {
   const f = Ficha.ficha(val('feOutro')) || {};
-  if (TAMS.some(t => fe.linhas[t].length) && !confirm('Substituir a ficha (P, M e G) pela do item escolhido?')) return;
-  TAMS.forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
+  if (tamsFe().some(t => fe.linhas[t].length) && !confirm('Substituir a ficha pela do item escolhido?')) return;
+  tamsFe().forEach(t => { fe.linhas[t] = (f[t] || []).map(linhaFicha); });
   feMudou();
 }
 async function feSalvar() {
   const dados = {};
-  TAMS.forEach(t => { dados[t] = fe.linhas[t].map(linhaFicha); });
-  try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); }
+  tamsFe().forEach(t => { dados[t] = fe.linhas[t].map(linhaFicha); });
+  try { await DB.salvarFicha(fe.id, dados); fe.sujo = false; toast('✅ Ficha técnica salva.'); if (fe.tipo === 'esfirra') sincronizarCustoEsfirras(); }
   catch (e) { avisarErro(e); }
+}
+
+/* =========================================================
+   🥟 ESFIRRAS — produtos da categoria "Esfirras" (esfirra: true), tamanho único, sem estoque próprio.
+   A loja e o balcão já mostram a categoria; a ficha técnica fica em fichas/{id}.U (baixa dos insumos
+   pelo ficha.js) e o custo da ficha é gravado em custoUnitario (vai para o pedido e o relatório de lucro).
+   ========================================================= */
+const CAT_ESFIRRAS = 'Esfirras';
+const ehEsfirra = d => !!d && d.tipo === 'produto' && d.esfirra === true;
+const itemEsfirra = it => it.tipo === 'produto' && (it.categoria === CAT_ESFIRRAS || ehEsfirra(Catalogo.doc(it.id)));
+const esfirrasCad = () => Catalogo.todos().filter(d => ehEsfirra(d) && !d.excluido);
+function htmlEsfirras() {
+  const l = esfirrasCad();
+  return `<div class="card" id="cardEsfirras"><h2>🥟 Esfirras <span class="muted" style="font-weight:400">(tamanho único)</span></h2>
+    ${l.length ? `<div class="rolar"><table>
+      <tr><th>Esfirra</th><th>Ativo</th><th class="r">Preço</th><th class="r">Custo (ficha)</th><th class="r">CMV</th><th class="r">Lucro/un</th><th></th></tr>
+      ${l.map(d => { const c = Ficha.custoFicha(d.id, Ficha.UNICO), r = c == null ? null : Ficha.resultado(Number(d.precoVenda) || 0, c);
+        return `<tr class="${d.ativo === false ? 'inativo' : ''}" data-esfirra="${esc(d.id)}"><td><b>${esc(d.nome)}</b>${d.desc ? `<div class="muted">${esc(d.desc)}</div>` : ''}</td><td>${d.ativo === false ? '⛔ não' : '✅ sim'}</td>
+          <td class="r"><b>${dinheiro(d.precoVenda)}</b></td>
+          ${r ? `<td class="r">${dinheiro(c)}</td><td class="r">${cmvTag(r.cmv)}</td><td class="r ${r.lucro < 0 ? 'neg' : ''}">${dinheiro(r.lucro)}</td>` : '<td class="r semFicha" colspan="3">⚠️ sem ficha</td>'}
+          <td class="r" style="white-space:nowrap"><button class="btn sm sec" title="Editar" onclick="editarEsfirra('${d.id}')">✏️</button> <button class="btn sm sec" title="Duplicar (copia preço e ficha técnica)" onclick="editarEsfirra(null,'${d.id}')">📄</button> <button class="btn sm sec" title="Ficha técnica" onclick="abrirFicha('${d.id}','${Ficha.UNICO}')">📋</button></td></tr>`; }).join('')}
+    </table></div>` : '<div class="muted">Nenhuma esfirra cadastrada.</div>'}
+    <button class="btn" style="margin-top:10px" onclick="editarEsfirra(null)">➕ Nova esfirra</button>
+    <div class="muted" style="margin-top:6px">Aparecem na loja e no balcão na categoria "Esfirras", vendidas por unidade. Não controlam estoque próprio: a 📋 Ficha técnica dá baixa nos insumos e calcula custo e margem.</div></div>`;
+}
+let esfOrigem = null;
+function editarEsfirra(id, duplicarDe) {
+  editando = id; esfOrigem = duplicarDe || null;
+  const o = duplicarDe ? Catalogo.doc(duplicarDe) : null, l = esfirrasCad();
+  const ordemNova = l.length ? Math.max(...l.map(x => Number(x.ordem) || 0)) + 1
+    : Math.max(-1, ...Catalogo.todos().filter(x => x.tipo === 'sabor').map(x => Number(x.ordem) || 0)) + 0.5;   // logo depois das pizzas
+  const d = id ? Catalogo.doc(id) : o ? Object.assign({}, o, { nome: o.nome + ' (cópia)', ordem: (Number(o.ordem) || 0) + 0.5 }) : { ativo: true, ordem: ordemNova };
+  abrirModal(`<h2>🥟 ${id ? esc(d.nome) : o ? '📄 Duplicar ' + esc(o.nome) : '➕ Nova esfirra'}</h2>
+    ${id ? abasFicha('dados') : ''}
+    <div id="painelDados">
+    ${campo('eNome', 'Nome da esfirra', d.nome || '', 'placeholder="Ex.: Esfirra de carne"')}
+    ${campo('eDesc', 'Ingredientes / descrição (opcional)', d.desc || '', 'placeholder="Ex.: carne moída, tomate e cebola"')}
+    <div class="grid2">${campo('ePreco', 'Preço (tamanho único, R$)', d.precoVenda != null ? String(d.precoVenda).replace('.', ',') : '', 'inputmode="decimal"')}
+      ${campo('eOrdem', 'Posição no cardápio (menor aparece antes)', d.ordem != null ? String(d.ordem).replace('.', ',') : '', 'inputmode="decimal"')}</div>
+    ${caixa('eAtivo', 'Ativo (aparece à venda na loja e no balcão)', d.ativo !== false)}
+    <div class="muted" style="margin-top:6px">Sem controle de estoque próprio. ${id ? 'Monte a aba 📋 Ficha técnica para o custo e a baixa dos insumos.' : o ? 'A ficha técnica da original é copiada junto.' : 'Depois de salvar, a 📋 Ficha técnica abre para você montar.'}</div>
+    <button class="btn full" style="margin-top:14px" onclick="salvarEsfirraForm()">${id ? 'Salvar' : '➕ Criar esfirra'}</button>
+    ${id ? `<button class="btn sec full" style="margin-top:8px" onclick="pedirExclusaoEsfirra()">🗑️ Excluir / desativar esfirra</button><div id="eExcluir"></div>` : ''}
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharModal()">Cancelar</button>
+    </div><div id="painelFicha" class="hide"></div>`);
+}
+async function salvarEsfirraForm() {
+  const nome = val('eNome').replace(/\s+/g, ' '), preco = numero(val('ePreco')), ordem = numero(val('eOrdem'));
+  if (nome.length < 2) return toast('Informe o nome.');
+  if (esfirrasCad().some(x => x.id !== editando && x.nome.trim().toLowerCase() === nome.toLowerCase())) return toast(`Já existe a esfirra ${nome}.`);
+  if (preco == null || preco <= 0) return toast('Informe o preço.');
+  const campos = { nome, desc: val('eDesc'), precoVenda: preco, ativo: document.getElementById('eAtivo').checked };
+  if (ordem != null) campos.ordem = ordem;
+  if (editando) {
+    try { await DB.salvarProduto(editando, campos); fecharModal(); toast('✅ Esfirra salva.'); } catch (e) { avisarErro(e); }
+    return;
+  }
+  if (!Catalogo.doBanco()) return toast('Importe o cardápio primeiro (📥 Importar cardápio atual).');
+  const base = 'esfirra-' + (Catalogo.slug(nome.replace(/^esfirras?\s+(de\s+)?/i, '')) || 'item');
+  let id = base; for (let i = 2; Catalogo.doc(id); i++) id = base + '-' + i;
+  const origem = esfOrigem ? Ficha.ficha(esfOrigem) : null;
+  // produto simples da categoria "Esfirras": a loja e o balcão já mostram, por unidade
+  Object.assign(campos, { tipo: 'produto', esfirra: true, categoria: CAT_ESFIRRAS, controlaEstoque: false, unidade: 'un', estoqueAtual: 0, estoqueMinimo: 0,
+    custoUnitario: origem ? Number((Catalogo.doc(esfOrigem) || {}).custoUnitario) || 0 : 0, custosExtras: 0, taxaMaquininha: null, margemDesejada: 0, precoAutomatico: false });
+  if (campos.ordem == null) campos.ordem = esfirrasCad().length + 1;
+  try {
+    await DB.salvarProduto(id, campos);
+    if (origem) await DB.salvarFicha(id, { [Ficha.UNICO]: (origem[Ficha.UNICO] || []).map(linhaFicha) });
+    fecharModal(); toast(`✅ ${nome} criada${origem ? ' (com a ficha copiada)' : ''} — confira a ficha técnica.`);
+    setTimeout(() => { if (Catalogo.doc(id)) abrirFicha(id, Ficha.UNICO); }, 400);
+  } catch (e) { avisarErro(e); }
+}
+// Excluir só se nunca vendida (marca excluido e renomeia; o documento não é apagado); vendida → desativa
+async function pedirExclusaoEsfirra() {
+  const d = Catalogo.doc(editando), el = document.getElementById('eExcluir');
+  el.innerHTML = '<div class="muted" style="margin-top:8px">Verificando vendas...</div>';
+  let vendas = 0;
+  try { vendas = (await DB.listarPedidos('2000-01-01', '2999-12-31')).filter(p => (p.itens || []).some(it => it.tipo === 'produto' && it.id === d.id)).length; }
+  catch (e) { el.innerHTML = ''; return avisarErro(e); }
+  const voltar = `<button class="btn sm sec" onclick="document.getElementById('eExcluir').innerHTML=''">Voltar</button>`;
+  el.innerHTML = vendas
+    ? `<div class="alerta" style="margin-top:8px" id="eConfirma">⚠️ <b>${esc(d.nome)}</b> já foi vendida em ${vendas} pedido(s): não dá para excluir (os relatórios usam o item). Desativar tira da loja e do balcão.
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="desativarEsfirra()">⛔ Desativar</button>${voltar}</div></div>`
+    : `<div class="alerta" style="margin-top:8px" id="eConfirma">🗑️ Excluir <b>${esc(d.nome)}</b>? Nunca foi vendida. Ela some da Gestão, da loja e do balcão.
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn sm" onclick="excluirEsfirra()">Sim, excluir</button><button class="btn sm sec" onclick="desativarEsfirra()">Só desativar</button>${voltar}</div></div>`;
+}
+async function desativarEsfirra() {
+  try { await DB.salvarProduto(editando, { ativo: false }); fecharModal(); toast('⛔ Esfirra desativada — saiu da loja e do balcão.'); } catch (e) { avisarErro(e); }
+}
+async function excluirEsfirra() {
+  const d = Catalogo.doc(editando);
+  try { await DB.salvarProduto(editando, { ativo: false, excluido: true, excluidoEm: Date.now(), nome: `${d.nome} (excluída ${new Date().toLocaleDateString('pt-BR')})` }); fecharModal(); toast('🗑️ Esfirra excluída.'); }
+  catch (e) { avisarErro(e); }
+}
+/* Custo da ficha → custoUnitario do produto (o pedido grava o custo do momento da venda; relatório de lucro fiel).
+   Roda quando insumos/fichas/catálogo mudam (ex.: compra com novo custo médio); só grava se mudou. */
+function sincronizarCustoEsfirras() {
+  clearTimeout(sincronizarCustoEsfirras.t);
+  sincronizarCustoEsfirras.t = setTimeout(async () => {
+    if (!Ficha.carregado() || Ficha.erro()) return;
+    for (const d of esfirrasCad()) {
+      const c = Ficha.custoFicha(d.id, Ficha.UNICO);
+      if (c == null) continue;
+      const v = Math.round(c * 10000) / 10000;
+      if (Math.abs(v - (Number(d.custoUnitario) || 0)) > 0.00005) { try { await DB.salvarProduto(d.id, { custoUnitario: v }); } catch (e) { console.error(e); } }
+    }
+  }, 1200);
 }
 
 /* ---------------- ADICIONAIS DA PIZZA ---------------- */
@@ -1351,7 +1471,7 @@ const AJUSTES = ['Perda', 'Avaria', 'Consumo interno', 'Contagem'];
 function abrirMov(tipo) {
   if (!Catalogo.doBanco()) return toast('Importe o cardápio primeiro.');
   movTipo = tipo;
-  const prods = Catalogo.todos().filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional');   // adicional: pelo insumo
+  const prods = Catalogo.todos().filter(d => d.tipo !== 'sabor' && d.tipo !== 'adicional' && !ehEsfirra(d));   // adicional/esfirra: pelo insumo
   const opts = prods.map(d => `<option value="${d.id}">${esc(d.categoria)} — ${esc(d.nome)}</option>`).join('');
   abrirModal(tipo === 'entrada' ? `<h2>➕ Entrada de compra</h2>
     <div class="grid2">${campo('mData', 'Data', hojeISO(), 'type="date"')}${campo('mForn', 'Fornecedor', '', 'placeholder="Ex.: Distribuidora X"')}</div>

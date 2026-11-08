@@ -92,6 +92,13 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - Loja: botão **📦 Acompanhar pedido** (aceita minúsculas, espaço e hífen), `?codigo=` na URL e **"Seus pedidos de hoje"** (últimos 5 pedidos guardados no aparelho).
 - **Fila e previsão:** a cozinha (aberta e logada) publica `config/fila` sem dados pessoais (número, data, status, hora) a cada mudança e um "sinal de vida" a cada 4 min. O cliente vê "Há N pedidos na sua frente" e a faixa de previsão (preparo + 5 min por pedido à frente + ajuste de movimento + entrega + min/km, ±7 min). Tempos em **Gestão → ⚙️ Configurações**; ajuste rápido na cozinha: **⏱️ Movimento Normal / +15 / +30**. Sem atualização há mais de 10 min, a fila some e fica só o status.
 
+## 🥟 Esfirras (Gestão → 📦 Produtos & Estoque → 🥟 Esfirras)
+- Tamanho único. Cada esfirra é um produto `tipo: 'produto'`, `esfirra: true`, `categoria: 'Esfirras'`, `controlaEstoque: false`, `precoVenda`, `desc` e `ordem` (`produtos/esfirra-<nome>`). A loja e o balcão já mostram a categoria "Esfirras", vendida por unidade; a cozinha e o ticket mostram como os outros produtos.
+- Botões: **➕ Nova esfirra**, ✏️ editar, **📄 duplicar** (copia preço e ficha), 📋 ficha técnica e **🗑️ excluir/desativar**. Uma esfirra já vendida só pode ser desativada; uma nunca vendida é excluída com confirmação na tela e fica marcada `excluido: true`.
+- **Ficha técnica** em `fichas/{id}.U` (tamanho Único, sem base comum). O `js/ficha.js` dá baixa nos insumos dos produtos que têm ficha `U`, no mesmo momento das pizzas. Uma esfirra vendida sem ficha gera o aviso "sem ficha". A Gestão grava o custo da ficha em `custoUnitario`, e esse valor vai para o pedido e para o lucro bruto.
+- **Relatórios**: card **🥟 Esfirras** (quantidade e R$). As esfirras não entram em "Bebidas, sachês e outros".
+- **No balcão**, uma venda de "comer aqui" ou "levar" **só com esfirras** (sem pizza) é gravada como já entregue, como acontece com as bebidas, e **não vai para a cozinha**. Os insumos são baixados mesmo assim. Mudar isso exige alterar o `balcao.html`.
+
 ## Sabores de pizza (Gestão → 📦 Produtos & Estoque → 🍕 Sabores de pizza)
 - **➕ Novo sabor**: nome (sem repetir), ingredientes/descrição, ativo, posição no cardápio e preços P/M/G (> 0). Grava em `produtos/pizza-<nome-sem-acento>` com `tipo: 'sabor'`, igual aos importados — a loja, o balcão, a cozinha e o ticket já leem daí, sem mudar essas páginas. Ao criar, abre a 📋 Ficha técnica.
 - **📄 Duplicar**: cria um sabor parecido copiando preços, descrição e ficha técnica.
