@@ -21,7 +21,7 @@
 <meta property="og:image:height" content="1200">
 <meta property="og:image:alt" content="Logo do Clube da Pizza">
 <meta name="twitter:card" content="summary">
-<link rel="stylesheet" href="css/app.css?v=20261108">
+<link rel="stylesheet" href="css/app.css?v=20261109">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
 .codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
@@ -141,12 +141,12 @@
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261108"></script>
-<script src="js/cardapio.js?v=20261108"></script>
-<script src="js/pix.js?v=20261108"></script>
-<script src="js/db.js?v=20261108"></script>
-<script src="js/catalogo.js?v=20261108"></script>
-<script src="js/endereco.js?v=20261108"></script>
+<script src="js/config.js?v=20261109"></script>
+<script src="js/cardapio.js?v=20261109"></script>
+<script src="js/pix.js?v=20261109"></script>
+<script src="js/db.js?v=20261109"></script>
+<script src="js/catalogo.js?v=20261109"></script>
+<script src="js/endereco.js?v=20261109"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -189,7 +189,7 @@ function renderCardapio() {
     cat.produtos.forEach(p => {
       const q = qtdProduto(p.id);
       h += `<div class="prod">
-        <div><div class="nome">${esc(p.nome)}</div><div class="muted">${dinheiro(p.preco)}${restam(p.id)}</div></div>
+        <div><div class="nome">${esc(p.nome)}</div>${p.desc ? `<div class="muted">${esc(p.desc)}</div>` : ''}<div class="muted">${dinheiro(p.preco)}${restam(p.id)}</div></div>
         <div class="qty"><button onclick="alterarProduto('${p.id}',-1)">−</button><b>${q}</b><button onclick="alterarProduto('${p.id}',1)">+</button></div>
       </div>`;
     });

@@ -63,7 +63,7 @@ window.Catalogo = (function () {
       const nome = p.categoria || 'Outros';
       let c = cats.find(x => x.nome === nome);
       if (!c) { c = { id: slug(nome), nome, produtos: [] }; cats.push(c); }
-      c.produtos.push({ id: p.id, nome: p.nome, preco: Number(p.precoVenda) || 0, ativo: p.ativo !== false });
+      c.produtos.push({ id: p.id, nome: p.nome, desc: p.desc || '', preco: Number(p.precoVenda) || 0, ativo: p.ativo !== false });   // desc: ingredientes (esfirras)
     });
     C.categorias = cats;
   }
