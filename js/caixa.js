@@ -1541,14 +1541,37 @@ function dreMes(m) {
   d.pizzas = cm.pizzas;
   return d;
 }
+// Lançamentos do mês que entram em "Taxas bancárias lançadas" do DRE (mesmo filtro do FinCalc.dre: saídas do grupo 'taxa')
+function lancTaxasMes(m) {
+  const de = F.inicioMes(m), ate = F.fimDoMes(m), cats = cfg().categorias;
+  return lancDespesas(S.lanc).filter(l => l.data >= de && l.data <= ate && l.tipo !== 'transferencia' && l.tipo !== 'entrada' && !l.virtual && F.grupoDe(cats, l.tipo, l.categoria) === 'taxa')
+    .sort((a, b) => a.data.localeCompare(b.data));
+}
+const CAT_TAXA_MAQ = 'Taxas bancárias/maquininha';
+function taxasPorCategoria(m) {
+  const o = {}; lancTaxasMes(m).forEach(x => { const k = x.categoria || 'Outros'; o[k] = r2((o[k] || 0) + (Number(x.valor) || 0)); }); return o;
+}
+function verTaxasDre(m, cat) {
+  const l = lancTaxasMes(m).filter(x => cat == null || x.categoria === cat), tot = r2(l.reduce((t, x) => t + (Number(x.valor) || 0), 0));
+  $('verBox').innerHTML = `<div class="barraTopo"><h2>🏦 ${esc(cat || 'Taxas bancárias lançadas')} — ${brMes(m)}</h2><button class="btn sm sec" onclick="fechar('mVer')">Fechar</button></div>
+    <div class="muted">Lançamentos que entram na linha "(−) Taxas de cartão/banco" do DRE. Se algo não é taxa, edite o lançamento e troque a categoria.</div>
+    <div class="rolar" style="margin-top:8px"><table><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Origem</th><th class="r">Valor</th></tr>
+    ${l.map(x => `<tr><td>${br(x.data)}</td><td>${esc(x.descricao || '—')}</td><td>${esc(x.categoria || '')}</td><td>${x.origem === 'cartao' ? '💳 compra no cartão' : '📒 lançamento'}</td><td class="r">${dinheiro(x.valor)}</td></tr>`).join('') || '<tr><td colspan="5" class="vazio">Nenhum lançamento.</td></tr>'}
+    <tr class="tot"><td colspan="4">Total</td><td class="r">${dinheiro(tot)}</td></tr></table></div>`;
+  $('mVer').classList.add('on');
+}
 function renderDre() {
   const m = $('rMes').value || mesAtual(), d = dreMes(m);
   const row = (n, v, cls = '', extra = '') => `<tr class="${cls}"><td>${n}</td><td class="r">${v == null ? '<span class="muted">não disponível</span>' : (typeof v === 'string' ? v : dinheiro(v))}</td><td class="r muted">${extra}</td></tr>`;
   const p = v => d.receita ? pct(v / d.receita * 100) : '';
   const linhasGrupo = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => row(esc(k), -v, 'sub', p(v))).join('');
+  const taxasCat = taxasPorCategoria(m), duplicada = d.taxaCartao > 0 && taxasCat[CAT_TAXA_MAQ] > 0;
   $('rDre').innerHTML = `<table class="dre"><tr><th>${brMes(m)}</th><th class="r">R$</th><th class="r">% receita</th></tr>
     ${row('Receita de vendas', d.receita, '', '100%')}${row('Pedidos (site + balcão)', d.vendasPedidos, 'sub')}${d.vendasManuais ? row('Vendas lançadas à mão', d.vendasManuais, 'sub') : ''}${d.fiadosSemPedido ? row('Vendas no fiado sem pedido', d.fiadosSemPedido, 'sub') : ''}
-    ${row(`(−) Taxas de cartão/banco <span class="muted">(${pct(taxaCartao())} sobre ${dinheiro(d.cartao)} no cartão)</span>`, -d.taxas, '', p(d.taxas))}
+    ${row('(−) Taxas de cartão/banco', -d.taxas, '', p(d.taxas))}
+    ${row(`Taxa estimada da maquininha <span class="muted">(${pct(taxaCartao())} sobre ${dinheiro(d.cartao)} no cartão)</span>`, -d.taxaCartao, 'sub', p(d.taxaCartao))}
+    ${row(`Taxas bancárias lançadas${d.taxasBanco ? ` <a href="#" onclick="verTaxasDre('${m}');return false">ver lançamentos</a>` : ''}`, -d.taxasBanco, 'sub', p(d.taxasBanco))}
+    ${Object.entries(taxasCat).sort((a, b) => b[1] - a[1]).map(([k, v]) => row(`<span style="padding-left:14px">• <a href="#" onclick="verTaxasDre('${m}', ${esc(JSON.stringify(k))});return false">${esc(k)}</a></span>`, -v, 'sub', p(v))).join('')}
     ${row('(=) Receita líquida', d.receitaLiquida, 'res', p(d.receitaLiquida))}
     ${row(`(−) CMV <span class="muted">${d.cmvFonte === 'pedidos' ? `(custo gravado nos pedidos/fichas; ${pct(d.cmvCobertura)} das vendas com custo)` : d.cmvFonte === 'compras' ? '(pelas compras de insumos/bebidas/embalagens lançadas)' : ''}</span>`, d.cmv == null ? null : -d.cmv, '', d.cmv == null ? '' : p(d.cmv))}
     ${row('(=) Margem bruta', d.margemBruta, 'res', p(d.margemBruta))}
@@ -1559,6 +1582,7 @@ function renderDre() {
     ${d.outrasReceitas ? row('(+) Outras receitas', d.outrasReceitas, '', p(d.outrasReceitas)) : ''}
     ${row('(=) LUCRO LÍQUIDO', `<span class="${d.lucro < 0 ? 'neg' : 'pos'}">${dinheiro(d.lucro)}</span>`, 'res', d.margem == null ? '' : `margem ${pct(d.margem)}`)}
     ${row(`Retiradas do dono (pró-labore)${d.consumoDono ? ` <span class="muted">— inclui ${dinheiro(d.consumoDono)} de consumo do dono</span>` : ''}`, -d.retiradas, 'sub')}${d.aportes ? row('Aportes do dono', d.aportes, 'sub') : ''}${d.recebimentoFiado ? row('Fiados recebidos (já contados na venda)', d.recebimentoFiado, 'sub') : ''}</table>
+    ${duplicada ? `<div class="muted" style="margin-top:6px">ℹ️ Se você já lança a taxa real da maquininha, zere a taxa estimada em Config para não contar duas vezes.</div>` : ''}
     ${d.cmvFonte === 'pedidos' && d.comprasCmv ? `<div class="muted" style="margin-top:6px">Compras de insumos/bebidas/embalagens no mês: ${dinheiro(d.comprasCmv)} (não somadas de novo: o CMV vem do custo dos itens vendidos).</div>` : ''}
     ${d.retiradas > Math.max(0, d.lucro) ? `<div class="alertas" style="margin-top:8px"><div class="al-verm">💸 Retiradas (${dinheiro(d.retiradas)}) maiores que o lucro (${dinheiro(d.lucro)}): o dono está tirando mais do que a pizzaria gera.</div></div>` : ''}`;
   renderPe(m, d);
@@ -1578,7 +1602,8 @@ function renderPe(m, d) {
 }
 function csvDre() {
   const m = $('rMes').value || mesAtual(), d = dreMes(m);
-  const l = [['DRE ' + m, 'R$'], ['Receita de vendas', d.receita], ['(-) Taxas', -d.taxas], ['(=) Receita líquida', d.receitaLiquida], ['(-) CMV', d.cmv == null ? 'não disponível' : -d.cmv], ['(=) Margem bruta', d.margemBruta]];
+  const l = [['DRE ' + m, 'R$'], ['Receita de vendas', d.receita], ['(-) Taxas de cartão/banco', -d.taxas], [`    Taxa estimada da maquininha (${taxaCartao()}% sobre ${d.cartao} no cartão)`, -d.taxaCartao], ['    Taxas bancárias lançadas', -d.taxasBanco],
+    ...Object.entries(taxasPorCategoria(m)).sort((a, b) => b[1] - a[1]).map(([k, v]) => [`        ${k}`, -v]), ['(=) Receita líquida', d.receitaLiquida], ['(-) CMV', d.cmv == null ? 'não disponível' : -d.cmv], ['(=) Margem bruta', d.margemBruta]];
   ['variavel', 'fixa', 'folha'].forEach(g => Object.entries(d.despesas[g]).forEach(([k, v]) => l.push([`(-) ${k}`, -v])));
   Object.entries(d.consumo || {}).forEach(([k, v]) => l.push([`(-) Consumo interno: ${k}`, -v]));
   l.push(['(+) Outras receitas', d.outrasReceitas], ['(=) Lucro líquido', d.lucro], ['Margem %', d.margem == null ? '' : r2(d.margem)], ['Retiradas do dono', d.retiradas]);
