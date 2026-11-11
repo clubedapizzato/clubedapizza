@@ -83,7 +83,7 @@ Editável em **Gestão → 📦 Produtos & Estoque → 🕒 Horário de funciona
 - **Preço sugerido** = (custo + extras) ÷ (1 − margem − taxa da maquininha). A gestão mostra margem real e lucro por unidade com o preço atual.
 - **Entrada de compra** recalcula o **custo médio ponderado**; **Ajuste** (perda, avaria, consumo interno, contagem). Histórico em `movimentos`.
 - **Baixa automática**: balcão baixa ao criar o pedido; site baixa quando a cozinha clica *Iniciar produção* (transação + `estoqueBaixado: true`, nunca duas vezes). Cancelar devolve (movimento `estorno`). Falta de estoque na produção só avisa (o estoque fica negativo, em vermelho na gestão).
-- **Sachês**: categoria "Sachês" com preço automático pela margem a cada compra. Cortesia "X grátis por pizza" em `config/loja`, aplicada aos mais baratos.
+- **Sachês**: categoria "Sachês" com preço automático pela margem a cada compra. Cortesia **por tamanho de pizza** em `config/loja.cortesiaSachesPorPizza` = `{ P, M, G }` (Gestão → ⚙️ Configurações), aplicada aos sachês mais baratos. Exemplo: com P 1, M 2 e G 3, um pedido com 1 G + 1 M ganha 5 grátis. O pedido grava a cortesia em `cortesiaPorPizza`. Pedidos e configurações antigos, com um número só, continuam valendo para todos os tamanhos (`Preco.saches` aceita número ou objeto).
 - O item vendido guarda `custoUnitario` do momento → relatório de lucro bruto/CMV fiel.
 
 ## Acompanhamento por código, fila e previsão
