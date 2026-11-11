@@ -21,7 +21,7 @@
 <meta property="og:image:height" content="1200">
 <meta property="og:image:alt" content="Logo do Clube da Pizza">
 <meta name="twitter:card" content="summary">
-<link rel="stylesheet" href="css/app.css?v=20261109">
+<link rel="stylesheet" href="css/app.css?v=20261111">
 <style>
 .codigo{display:flex;align-items:center;justify-content:space-between;gap:10px;background:#1c1917;color:#fff;border-radius:14px;padding:12px 14px;margin:10px 0}
 .codigo b{font-size:28px;letter-spacing:.18em;font-family:ui-monospace,monospace}
@@ -141,12 +141,12 @@
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261109"></script>
-<script src="js/cardapio.js?v=20261109"></script>
-<script src="js/pix.js?v=20261109"></script>
-<script src="js/db.js?v=20261109"></script>
-<script src="js/catalogo.js?v=20261109"></script>
-<script src="js/endereco.js?v=20261109"></script>
+<script src="js/config.js?v=20261111"></script>
+<script src="js/cardapio.js?v=20261111"></script>
+<script src="js/pix.js?v=20261111"></script>
+<script src="js/db.js?v=20261111"></script>
+<script src="js/catalogo.js?v=20261111"></script>
+<script src="js/endereco.js?v=20261111"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script>
@@ -307,10 +307,11 @@ function renderSaches() {
   const lista = Catalogo.sachesVenda(), card = document.getElementById('cardSaches');
   const temNoCarrinho = carrinho.some(it => Preco.ehSache(it));
   card.classList.toggle('hide', !lista.length && !temNoCarrinho);
-  const porPizza = C.loja.cortesiaSachesPorPizza || 0;
+  // cortesia por pizza: número ou por tamanho { P, M, G }
+  const porPizza = C.loja.cortesiaSachesPorPizza || 0, txtCortesia = Preco.textoCortesia(porPizza);
   const pizzas = carrinho.filter(it => it.tipo === 'pizza').reduce((s, it) => s + it.qtd, 0);
   const sc = Preco.saches(carrinho);
-  let h = porPizza ? `<div class="okbox">🎁 ${porPizza} sachê${porPizza > 1 ? 's' : ''} grátis por pizza${pizzas ? ` — você tem <b>${porPizza * pizzas} grátis</b>` : ''}.</div>` : '';
+  let h = txtCortesia ? `<div class="okbox">🎁 ${txtCortesia}${pizzas ? ` — você tem <b>${Preco.sachesGratisPizzas(carrinho, porPizza)} grátis</b>` : ''}.</div>` : '';
   const ids = new Set(lista.map(p => p.id));
   carrinho.filter(it => Preco.ehSache(it) && !ids.has(it.id)).forEach(it => lista.push(Preco.produto(it.id) || { id: it.id, nome: it.id, preco: 0 }));
   h += lista.map(p => `<div class="prod">

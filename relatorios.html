@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261109b">
+<link rel="stylesheet" href="css/app.css?v=20261111b">
 <style>
 main{max-width:1100px;padding-bottom:30px}
 .topo .in{max-width:1100px}
@@ -179,11 +179,16 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
       <div class="card">
         <h2>⚙️ Configurações da loja</h2>
         <div class="cfg">
-          <div><label for="cfgCortesia">Sachês grátis por pizza</label><input id="cfgCortesia" type="number" min="0" step="1"></div>
+          <div><label for="cfgCortesiaP">Sachês grátis por pizza (por tamanho)</label>
+            <div style="display:flex;gap:6px" id="cfgCortesia">
+              <label style="margin:0;flex:1;font-weight:600">P<input id="cfgCortesiaP" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label style="margin:0;flex:1;font-weight:600">M<input id="cfgCortesiaM" type="number" min="0" step="1" inputmode="numeric"></label>
+              <label style="margin:0;flex:1;font-weight:600">G<input id="cfgCortesiaG" type="number" min="0" step="1" inputmode="numeric"></label>
+            </div></div>
           <div><label for="cfgTaxa">Taxa padrão da maquininha (%)</label><input id="cfgTaxa" type="number" min="0" max="50" step="0.01"></div>
           <button class="btn dark" onclick="salvarCfg()">Salvar</button>
         </div>
-        <div class="muted" style="margin-top:6px">A cortesia vale para os sachês mais baratos; o restante é cobrado. A taxa entra no preço sugerido (cada produto pode ter a sua).</div>
+        <div class="muted" style="margin-top:6px">A cortesia é por tamanho de pizza (ex.: 1 G + 1 M com P 1 • M 2 • G 3 = 5 grátis) e vale para os sachês mais baratos; o restante é cobrado. A taxa entra no preço sugerido (cada produto pode ter a sua).</div>
         <h3 style="margin-top:14px">⏱️ Previsão para o cliente (minutos)</h3>
         <div class="grid2" style="grid-template-columns:repeat(4,1fr)">
           <div><label for="cfgPreparo">Preparo base</label><input id="cfgPreparo" type="number" min="0" step="1"></div>
@@ -317,11 +322,11 @@ details summary{cursor:pointer;font-weight:700;font-size:13px;margin-top:10px;co
 <div class="tip" id="tip"></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261109b"></script>
-<script src="js/cardapio.js?v=20261109b"></script>
-<script src="js/db.js?v=20261109b"></script>
-<script src="js/catalogo.js?v=20261109b"></script>
-<script src="js/ficha.js?v=20261109b"></script>
+<script src="js/config.js?v=20261111b"></script>
+<script src="js/cardapio.js?v=20261111b"></script>
+<script src="js/db.js?v=20261111b"></script>
+<script src="js/catalogo.js?v=20261111b"></script>
+<script src="js/ficha.js?v=20261111b"></script>
 <script>
 let periodo = 'hoje';
 let pedidos = [];
@@ -642,8 +647,10 @@ function renderProdutos() {
   if (aba !== 'produtos') return;
   const todos = Catalogo.todos(), vazio = !Catalogo.doBanco();
   document.getElementById('importar').classList.toggle('hide', !vazio);
-  const cfgC = document.getElementById('cfgCortesia'), cfgT = document.getElementById('cfgTaxa');
-  if (document.activeElement !== cfgC) cfgC.value = CARDAPIO.loja.cortesiaSachesPorPizza || 0;
+  const cfgT = document.getElementById('cfgTaxa');
+  // cortesia salva como número (antiga: vale para todos os tamanhos) ou { P, M, G }
+  if (!document.getElementById('cfgCortesia').contains(document.activeElement))
+    ['P', 'M', 'G'].forEach(t => { document.getElementById('cfgCortesia' + t).value = Preco.cortesiaDe(CARDAPIO.loja.cortesiaSachesPorPizza || 0, t); });
   if (document.activeElement !== cfgT) cfgT.value = CARDAPIO.loja.taxaMaquininha;
   [['cfgPreparo', 'preparoBaseMin'], ['cfgPorPedido', 'porPedidoMin'], ['cfgEntrega', 'entregaBaseMin'], ['cfgPorKm', 'porKmMin']]
     .forEach(([id, k]) => { const el = document.getElementById(id); if (document.activeElement !== el) el.value = CARDAPIO.loja[k]; });
@@ -720,8 +727,12 @@ async function importar() {
   catch (e) { avisarErro(e); }
 }
 async function salvarCfg() {
-  const c = numero(val('cfgCortesia')), t = numero(val('cfgTaxa'));
-  if (c == null || c < 0 || c % 1) return toast('Cortesia: informe um número inteiro (0 ou mais).');
+  const t = numero(val('cfgTaxa')), c = {};
+  for (const tam of ['P', 'M', 'G']) {
+    const v = numero(val('cfgCortesia' + tam));
+    if (v == null || v < 0 || v % 1) return toast(`Cortesia ${tam}: informe um número inteiro (0 ou mais).`);
+    c[tam] = v;
+  }
   if (t == null || t < 0 || t >= 100) return toast('Taxa da maquininha inválida.');
   const tempos = {};
   for (const [id, k] of [['cfgPreparo', 'preparoBaseMin'], ['cfgPorPedido', 'porPedidoMin'], ['cfgEntrega', 'entregaBaseMin'], ['cfgPorKm', 'porKmMin']]) {

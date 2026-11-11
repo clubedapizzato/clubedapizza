@@ -118,16 +118,29 @@ window.Preco = (function () {
     return p ? p.nome : (item.nome || item.id);
   }
 
-  /* Sachês com cortesia: porPizza grátis por pizza, aplicados nos sachês MAIS BARATOS.
+  /* Cortesia de sachês por pizza: número (igual para todo tamanho — pedidos antigos) ou { P, M, G } (por tamanho) */
+  const cortesiaDe = (porPizza, tam) => Math.max(0, Math.floor(Number(porPizza && typeof porPizza === 'object' ? porPizza[tam] : porPizza) || 0));
+  // Sachês grátis que as pizzas dos itens dão (antes de limitar pela quantidade de sachês)
+  const sachesGratisPizzas = (itens, porPizza) => (itens || []).filter(it => it.tipo === 'pizza').reduce((s, it) => s + cortesiaDe(porPizza, it.tamanho) * (it.qtd || 1), 0);
+  /* Texto da cortesia: "2 sachês grátis por pizza" (igual em todos os tamanhos) ou
+     "Sachês grátis por pizza: P 1 • M 2 • G 3"; curto (balcão): "2 grátis por pizza" / "grátis por pizza: P 1 • M 2 • G 3". '' se não tem */
+  function textoCortesia(porPizza, curto) {
+    const vals = C.tamanhos.map(t => [t.id, cortesiaDe(porPizza, t.id)]);
+    if (!vals.some(([, v]) => v)) return '';
+    if (vals.every(([, v]) => v === vals[0][1])) { const n = vals[0][1]; return curto ? `${n} grátis por pizza` : `${n} sachê${n > 1 ? 's' : ''} grátis por pizza`; }
+    const lista = vals.map(([t, v]) => `${t} ${v}`).join(' • ');
+    return curto ? `grátis por pizza: ${lista}` : `Sachês grátis por pizza: ${lista}`;
+  }
+
+  /* Sachês com cortesia: porPizza grátis por pizza (número ou por tamanho), aplicados nos sachês MAIS BARATOS.
      Retorna { qtd, gratis, valor (cobrado), desconto, gratisPorItem[i] }. */
   function saches(itens, porPizza) {
     itens = itens || [];
     if (porPizza == null) porPizza = (C.loja && C.loja.cortesiaSachesPorPizza) || 0;
-    const pizzas = itens.filter(it => it.tipo === 'pizza').reduce((s, it) => s + (it.qtd || 1), 0);
     const unidades = [];
     itens.forEach((it, i) => { if (ehSache(it)) for (let k = 0; k < (it.qtd || 1); k++) unidades.push({ i, preco: unitario(it) }); });
     unidades.sort((a, b) => a.preco - b.preco || a.i - b.i);
-    const gratis = Math.min(unidades.length, Math.max(0, porPizza) * pizzas);
+    const gratis = Math.min(unidades.length, sachesGratisPizzas(itens, porPizza));
     const gratisPorItem = itens.map(() => 0);
     let desconto = 0;
     unidades.slice(0, gratis).forEach(u => { gratisPorItem[u.i]++; desconto += u.preco; });
@@ -164,7 +177,7 @@ window.Preco = (function () {
     return Math.max(0, Math.ceil(excedente - 1e-9)) * (E.valorPorKm || 0);
   }
 
-  return { tamanho, sabor, produto, categoriaDe, ehSache, adicional, precoAdicional, pizza, adicionaisDe, nomesAdicionais, unitario, descricaoBase, descricao, saches, listaSaches, subtotal, taxa, distanciaKm };
+  return { tamanho, sabor, produto, categoriaDe, ehSache, adicional, precoAdicional, pizza, adicionaisDe, nomesAdicionais, unitario, descricaoBase, descricao, saches, listaSaches, cortesiaDe, sachesGratisPizzas, textoCortesia, subtotal, taxa, distanciaKm };
 })();
 
 /* ---------- margem / preço sugerido (percentuais em %, ex.: 30 = 30%) ---------- */
