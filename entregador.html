@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261111b">
+<link rel="stylesheet" href="css/app.css?v=20261113">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -48,6 +48,13 @@ main{max-width:720px;padding-bottom:40px}
 .marcador{background:#2563eb;color:#fff;border:2px solid #fff;border-radius:50%;width:28px!important;height:28px!important;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;box-shadow:0 1px 4px #0006}
 .marcador.feito{background:#9ca3af}
 .marcador.loja{background:#b91c1c;font-size:15px}
+.btnLocal{width:100%;margin-top:8px;padding:10px;font-size:14px}
+.btnLocal.feito{background:#f0fdf4;border-color:#86efac;color:#14532d}
+.tagConf{display:inline-block;background:#dcfce7;color:#14532d;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:800}
+.gpsInfo{background:#f5f5f4;border-radius:12px;padding:12px;margin:10px 0;font-size:15px;line-height:1.5}
+.gpsInfo b{font-size:17px}
+.gpsBotoes{display:grid;gap:8px;margin-top:12px}
+.gpsBotoes .btn{padding:14px 10px;font-size:15px}
 </style>
 </head>
 <body>
@@ -99,21 +106,29 @@ main{max-width:720px;padding-bottom:40px}
   <div class="box" id="naoConteudo"></div>
 </div>
 
+<!-- Localização no momento da entrega -->
+<div class="modal" id="modalLocal" onclick="if(event.target===this)fecharLocal()">
+  <div class="box" id="localConteudo"></div>
+</div>
+
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261111b"></script>
-<script src="js/cardapio.js?v=20261111b"></script>
-<script src="js/db.js?v=20261111b"></script>
-<script src="js/catalogo.js?v=20261111b"></script>
-<script src="js/rota.js?v=20261111b"></script>
-<script src="js/clientes.js?v=20261111b"></script>
-<script src="js/fidelidade.js?v=20261111b"></script>
+<script src="js/config.js?v=20261113"></script>
+<script src="js/cardapio.js?v=20261113"></script>
+<script src="js/db.js?v=20261113"></script>
+<script src="js/catalogo.js?v=20261113"></script>
+<script src="js/rota.js?v=20261113"></script>
+<script src="js/clientes.js?v=20261113"></script>
+<script src="js/fidelidade.js?v=20261113"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 let eu = null;                 // { nome, email }
 let pedidos = [], marcados = new Set(), pararLista = null;
 let mapa = null, camada = null;
 let naoPedido = null, naoMotivo = null;
+let cadastros = {}, pararCadastros = null;   // clientes/{telefone}: local confirmado pelo entregador
+let gpsEstado = null;                         // { id, gps: null (buscando) | { lat, lng, precisao } | { erro }, aposEntrega, salvando }
+const PRECISAO_BOA = 50;                      // metros
 const MOTIVOS = ['Cliente ausente', 'Endereço não encontrado', 'Cliente recusou', 'Outro'];
 const LOJA = CONFIG.entrega.localLoja;
 const kmTxt = v => v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' km';
@@ -133,9 +148,11 @@ DB.observarUsuario(u => {
     eu = { nome: pessoa.nome, email: pessoa.email };
     document.getElementById('quem').textContent = '• ' + eu.nome.split(' ')[0];
     assinar();
+    ouvirCadastros();
   } else {
     eu = null; document.getElementById('quem').textContent = '';
     if (pararLista) { pararLista(); pararLista = null; }
+    if (pararCadastros) { pararCadastros(); pararCadastros = null; }
   }
 });
 async function entrar() {
@@ -145,6 +162,11 @@ async function entrar() {
 }
 document.getElementById('senha').addEventListener('keydown', e => { if (e.key === 'Enter') entrar(); });
 
+// Locais confirmados (sem permissão ainda — regras não publicadas — a página segue normal, só sem o local confirmado)
+async function ouvirCadastros() {
+  if (pararCadastros) return;
+  pararCadastros = await DB.observarCadastros(o => { cadastros = o || {}; if (pedidos.length) render(); }, () => { cadastros = {}; pararCadastros = null; });
+}
 async function assinar() {
   if (pararLista) pararLista();
   pararLista = await DB.observarPedidosDoDia(Horario.dataTurno(), lista => { pedidos = lista; render(); },
@@ -160,7 +182,18 @@ const minhasPendentes = () => pedidos.filter(p => p.status === 'saiu' && p.entre
   .sort((a, b) => ((a.rota || {}).ordem || 99) - ((b.rota || {}).ordem || 99));
 const minhasFeitas = () => pedidos.filter(p => ['entregue', 'nao_entregue'].includes(p.status) && meu(p))
   .sort((a, b) => (b.entregueEm || (b.naoEntregue || {}).em || 0) - (a.entregueEm || (a.naoEntregue || {}).em || 0));
-const ponto = p => p.entrega.lat != null && p.entrega.lng != null ? [p.entrega.lat, p.entrega.lng] : null;
+const pinoPedido = p => p.entrega.lat != null && p.entrega.lng != null ? [p.entrega.lat, p.entrega.lng] : null;
+const cadastroDe = p => cadastros[Clientes.normTel(p.cliente && p.cliente.telefone)] || null;
+// Local confirmado pelo entregador (cadastro do cliente): vale quando o pedido não tem pino
+// ou quando o pino está a até 300 m dele (mesmo endereço). Pino longe = entrega em outro lugar → usa o pino.
+function localConfirmado(p) {
+  const c = cadastroDe(p), pn = pinoPedido(p);
+  if (!c || !c.local || c.local.lat == null) return null;
+  const lc = [c.local.lat, c.local.lng];
+  return !pn || Rota.km(pn, lc) <= 0.3 ? lc : null;
+}
+const ponto = p => localConfirmado(p) || pinoPedido(p);
+const tagConf = p => localConfirmado(p) ? ' <span class="tagConf">📍 local confirmado</span>' : '';
 const endereco = e => `${e.rua}, ${e.numero}${e.bairro ? ' - ' + e.bairro : ''}`;
 // texto para o Google Maps: coordenadas do pino ou o endereço digitado
 const destino = p => ponto(p) ? ponto(p).join(',') : `${endereco(p.entrega)}, ${CONFIG.loja.cidade}`;
@@ -180,7 +213,7 @@ function render() {
     const km = ponto(p) ? Rota.km(LOJA, ponto(p)) : null;
     return `<label class="pronto ${marcados.has(p.id) ? 'on' : ''}">
       <input type="checkbox" ${marcados.has(p.id) ? 'checked' : ''} onchange="marcar('${p.id}',this.checked)">
-      <div class="info"><b>#${p.numero} ${esc(p.cliente.nome)}</b>${km != null ? ` <span class="muted">• ${kmTxt(km)}</span>` : ' <span class="tag pend" style="font-size:11px">SEM PINO</span>'}
+      <div class="info"><b>#${p.numero} ${esc(p.cliente.nome)}</b>${km != null ? ` <span class="muted">• ${kmTxt(km)}</span>` : ' <span class="tag pend" style="font-size:11px">SEM PINO</span>'}${tagConf(p)}
         <div class="muted">📍 ${esc(endereco(p.entrega))}</div>
         <div style="font-size:13px;font-weight:700">${textoCobrar(p).curto}</div></div>
     </label>`;
@@ -277,7 +310,7 @@ function renderRota(pend, feitas) {
     return `<div class="parada">
       <div class="cab"><span class="nOrdem">${i + 1}</span><span class="num">#${p.numero}</span><b>${esc(p.cliente.nome)}</b>
         <span class="km">${trechos[i] != null ? '📏 ' + kmTxt(trechos[i]) : ponto(p) ? '' : '⚠️ sem pino'}</span></div>
-      <div class="end">📍 ${esc(endereco(e))}</div>
+      <div class="end">📍 ${esc(endereco(e))}${tagConf(p)}</div>
       ${e.complemento ? `<div>🏠 ${esc(e.complemento)}</div>` : ''}
       ${e.referencia ? `<div class="muted">👀 Ref.: ${esc(e.referencia)}</div>` : ''}
       <div class="itens">${p.itens.filter(it => !Preco.ehSache(it)).map(it => `${it.qtd}x ${esc(Preco.descricao(it))}`).join(' • ')}</div>
@@ -294,6 +327,7 @@ function renderRota(pend, feitas) {
         <button class="btn ok" onclick="entregue('${p.id}')">✅ Entregue</button>
         <button class="btn" onclick="abrirNao('${p.id}')">❌ Não entregue</button>
       </div>
+      ${botaoLocal(p)}
     </div>`;
   }).join('');
   desenharMapa(pend, feitasRota);
@@ -339,12 +373,100 @@ async function mensagemEntregue(p) {
 async function entregue(id) {
   const p = achar(id); if (!p) return;
   if (!confirm(`Confirmar ENTREGA do pedido #${p.numero} (${p.cliente.nome})?${p.pagamento.forma === 'misto' && !p.pagamento.confirmado ? `\n\nRecebeu ${Pagto.texto(p)}?` : p.pagamento.forma === 'dinheiro' ? `\n\n💵 Recebeu ${dinheiro(p.total)}?` : p.pagamento.forma === 'cartao' ? `\n\n💳 Passou ${dinheiro(p.total)} no cartão?` : ''}`)) return;
+  // GPS começa já (com a página na frente); a pergunta de gravar aparece depois. Nunca segura a entrega.
+  const gps = p.entrega.localEntregue ? null : capturarGPS();
   const jan = p.cliente.telefone ? window.open('', '_blank') : null;   // abre já no clique (pop-up)
   try {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, await mensagemEntregue(p));
     toast(`✅ #${p.numero} entregue!`);
+    if (gps) abrirLocal(id, gps, true);
   } catch (e) { if (jan) jan.close(); avisarErro(e); }
+}
+
+/* ---------------- LOCALIZAÇÃO NO MOMENTO DA ENTREGA ----------------
+   O entregador decide se o GPS atual é o endereço do cliente (grava em clientes/{telefone})
+   ou não (entrega em outro local). Nos dois casos o pedido guarda entrega.localEntregue. */
+function capturarGPS() {
+  return new Promise(res => {
+    // o timeout do navegador não conta enquanto ele espera a permissão: limite próprio de 20 s
+    const limite = setTimeout(() => res({ erro: 'O GPS não respondeu. Confira se a localização está ligada e permitida para este site.' }), 20000);
+    const fim = r => { clearTimeout(limite); res(r); };
+    if (!navigator.geolocation) return fim({ erro: 'Este aparelho/navegador não informa a localização.' });
+    try {
+      navigator.geolocation.getCurrentPosition(
+        pos => fim({ lat: Math.round(pos.coords.latitude * 1e6) / 1e6, lng: Math.round(pos.coords.longitude * 1e6) / 1e6, precisao: Math.round(pos.coords.accuracy) }),
+        e => fim({ erro: e.code === 1 ? 'Localização bloqueada. Libere a localização para este site nas configurações do navegador.'
+          : e.code === 3 ? 'O GPS demorou demais para responder.' : 'Não foi possível obter a localização (GPS desligado ou sem sinal).' }),
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+    } catch (e) { fim({ erro: 'Não foi possível obter a localização.' }); }
+  });
+}
+function botaoLocal(p) {
+  const e = p.entrega;
+  if (e.localEntregue) return `<button class="btn sec btnLocal feito" onclick="abrirLocal('${p.id}')">${e.localGravadoNoCadastro ? '📍 Local gravado no cadastro ✓' : '📍 Local registrado só no pedido'} — gravar de novo</button>`;
+  return `<button class="btn sec btnLocal" onclick="abrirLocal('${p.id}')">📍 Gravar local do cliente</button>`;
+}
+function abrirLocal(id, gps, aposEntrega) {
+  gpsEstado = { id, gps: null, aposEntrega: !!aposEntrega, salvando: false };
+  document.getElementById('modalLocal').classList.add('on');
+  buscarGPS(gps);
+}
+async function buscarGPS(promessa) {
+  const est = gpsEstado; if (!est) return;
+  est.gps = null; renderLocal();
+  const r = await (promessa || capturarGPS());
+  if (gpsEstado !== est) return;   // fechou ou abriu outro
+  est.gps = r; renderLocal();
+}
+function fecharLocal() { gpsEstado = null; document.getElementById('modalLocal').classList.remove('on'); }
+const distTxt = km => km < 1 ? Math.round(km * 1000) + ' m' : kmTxt(km);
+function renderLocal() {
+  const est = gpsEstado; if (!est) return;
+  const p = achar(est.id); if (!p) return fecharLocal();
+  const g = est.gps, tel = Clientes.normTel(p.cliente.telefone), nome = esc(p.cliente.nome || 'cliente');
+  const topo = `<h2>📍 Local da entrega — #${p.numero}</h2>
+    <div class="muted">${esc(p.cliente.nome)} • ${esc(endereco(p.entrega))}</div>
+    ${est.aposEntrega ? '<div class="okbox">✅ Entrega já registrada. Agora é só decidir sobre a localização.</div>' : ''}`;
+  let corpo;
+  if (!g) corpo = `<div class="gpsInfo">⏳ Buscando sua localização atual… (até 15 s)</div>
+    <div class="gpsBotoes"><button class="btn sec" onclick="fecharLocal()">Cancelar</button></div>`;
+  else if (g.erro) corpo = `<div class="alerta">⚠️ ${esc(g.erro)}</div>
+    <div class="muted">${est.aposEntrega ? 'A entrega continua registrada normalmente.' : 'Você pode marcar a entrega normalmente.'}</div>
+    <div class="gpsBotoes"><button class="btn dark" onclick="buscarGPS()">🔄 Tentar de novo</button><button class="btn sec" onclick="fecharLocal()">Fechar</button></div>`;
+  else {
+    const pn = pinoPedido(p), d = pn ? Rota.km(pn, [g.lat, g.lng]) : null, ruim = g.precisao > PRECISAO_BOA;
+    const ant = (cadastroDe(p) || {}).local;
+    corpo = `<div class="gpsInfo">
+        🎯 Precisão: <b>±${g.precisao} m</b>${ruim ? ' ⚠️' : ' ✅'}<br>
+        ${d != null ? `📏 Distância até o pino do pedido: <b>${distTxt(d)}</b>${d > 0.3 ? ' <span style="color:var(--warn);font-weight:700">(longe do pino — pode ser outro endereço)</span>' : ''}` : '📌 Pedido sem pino no mapa.'}
+        ${ant ? `<br>🗂️ Já tem local confirmado (${new Date(ant.gravadoEm).toLocaleDateString('pt-BR')}) a ${distTxt(Rota.km([ant.lat, ant.lng], [g.lat, g.lng]))} daqui — gravar substitui.` : ''}
+        <br><a href="https://www.google.com/maps?q=${g.lat},${g.lng}" target="_blank" rel="noopener">ver no mapa ↗</a></div>
+      ${ruim ? `<div class="aviso">⚠️ Precisão baixa (±${g.precisao} m). Vá para um lugar aberto, espere alguns segundos e tente de novo.</div>` : ''}
+      ${tel ? `<div style="font-weight:800;font-size:16px;margin-top:4px">Gravar esta localização no cadastro de ${nome}?</div>` : '<div class="aviso">Pedido sem telefone válido: dá para registrar só no pedido.</div>'}
+      <div class="gpsBotoes">
+        ${ruim ? '<button class="btn dark" onclick="buscarGPS()">🔄 Tentar de novo (melhorar precisão)</button>' : ''}
+        ${tel ? `<button class="btn ok" ${est.salvando ? 'disabled' : ''} onclick="decidirLocal(true)">✅ Sim, é o endereço do cliente${ruim ? ' (gravar mesmo assim)' : ''}</button>` : ''}
+        <button class="btn sec" ${est.salvando ? 'disabled' : ''} onclick="decidirLocal(false)">🚫 Não gravar (entrega em outro local)</button>
+        <button class="btn sec" style="border:0" onclick="fecharLocal()">Decidir depois</button>
+      </div>`;
+  }
+  document.getElementById('localConteudo').innerHTML = topo + corpo;
+}
+async function decidirLocal(gravar) {
+  const est = gpsEstado; if (!est || !est.gps || est.gps.erro || est.salvando) return;
+  const p = achar(est.id); if (!p) return fecharLocal();
+  const g = est.gps, agora = Date.now(), tel = Clientes.normTel(p.cliente.telefone);
+  est.salvando = true; renderLocal();
+  try {
+    if (gravar) await DB.gravarLocalCliente(tel, p.cliente.nome, {
+      lat: g.lat, lng: g.lng, precisao: g.precisao, gravadoEm: agora, gravadoPor: eu.nome, pedidoId: p.id, pedidoNumero: p.numero || null,
+      endereco: { rua: p.entrega.rua || '', numero: p.entrega.numero || '', bairro: p.entrega.bairro || '' }
+    });
+    await DB.atualizarPedido(p.id, { entrega: Object.assign({}, p.entrega, { localEntregue: { lat: g.lat, lng: g.lng, precisao: g.precisao, em: agora, por: eu.nome }, localGravadoNoCadastro: !!gravar }) });
+    fecharLocal();
+    toast(gravar ? `📍 Local gravado no cadastro de ${p.cliente.nome}.` : '📍 Registrado só no pedido (cadastro não mudou).');
+  } catch (e) { est.salvando = false; renderLocal(); avisarErro(e); }
 }
 
 function abrirNao(id) { naoPedido = achar(id); naoMotivo = null; renderNao(); document.getElementById('modalNao').classList.add('on'); }

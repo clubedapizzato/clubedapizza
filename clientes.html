@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261111b">
+<link rel="stylesheet" href="css/app.css?v=20261113">
 <style>
 main{max-width:1200px;padding-bottom:30px}
 .topo .in{max-width:1200px}
@@ -198,11 +198,11 @@ th.ord:hover{color:var(--ink)}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261111b"></script>
-<script src="js/cardapio.js?v=20261111b"></script>
-<script src="js/db.js?v=20261111b"></script>
-<script src="js/clientes.js?v=20261111b"></script>
-<script src="js/fidelidade.js?v=20261111b"></script>
+<script src="js/config.js?v=20261113"></script>
+<script src="js/cardapio.js?v=20261113"></script>
+<script src="js/db.js?v=20261113"></script>
+<script src="js/clientes.js?v=20261113"></script>
+<script src="js/fidelidade.js?v=20261113"></script>
 <script>
 let periodo = '90d';
 let pedidos = [], A = null;            // A = resultado de Clientes.analisar
@@ -229,7 +229,7 @@ DB.observarUsuario(u => {
   document.getElementById('painel').classList.toggle('hide', !logado);
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
-  if (logado) { mostrarAba(aba); carregar(); ouvirFid(); }
+  if (logado) { mostrarAba(aba); carregar(); ouvirFid(); ouvirCadastros(); }
   else { pedidos = []; A = null; }
 });
 async function entrar() {
@@ -328,7 +328,7 @@ function renderLista() {
   const seta = k => ordem.col === k ? (ordem.dir > 0 ? ' ▲' : ' ▼') : '';
   document.getElementById('tabClientes').innerHTML = `<tr>${COLS.map(([k, n, , r]) => `<th class="ord ${r ? 'r' : ''}" onclick="ordenarPor('${k}')">${n}${seta(k)}</th>`).join('')}</tr>` +
     (l.length ? l.map(c => `<tr class="cli" onclick="abrirFicha('${c.chave}')">
-      <td><b>${esc(c.nome)}</b>${c.outrosNomes.length ? ` <span class="muted" title="Também usou: ${esc(c.outrosNomes.join(', '))}">+${c.outrosNomes.length}</span>` : ''}</td>
+      <td><b>${esc(c.nome)}</b>${localDe(c.chave) ? ' <span title="Localização confirmada pelo entregador">📍</span>' : ''}${c.outrosNomes.length ? ` <span class="muted" title="Também usou: ${esc(c.outrosNomes.join(', '))}">+${c.outrosNomes.length}</span>` : ''}</td>
       <td>${segTag(c)}</td><td>${Clientes.fmtTel(c.telefone)}${Clientes.telSuspeito(c.telefone) ? ' <span title="Telefone gravado errado: abra a ficha e edite o cadastro">⚠️</span>' : ''}</td><td>${esc(c.bairro) || '<span class="muted">—</span>'}</td>
       <td class="r">${c.n}</td><td class="r"><b>${dinheiro(c.total)}</b></td><td class="r">${dinheiro(c.ticket)}</td>
       <td>${br(c.primeira)}</td><td>${br(c.ultima)}</td><td class="r">${c.diasSemPedir}</td>
@@ -365,6 +365,7 @@ const linkPedido = p => `index.html?${p.codigo ? 'codigo=' + encodeURIComponent(
 
 function abrirFicha(chave) {
   const c = porChave(chave); if (!c) return;
+  fichaAberta = chave;
   const f = Clientes.fidelidade(c, lerFid(), lerEntregues()[chave]);
   const mini = (t, v) => `<div><small>${t}</small><b>${v}</b></div>`;
   const tipos = Object.entries(c.tipos).map(([k, v]) => `${TIPOS[k] || k} ${v}`).join(' • ');
@@ -385,6 +386,7 @@ function abrirFicha(chave) {
     </div>
     <div class="muted">${tipos}</div>
     ${ends.length ? `<div class="muted" style="margin-top:4px">📍 ${ends.map(([e, n]) => `${esc(e)}${ends.length > 1 ? ` (${n}x)` : ''}`).join('<br>📍 ')}</div>` : ''}
+    ${htmlLocal(c.chave)}
     <div class="okbox" style="margin-top:10px">🎁 Fidelidade: ${progresso(f)} ${f.disponiveis ? `<b>• ${f.disponiveis} recompensa(s) a entregar</b>` : ''}</div>
 
     <div class="fichaSec grade">
@@ -441,6 +443,8 @@ async function salvarCliente() {
     // fidelidade (recompensas entregues) vai para o número novo
     const ent = (FID.entregas || {})[c.chave];
     if (ent && ent.length && novaChave !== c.chave) await Fidelidade.moverTelefone(c.chave, novaChave, ent);
+    // localização confirmada pelo entregador vai junto para o número novo
+    if (localDe(c.chave) && novaChave !== c.chave) await DB.moverCadastroCliente(c.chave, novaChave, nome);
     fechar('mEditar'); fechar('mFicha');
     toast(`Cadastro corrigido em ${lista.length} pedido(s).`);
     await carregar();
@@ -448,6 +452,33 @@ async function salvarCliente() {
   } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
   finally { b.disabled = false; b.textContent = 'Salvar'; }
 }
+
+/* ---------------- LOCALIZAÇÃO CONFIRMADA PELO ENTREGADOR (clientes/{telefone}) ---------------- */
+let CAD = {}, cadErro = null, cadOuvindo = false;
+function ouvirCadastros() {
+  if (cadOuvindo) return;
+  cadOuvindo = true;
+  DB.observarCadastros(o => { CAD = o || {}; cadErro = null; if (A) renderLista(); atualizarFichaAberta(); },
+    e => { cadErro = e; cadOuvindo = false; });
+}
+const localDe = chave => (CAD[chave] || {}).local || null;
+function htmlLocal(chave) {
+  const l = localDe(chave);
+  if (!l) return cadErro ? `<div class="muted" style="margin-top:6px">📍 Localização confirmada: indisponível (${esc(DB.mensagemErro(cadErro))})</div>` : '';
+  const e = l.endereco || {}, end = [e.rua, e.numero].filter(Boolean).join(', ') + (e.bairro ? ' - ' + e.bairro : '');
+  return `<div class="okbox" style="margin-top:8px">📍 <b>Localização confirmada pelo entregador em ${new Date(l.gravadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</b>
+    <span class="muted">(±${l.precisao} m${l.gravadoPor ? ' • ' + esc(l.gravadoPor) : ''}${l.pedidoNumero ? ' • pedido #' + l.pedidoNumero : ''}${end ? ' • ' + esc(end) : ''})</span>
+    <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><a class="btn sm dark" style="text-decoration:none" target="_blank" rel="noopener" href="https://www.google.com/maps?q=${l.lat},${l.lng}">🗺️ Abrir no Google Maps</a>
+    <button class="btn sm sec" onclick="apagarLocal('${chave}')">🗑️ Apagar localização</button></div></div>`;
+}
+async function apagarLocal(chave) {
+  const c = porChave(chave);
+  if (!confirm(`Apagar a localização confirmada de ${c ? c.nome : Clientes.fmtTel(chave)}?\n\nO entregador poderá gravar de novo na próxima entrega.`)) return;
+  try { await DB.apagarLocalCliente(chave); toast('Localização apagada.'); } catch (e) { DB.logErro(e); toast(DB.mensagemErro(e)); }
+}
+// redesenha a ficha aberta quando o cadastro muda (ex.: localização apagada)
+let fichaAberta = null;
+function atualizarFichaAberta() { if (A && fichaAberta && document.getElementById('mFicha').classList.contains('on') && porChave(fichaAberta)) abrirFicha(fichaAberta); }
 
 /* ---------------- WHATSAPP (mensagem editável) ---------------- */
 function abrirWhats(chave, tipo) {

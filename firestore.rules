@@ -120,5 +120,10 @@ service cloud.firestore {
     match /fin_cartao_compras/{id} {
       allow read, write: if request.auth != null;
     }
+    // Cadastro do cliente (clientes/{telefone}): localização confirmada pelo entregador no momento
+    // da entrega + histórico dos últimos locais. PRIVADO (dados pessoais): só logado.
+    match /clientes/{id} {
+      allow read, write: if request.auth != null;
+    }
   }
 }
