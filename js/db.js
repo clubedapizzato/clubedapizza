@@ -335,6 +335,54 @@ window.DB = (function () {
     return (await fs.getDocs(q)).docs.map(d => Object.assign({ id: d.id }, d.data()));
   }
 
+  /* ---------------- CADASTRO DO CLIENTE (coleção PRIVADA "clientes", só logado) ----------------
+     clientes/{telefone com DDD, só dígitos} = { nome, telefone, local: { lat, lng, precisao, gravadoEm, gravadoPor, endereco: { rua, numero, bairro } } | null,
+       historicoLocais: [até 5 locais anteriores], atualizadoEm }. Local confirmado pelo entregador no momento da entrega. */
+  const LS_CLI = 'cdp_clientes_cadastro';
+  const telCadastro = tel => { const t = String(tel || ''); if (!/^\d{10,11}$/.test(t)) throw new Error('Telefone do cliente inválido.'); return t; };
+  const comHistorico = (atual, extra) => (atual && atual.local ? [Object.assign({}, atual.local, extra || {})] : []).concat((atual && atual.historicoLocais) || []).slice(0, 5);
+  async function observarCadastros(cb, erro) {
+    await init();
+    if (modo() === 'demo') return ouvirLocal(() => cb(lerLS(LS_CLI, {})), LS_CLI);
+    return fs.onSnapshot(fs.collection(db, 'clientes'), s => { const o = {}; s.docs.forEach(d => { o[d.id] = d.data(); }); cb(o); },
+      e => { logErro(Object.assign(e, { caminho: 'clientes' })); erro && erro(e); });
+  }
+  // Grava o local confirmado (o anterior vai para o histórico, últimos 5)
+  async function gravarLocalCliente(tel, nome, local) {
+    await init();
+    tel = telCadastro(tel);
+    const montar = atual => ({ nome: nome || (atual && atual.nome) || '', telefone: tel, local, historicoLocais: comHistorico(atual), atualizadoEm: Date.now() });
+    if (modo() === 'demo') { const o = lerLS(LS_CLI, {}); o[tel] = montar(o[tel]); gravarLS(LS_CLI, o); return; }
+    const ref = fs.doc(db, 'clientes', tel);
+    await comCaminho('clientes/' + tel, fs.runTransaction(db, async tx => { const s = await tx.get(ref); tx.set(ref, montar(s.exists() ? s.data() : null)); }));
+  }
+  // Apaga o local confirmado (fica no histórico marcado como apagado)
+  async function apagarLocalCliente(tel) {
+    await init();
+    tel = telCadastro(tel);
+    const montar = atual => ({ local: null, historicoLocais: comHistorico(atual, { apagadoEm: Date.now(), apagadoPor: usuario() }), atualizadoEm: Date.now() });
+    if (modo() === 'demo') { const o = lerLS(LS_CLI, {}); if (o[tel]) { Object.assign(o[tel], montar(o[tel])); gravarLS(LS_CLI, o); } return; }
+    const ref = fs.doc(db, 'clientes', tel);
+    await comCaminho('clientes/' + tel, fs.runTransaction(db, async tx => { const s = await tx.get(ref); if (s.exists()) tx.update(ref, montar(s.data())); }));
+  }
+  // Telefone corrigido na página Clientes: leva o local confirmado para o número novo (se lá não houver um)
+  async function moverCadastroCliente(de, para, nome) {
+    await init();
+    de = telCadastro(de); para = telCadastro(para);
+    if (de === para) return;
+    if (modo() === 'demo') {
+      const o = lerLS(LS_CLI, {}); if (!o[de] || !o[de].local || (o[para] && o[para].local)) return;
+      o[para] = Object.assign({}, o[de], { nome, telefone: para, historicoLocais: comHistorico(o[para]), atualizadoEm: Date.now() });
+      gravarLS(LS_CLI, o); return;
+    }
+    const rDe = fs.doc(db, 'clientes', de), rPara = fs.doc(db, 'clientes', para);
+    await comCaminho('clientes/' + para, fs.runTransaction(db, async tx => {
+      const a = await tx.get(rDe), b = await tx.get(rPara);
+      if (!a.exists() || !a.data().local || (b.exists() && b.data().local)) return;
+      tx.set(rPara, Object.assign({}, a.data(), { nome, telefone: para, historicoLocais: comHistorico(b.exists() ? b.data() : null), atualizadoEm: Date.now() }));
+    }));
+  }
+
   // Pedidos de dias FUTUROS (agendamentos), em tempo real
   async function observarPedidosFuturos(data, cb, erro) {
     await init();
@@ -640,6 +688,7 @@ window.DB = (function () {
     observarInsumos, observarFichas, salvarInsumo, salvarFicha, mensagemErro, logErro,
     baixarEstoque, estornarEstoque, observarProdutos, salvarProduto, importarProdutos, observarConfig, salvarConfig,
     lancarMovimento, listarMovimentos, login, sair, observarUsuario,
-    lancarMovInsumos, baixarInsumos, estornarInsumos
+    lancarMovInsumos, baixarInsumos, estornarInsumos,
+    observarCadastros, gravarLocalCliente, apagarLocalCliente, moverCadastroCliente
   };
 })();
