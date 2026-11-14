@@ -52,6 +52,8 @@ main{max-width:1400px;padding-bottom:30px}
 .modal .box{max-width:720px}
 .chips .chip{padding:12px 14px;font-size:15px}
 .sugestao{background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:10px;margin-top:8px;font-size:14px}
+.localConf{background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;border-radius:12px;padding:10px;margin-top:8px;font-size:14px}
+.localConf .acoes{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 #opConsumo{grid-template-columns:repeat(3,1fr)}
 #opConsumo .opcao{padding:14px 4px;font-size:15px}
 #barraMob{display:none}
@@ -118,6 +120,7 @@ main{max-width:1400px;padding-bottom:30px}
           <label for="telefone">Telefone / WhatsApp do cliente</label>
           <input id="telefone" type="tel" inputmode="tel" autocomplete="off" placeholder="(63) 99999-9999">
           <div id="sugestao"></div>
+          <div id="localConf"></div>
           <div id="blocoEndereco"></div>
         </div>
         <h3 style="margin-top:14px">Pagamento</h3>
@@ -226,7 +229,7 @@ DB.observarUsuario(u => {
   document.getElementById('ferramentas').classList.toggle('hide', !logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   document.getElementById('barraMob').classList.toggle('hide', !logado);
-  if (logado) { assinar(); Ficha.iniciar(); ouvirFin(); } else if (pararLista) { pararLista(); pararLista = null; }
+  if (logado) { assinar(); Ficha.iniciar(); ouvirFin(); ouvirCadastros(); } else if (pararLista) { pararLista(); pararLista = null; }
 });
 async function entrar() {
   document.getElementById('erroLogin').textContent = '';
@@ -535,18 +538,19 @@ function limpar() {
   document.getElementById('fVencTipo').value = 'dias'; document.getElementById('ciDescontar').checked = false;
   document.getElementById('fiadoNovoBox').classList.add('hide');
   document.getElementById('sugestao').innerHTML = '';
-  Endereco.limpar();
+  Endereco.limpar(); localConf = null; renderLocalConf();
   renderOpcoes(); atualizar();
 }
 
 /* ---------------- DELIVERY: endereço e último pedido do cliente ---------------- */
-Endereco.montar(document.getElementById('blocoEndereco'), { minhaLocalizacao: false, toast, onChange: () => renderTotal() });
+Endereco.montar(document.getElementById('blocoEndereco'), { minhaLocalizacao: false, toast, onChange: () => { renderTotal(); renderLocalConf(); } });
 document.getElementById('telefone').addEventListener('input', e => {
   const tel = Telefone.limpar(e.target.value);   // sempre DDD + número (sem o 55)
   e.target.value = Telefone.mascara(e.target.value);
   clearTimeout(buscarCliente.t);
   if (tel.length >= 10) buscarCliente.t = setTimeout(() => buscarCliente(tel), 400);
   else { ultimoDoCliente = null; document.getElementById('sugestao').innerHTML = ''; }
+  verLocalConfirmado(tel);
 });
 async function buscarCliente(tel) {
   const el = document.getElementById('sugestao');
@@ -565,10 +569,66 @@ async function buscarCliente(tel) {
 function usarUltimo() {
   const p = ultimoDoCliente; if (!p) return;
   if (p.cliente.nome) document.getElementById('nome').value = p.cliente.nome;
-  if (p.entrega && p.entrega.tipo === 'entrega') { Endereco.preencher(p.entrega); toast('Endereço preenchido — confira o pino no mapa.'); }
+  if (p.entrega && p.entrega.tipo === 'entrega') {
+    // o local confirmado pelo entregador (se é o pino atual) vale mais que o pino do último pedido
+    const d = Object.assign({}, p.entrega), lc = pinoEhConfirmado() ? localConf.local : null;
+    if (lc) Object.assign(d, { lat: lc.lat, lng: lc.lng });
+    Endereco.preencher(d); toast(lc ? 'Endereço preenchido — pino no local confirmado pelo entregador.' : 'Endereço preenchido — confira o pino no mapa.');
+  }
   document.getElementById('sugestao').innerHTML = '';
   renderTotal();
 }
+/* ---------------- 📍 LOCAL CONFIRMADO PELO ENTREGADOR (clientes/{telefone}.local) ----------------
+   Sugere como pino; não troca um pino que o atendente já marcou. Sem local confirmado: tudo como antes. */
+let CADASTROS = {}, cadOuvindo = false;
+let localConf = null;   // { tel, local, aplicado: bool, ignorado: bool } do telefone digitado
+function ouvirCadastros() {
+  if (cadOuvindo) return; cadOuvindo = true;
+  // sem as regras publicadas (ou offline) segue sem sugestão
+  DB.observarCadastros(o => { CADASTROS = o || {}; verLocalConfirmado(Telefone.limpar(val('telefone'))); }, () => { CADASTROS = {}; cadOuvindo = false; });
+}
+const camposEndereco = () => Object.fromEntries(['rua', 'numero', 'bairro', 'complemento', 'referencia'].map(k => [k, val(k)]));
+const mesmoPonto = (a, b) => a && b && a.lat != null && Math.abs(a.lat - b.lat) < 1e-6 && Math.abs(a.lng - b.lng) < 1e-6;
+const pinoEhConfirmado = () => !!(localConf && localConf.aplicado && mesmoPonto(Endereco.local(), localConf.local));
+function verLocalConfirmado(tel) {
+  const chave = Clientes.normTel(tel), l = chave ? (CADASTROS[chave] || {}).local : null;
+  if (localConf && localConf.tel === chave && l && mesmoPonto(localConf.local, l)) return renderLocalConf();   // nada mudou
+  // trocou de telefone: tira o pino que veio do local confirmado do cliente anterior (nunca um pino marcado à mão)
+  if (pinoEhConfirmado()) Endereco.preencher(camposEndereco());
+  localConf = l && l.lat != null ? { tel: chave, local: l, aplicado: false, ignorado: false } : null;
+  if (localConf && Endereco.local().lat == null) aplicarLocalConf(true);
+  renderLocalConf();
+}
+function aplicarLocalConf(auto) {
+  if (!localConf) return;
+  const l = localConf.local, e = l.endereco || {}, d = camposEndereco();
+  // completa só os campos vazios com o endereço gravado junto com o local
+  ['rua', 'numero', 'bairro'].forEach(k => { if (!d[k] && e[k]) d[k] = e[k]; });
+  localConf.aplicado = true; localConf.ignorado = false;
+  Endereco.preencher(Object.assign(d, { lat: l.lat, lng: l.lng }));
+  if (!auto) toast('Pino no local confirmado pelo entregador.');
+  renderLocalConf(); renderTotal();
+}
+function ignorarLocalConf() {
+  if (!localConf) return;
+  if (pinoEhConfirmado()) Endereco.preencher(camposEndereco());   // volta sem pino
+  localConf.aplicado = false; localConf.ignorado = true;
+  renderLocalConf(); renderTotal();
+}
+function renderLocalConf() {
+  const el = document.getElementById('localConf'); if (!el) return;
+  if (!localConf) { el.innerHTML = ''; return; }
+  const l = localConf.local, quando = new Date(l.gravadoEm).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const titulo = `📍 <b>local confirmado pelo entregador em ${quando}</b> <span class="muted">(±${l.precisao} m)</span>`;
+  const mapa = `<a href="https://www.google.com/maps?q=${l.lat},${l.lng}" target="_blank" rel="noopener">ver ↗</a>`;
+  if (pinoEhConfirmado()) el.innerHTML = `<div class="localConf">${titulo} — já está no mapa. ${mapa}
+      <div class="muted">Entrega em outro lugar? Arraste o pino ou toque em Ignorar.</div>
+      <div class="acoes"><button class="btn sm sec" type="button" onclick="ignorarLocalConf()">Ignorar</button></div></div>`;
+  else el.innerHTML = `<div class="localConf">${titulo} ${mapa}
+      <div class="muted">${localConf.ignorado ? 'Ignorado.' : Endereco.local().lat != null ? 'O pino atual foi marcado à mão e foi mantido.' : 'Sem pino no mapa.'}</div>
+      <div class="acoes"><button class="btn sm dark" type="button" onclick="aplicarLocalConf()">📍 Usar local confirmado</button></div></div>`;
+}
+
 /* ---------------- 📒 FIADO e 🍽️ CONSUMO INTERNO (financeiro: fin_fiados, fin_funcionarios, fin_config) ---------------- */
 let FIADOS = [], FUNCS = [], FINCFG = {}, pedidosHoje = [], fiadoSel = null, fiadoNovo = false, tipoCI = 'funcionario', finOuvindo = false;
 function ouvirFin() {
