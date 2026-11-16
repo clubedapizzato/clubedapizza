@@ -1560,13 +1560,22 @@ function verTaxasDre(m, cat) {
     <tr class="tot"><td colspan="4">Total</td><td class="r">${dinheiro(tot)}</td></tr></table></div>`;
   $('mVer').classList.add('on');
 }
+/* Somas de exibição do DRE (não muda nenhum cálculo):
+   operacional = consumo interno + variáveis + fixas + folha
+   custo total = CMV (se houver) + taxas + operacional  →  receita − custo total = resultado operacional = margem bruta − operacional */
+function operacionalDre(d) {
+  const operacional = r2((d.consumoTotal || 0) + (d.variaveis || 0) + (d.fixas || 0) + (d.folha || 0));
+  return { operacional, custoTotal: r2((d.cmv || 0) + (d.taxas || 0) + operacional), resultado: r2((d.margemBruta || 0) - operacional) };
+}
 function renderDre() {
   const m = $('rMes').value || mesAtual(), d = dreMes(m);
   const row = (n, v, cls = '', extra = '') => `<tr class="${cls}"><td>${n}</td><td class="r">${v == null ? '<span class="muted">não disponível</span>' : (typeof v === 'string' ? v : dinheiro(v))}</td><td class="r muted">${extra}</td></tr>`;
   const p = v => d.receita ? pct(v / d.receita * 100) : '';
   const linhasGrupo = o => Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, v]) => row(esc(k), -v, 'sub', p(v))).join('');
-  const taxasCat = taxasPorCategoria(m), duplicada = d.taxaCartao > 0 && taxasCat[CAT_TAXA_MAQ] > 0;
-  $('rDre').innerHTML = `<table class="dre"><tr><th>${brMes(m)}</th><th class="r">R$</th><th class="r">% receita</th></tr>
+  const taxasCat = taxasPorCategoria(m), duplicada = d.taxaCartao > 0 && taxasCat[CAT_TAXA_MAQ] > 0, o = operacionalDre(d);
+  const ind = (n, v) => `<div class="kpi"><small>${n}</small><b>${v}</b><span>da receita</span></div>`;
+  $('rDre').innerHTML = `<div class="kpis" style="margin-bottom:10px">${ind('Custo total', d.receita ? pct(o.custoTotal / d.receita * 100) : '—')}${ind('Operacional', d.receita ? pct(o.operacional / d.receita * 100) : '—')}${ind('Resultado operacional', d.receita ? pct(o.resultado / d.receita * 100) : '—')}</div>
+    <table class="dre"><tr><th>${brMes(m)}</th><th class="r">R$</th><th class="r">% receita</th></tr>
     ${row('Receita de vendas', d.receita, '', '100%')}${row('Pedidos (site + balcão)', d.vendasPedidos, 'sub')}${d.vendasManuais ? row('Vendas lançadas à mão', d.vendasManuais, 'sub') : ''}${d.fiadosSemPedido ? row('Vendas no fiado sem pedido', d.fiadosSemPedido, 'sub') : ''}
     ${row('(−) Taxas de cartão/banco', -d.taxas, '', p(d.taxas))}
     ${row(`Taxa estimada da maquininha <span class="muted">(${pct(taxaCartao())} sobre ${dinheiro(d.cartao)} no cartão)</span>`, -d.taxaCartao, 'sub', p(d.taxaCartao))}
@@ -1579,6 +1588,11 @@ function renderDre() {
     ${row('(−) Despesas variáveis', -d.variaveis, '', p(d.variaveis))}${linhasGrupo(d.despesas.variavel)}
     ${row('(−) Despesas fixas', -d.fixas, '', p(d.fixas))}${linhasGrupo(d.despesas.fixa)}
     ${row('(−) Folha', -d.folha, '', p(d.folha))}${linhasGrupo(d.despesas.folha)}
+    ${row('(=) Total de despesas operacionais', -o.operacional, 'res', p(o.operacional))}
+    ${d.receita ? row(`<span class="muted">${[d.consumoTotal ? `consumo interno ${p(d.consumoTotal)}` : '', `variáveis ${p(d.variaveis)}`, `fixas ${p(d.fixas)}`, `folha ${p(d.folha)}`].filter(Boolean).join(' • ')}</span>`, '', 'sub') : ''}
+    ${row(`(=) Custo total (produção + operacional)${d.cmv == null ? ' <span class="muted">(sem CMV)</span>' : ''}`, -o.custoTotal, 'res', p(o.custoTotal))}
+    ${d.receita ? row(`<span class="muted">${d.cmv == null ? 'CMV não disponível' : `CMV ${p(d.cmv)}`} • taxas ${p(d.taxas)} • operacional ${p(o.operacional)}</span>`, '', 'sub') : ''}
+    ${row('(=) Resultado operacional', `<span class="${o.resultado < 0 ? 'neg' : 'pos'}">${dinheiro(o.resultado)}</span>`, 'res', p(o.resultado))}
     ${d.outrasReceitas ? row('(+) Outras receitas', d.outrasReceitas, '', p(d.outrasReceitas)) : ''}
     ${row('(=) LUCRO LÍQUIDO', `<span class="${d.lucro < 0 ? 'neg' : 'pos'}">${dinheiro(d.lucro)}</span>`, 'res', d.margem == null ? '' : `margem ${pct(d.margem)}`)}
     ${row(`Retiradas do dono (pró-labore)${d.consumoDono ? ` <span class="muted">— inclui ${dinheiro(d.consumoDono)} de consumo do dono</span>` : ''}`, -d.retiradas, 'sub')}${d.aportes ? row('Aportes do dono', d.aportes, 'sub') : ''}${d.recebimentoFiado ? row('Fiados recebidos (já contados na venda)', d.recebimentoFiado, 'sub') : ''}</table>
@@ -1606,6 +1620,10 @@ function csvDre() {
     ...Object.entries(taxasPorCategoria(m)).sort((a, b) => b[1] - a[1]).map(([k, v]) => [`        ${k}`, -v]), ['(=) Receita líquida', d.receitaLiquida], ['(-) CMV', d.cmv == null ? 'não disponível' : -d.cmv], ['(=) Margem bruta', d.margemBruta]];
   ['variavel', 'fixa', 'folha'].forEach(g => Object.entries(d.despesas[g]).forEach(([k, v]) => l.push([`(-) ${k}`, -v])));
   Object.entries(d.consumo || {}).forEach(([k, v]) => l.push([`(-) Consumo interno: ${k}`, -v]));
+  const o = operacionalDre(d), pr = v => d.receita ? r2(v / d.receita * 100) : '';
+  l.push(['(=) Total de despesas operacionais', -o.operacional], ['    % da receita', pr(o.operacional)],
+    [`(=) Custo total (produção + operacional)${d.cmv == null ? ' (sem CMV)' : ''}`, -o.custoTotal], ['    % da receita', pr(o.custoTotal)],
+    ['(=) Resultado operacional', o.resultado], ['    % da receita', pr(o.resultado)]);
   l.push(['(+) Outras receitas', d.outrasReceitas], ['(=) Lucro líquido', d.lucro], ['Margem %', d.margem == null ? '' : r2(d.margem)], ['Retiradas do dono', d.retiradas]);
   baixarCSV(`dre_${m}.csv`, l);
 }
