@@ -10,7 +10,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261113">
+<link rel="stylesheet" href="css/app.css?v=20261122">
 <style>
 main{max-width:720px;padding-bottom:40px}
 .topo .in{max-width:720px}
@@ -113,16 +113,17 @@ main{max-width:720px;padding-bottom:40px}
 
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261113"></script>
-<script src="js/cardapio.js?v=20261113"></script>
-<script src="js/db.js?v=20261113"></script>
-<script src="js/catalogo.js?v=20261113"></script>
-<script src="js/rota.js?v=20261113"></script>
-<script src="js/clientes.js?v=20261113"></script>
-<script src="js/fidelidade.js?v=20261113"></script>
+<script src="js/config.js?v=20261122"></script>
+<script src="js/cardapio.js?v=20261122"></script>
+<script src="js/db.js?v=20261122"></script>
+<script src="js/catalogo.js?v=20261122"></script>
+<script src="js/rota.js?v=20261122"></script>
+<script src="js/clientes.js?v=20261122"></script>
+<script src="js/fidelidade.js?v=20261122"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-let eu = null;                 // { nome, email }
+let eu = null;                 // { nome, email } (gravado no pedido)
+let souDono = true;            // dono: WhatsApp abre direto; demais entregadores: fila da cozinha
 let pedidos = [], marcados = new Set(), pararLista = null;
 let mapa = null, camada = null;
 let naoPedido = null, naoMotivo = null;
@@ -146,6 +147,7 @@ DB.observarUsuario(u => {
     // modo demo: usa o 1º entregador cadastrado em CONFIG.equipe
     const pessoa = DB.modo() === 'demo' ? (Equipe.entregadores()[0] || { nome: 'Entregador', email: 'demo' }) : Equipe.de(u.email);
     eu = { nome: pessoa.nome, email: pessoa.email };
+    souDono = !!pessoa.dono || pessoa.papel !== 'entregador';   // login da cozinha/gestão também é "dono"
     document.getElementById('quem').textContent = '• ' + eu.nome.split(' ')[0];
     assinar();
     ouvirCadastros();
@@ -273,7 +275,7 @@ async function iniciarRota() {
       await DB.atualizarPedido(p.id, campos, novo ? 'saiu' : null);
     }
     marcados.clear();
-    toast('Rota pronta! Avise cada cliente no botão 💬 Avisar saída.');
+    toast(`Rota pronta! Avise cada cliente no botão ${pelaFila() ? '📨 Avisar saída (fila)' : '💬 Avisar saída'}.`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } catch (e) { avisarErro(e); }
   finally { b.disabled = false; render(); }
@@ -319,7 +321,8 @@ function renderRota(pend, feitas) {
       <div class="cobrar ${c.classe}">${c.longo}</div>
       <div class="botoes">
         <a class="btn sec" href="tel:${esc(p.cliente.telefone)}">📞 Ligar</a>
-        <a class="btn ${av ? 'sec' : 'wa'}" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, 'saiu'))}" onclick="avisado('${p.id}')">${av ? '✔ Avisado' : '💬 Avisar saída'}</a>
+        ${pelaFila() ? botaoFilaSaida(p)
+          : `<a class="btn ${av ? 'sec' : 'wa'}" target="_blank" href="${linkWhats(p.cliente.telefone, STATUS.mensagem(p, 'saiu'))}" onclick="avisado('${p.id}')">${av ? '✔ Avisado' : '💬 Avisar saída'}</a>`}
         <a class="btn sec" target="_blank" href="${linkWhats(p.cliente.telefone, '')}">💬 Whats</a>
         <a class="btn sec" target="_blank" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destino(p))}&travelmode=driving">🧭 Ir</a>
       </div>
@@ -332,6 +335,27 @@ function renderRota(pend, feitas) {
   }).join('');
   desenharMapa(pend, feitasRota);
 }
+/* ---------------- FILA DE MENSAGENS (entregador que não é o dono) ----------------
+   O WhatsApp ao cliente não abre no celular do entregador: a mensagem fica em pedido.msgPendentes
+   e a cozinha envia pelo WhatsApp da loja (💬 Mensagens a enviar). O dono continua abrindo direto. */
+const pelaFila = () => !souDono;
+const novaMsg = (tipo, texto) => ({ id: 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), tipo, texto, criadaEm: Date.now(), por: eu.nome });
+async function enfileirar(id, tipo, texto) {
+  const p = achar(id);
+  await DB.atualizarPedido(id, { msgPendentes: ((p && p.msgPendentes) || []).concat([novaMsg(tipo, texto)]) });
+}
+function botaoFilaSaida(p) {
+  const m = (p.msgPendentes || []).filter(x => x.tipo === 'saiu' && !x.descartadaEm).pop();
+  if (m) return `<button class="btn sec" disabled>${m.enviadaEm ? '✔ Avisado' : '✔ Na fila da loja'}</button>`;
+  return `<button class="btn wa" onclick="avisarFila('${p.id}', this)">📨 Avisar saída (fila)</button>`;
+}
+async function avisarFila(id, btn) {
+  const p = achar(id); if (!p) return;
+  if (btn) btn.disabled = true;
+  try { await enfileirar(id, 'saiu', STATUS.mensagem(p, 'saiu')); avisado(id); toast('✔ Mensagem enviada para a fila da loja'); }
+  catch (e) { if (btn) btn.disabled = false; avisarErro(e); }
+}
+
 function avisado(id) {
   const l = lerAvisados();
   if (!l.includes(id)) { l.push(id); localStorage.setItem('cdp_ent_avisados', JSON.stringify(l.slice(-200))); }
@@ -375,11 +399,15 @@ async function entregue(id) {
   if (!confirm(`Confirmar ENTREGA do pedido #${p.numero} (${p.cliente.nome})?${p.pagamento.forma === 'misto' && !p.pagamento.confirmado ? `\n\nRecebeu ${Pagto.texto(p)}?` : p.pagamento.forma === 'dinheiro' ? `\n\n💵 Recebeu ${dinheiro(p.total)}?` : p.pagamento.forma === 'cartao' ? `\n\n💳 Passou ${dinheiro(p.total)} no cartão?` : ''}`)) return;
   // GPS começa já (com a página na frente); a pergunta de gravar aparece depois. Nunca segura a entrega.
   const gps = p.entrega.localEntregue ? null : capturarGPS();
-  const jan = p.cliente.telefone ? window.open('', '_blank') : null;   // abre já no clique (pop-up)
+  const fila = pelaFila() && !!p.cliente.telefone;
+  const jan = !fila && p.cliente.telefone ? window.open('', '_blank') : null;   // abre já no clique (pop-up)
   try {
     await DB.atualizarPedido(id, { status: 'entregue', entregueEm: Date.now() }, 'entregue');
     if (jan) jan.location.href = linkWhats(p.cliente.telefone, await mensagemEntregue(p));
     toast(`✅ #${p.numero} entregue!`);
+    // fila: grava depois da entrega (o saldo da fidelidade pode levar até 5 s); nunca segura a entrega
+    if (fila) mensagemEntregue(p).then(txt => enfileirar(id, 'entregue', txt))
+      .then(() => toast(`✅ #${p.numero} entregue! ✔ Mensagem enviada para a fila da loja`)).catch(avisarErro);
     if (gps) abrirLocal(id, gps, true);
   } catch (e) { if (jan) jan.close(); avisarErro(e); }
 }
@@ -480,7 +508,7 @@ function renderNao() {
     <div class="opcoes">${MOTIVOS.map(m => `<div class="opcao ${naoMotivo === m ? 'on' : ''}" onclick="naoMotivo='${m}';renderNao()">${m}</div>`).join('')}</div>
     <label for="naoObs">Observação ${naoMotivo === 'Outro' ? '<span style="color:var(--brand)">(obrigatória)</span>' : '(opcional)'}</label>
     <textarea id="naoObs" placeholder="Ex.: ninguém atendeu, liguei 2x">${esc(obs)}</textarea>
-    <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="naoAvisar" style="width:auto" checked> Avisar o cliente no WhatsApp</label>
+    <label style="display:flex;gap:8px;align-items:center;font-weight:600"><input type="checkbox" id="naoAvisar" style="width:auto" checked> ${pelaFila() ? 'Avisar o cliente (pela fila da loja)' : 'Avisar o cliente no WhatsApp'}</label>
     <button class="btn full" style="margin-top:12px;padding:14px" onclick="salvarNao()">Confirmar não entregue</button>
     <button class="btn sec full" style="margin-top:8px" onclick="fecharNao()">Voltar</button>`;
 }
@@ -489,15 +517,19 @@ async function salvarNao() {
   if (!naoMotivo) return toast('Escolha o motivo.');
   if (naoMotivo === 'Outro' && !obs) return toast('Descreva o motivo na observação.');
   const naoEntregue = { motivo: naoMotivo, obs, em: Date.now(), entregador: eu.nome };
-  const jan = document.getElementById('naoAvisar').checked && p.cliente.telefone ? window.open('', '_blank') : null;
+  const avisar = document.getElementById('naoAvisar').checked && !!p.cliente.telefone, fila = avisar && pelaFila();
+  const jan = avisar && !fila ? window.open('', '_blank') : null;
+  const texto = STATUS.mensagem(Object.assign({}, p, { naoEntregue }), 'nao_entregue');
+  const campos = {
+    status: 'nao_entregue', naoEntregue,
+    falhas: (p.falhas || []).concat([{ motivo: naoMotivo, obs, em: naoEntregue.em, entregador: eu }])
+  };
+  if (fila) campos.msgPendentes = (p.msgPendentes || []).concat([novaMsg('nao_entregue', texto)]);
   try {
-    await DB.atualizarPedido(p.id, {
-      status: 'nao_entregue', naoEntregue,
-      falhas: (p.falhas || []).concat([{ motivo: naoMotivo, obs, em: naoEntregue.em, entregador: eu }])
-    }, 'nao_entregue');
-    if (jan) jan.location.href = linkWhats(p.cliente.telefone, STATUS.mensagem(Object.assign({}, p, { naoEntregue }), 'nao_entregue'));
+    await DB.atualizarPedido(p.id, campos, 'nao_entregue');
+    if (jan) jan.location.href = linkWhats(p.cliente.telefone, texto);
     fecharNao();
-    toast(`Pedido #${p.numero} marcado como NÃO entregue. Leve de volta à loja.`);
+    toast(`Pedido #${p.numero} marcado como NÃO entregue. Leve de volta à loja.${fila ? ' ✔ Mensagem enviada para a fila da loja' : ''}`);
   } catch (e) { if (jan) jan.close(); avisarErro(e); }
 }
 

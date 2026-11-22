@@ -49,9 +49,13 @@ window.CONFIG = {
 
   /* Equipe: e-mail de login (Firebase → Authentication → Usuários) → nome e papel.
      papel: 'entregador' (página entregador.html) | 'cozinha' | 'admin'.
-     Quem NÃO estiver aqui continua entrando normalmente como cozinha. */
+     dono: true → o WhatsApp ao cliente abre direto no aparelho dele. Entregador sem "dono" manda as
+     mensagens para a fila da cozinha (💬 Mensagens a enviar), que envia pelo WhatsApp da loja.
+     Quem NÃO estiver aqui continua entrando normalmente como cozinha.
+     Novo entregador: crie o usuário no Firebase e acrescente uma linha, ex.:
+     'joao@clubedapizzato.com.br': { nome: 'João Silva', papel: 'entregador' }, */
   equipe: {
-    'entregador.henrique@clubedapizzato.com.br': { nome: 'Henrique de Almeida', papel: 'entregador' }
+    'entregador.henrique@clubedapizzato.com.br': { nome: 'Henrique de Almeida', papel: 'entregador', dono: true }
   },
 
   /* Banco de dados em tempo real (Firebase).

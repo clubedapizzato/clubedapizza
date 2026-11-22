@@ -9,7 +9,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="img/cdp-icone-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="img/cdp-icone-192.png">
 <link rel="apple-touch-icon" href="img/cdp-icone-180.png">
-<link rel="stylesheet" href="css/app.css?v=20261113">
+<link rel="stylesheet" href="css/app.css?v=20261122">
 <style>
 main{max-width:1400px;padding-bottom:30px}
 .topo .in{max-width:none;flex-wrap:wrap}
@@ -101,13 +101,19 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 .resumoTempo .pill.warn{background:#fef3c7;color:#92400e}
 .resumoTempo .pill.late{background:#fee2e2;color:#991b1b}
 .resumoTempo .pill.sched{background:#dbeafe;color:#1e40af}
+/* 💬 Mensagens a enviar (fila dos entregadores) */
+.contador{background:#dc2626;color:#fff;border-radius:999px;padding:1px 8px;font-size:12px;font-weight:900;margin-left:auto;line-height:1.4}
+#btnMenu .contador{margin-left:6px}
+.msgItem{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0}
+.msgItem .cab{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.msgTexto{white-space:pre-wrap;background:#f5f5f4;border-radius:8px;padding:8px;margin:6px 0;font-size:13px}
 </style>
 </head>
 <body>
 <header class="topo">
   <div class="in">
     <div class="marca"><a class="logoTopo" href="#" onclick="scrollTo({top:0,behavior:'smooth'});return false" title="Clube da Pizza" aria-label="Clube da Pizza — voltar ao topo"><picture><source type="image/webp" srcset="img/cdp-cabecalho-96.webp 96w, img/cdp-cabecalho-144.webp 144w, img/cdp-cabecalho-180.webp 180w" sizes="(min-width: 768px) 60px, 48px"><img src="img/cdp-cabecalho-96.png" srcset="img/cdp-cabecalho-96.png 96w, img/cdp-cabecalho-144.png 144w, img/cdp-cabecalho-180.png 180w" sizes="(min-width: 768px) 60px, 48px" width="48" height="48" alt="Clube da Pizza Delivery"></picture></a><span class="marcaNome">Clube da Pizza</span><h1>👨‍🍳 Cozinha <span id="relogio" style="font-weight:400;font-size:14px;opacity:.8"></span></h1></div>
-    <button class="btn sm" id="btnMenu" onclick="alternarMenu()" aria-controls="menuLateral" aria-expanded="false" title="Mostrar/esconder o menu">☰ Menu</button>
+    <button class="btn sm" id="btnMenu" onclick="alternarMenu()" aria-controls="menuLateral" aria-expanded="false" title="Mostrar/esconder o menu">☰ Menu<span class="contador hide" id="nMsgsTopo" title="Mensagens a enviar"></span></button>
   </div>
 </header>
 
@@ -115,6 +121,7 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
   <div class="menuCab"><span>☰ Menu</span><button onclick="abrirMenu(false, true)" aria-label="Esconder o menu" title="Esconder o menu">✕</button></div>
   <div class="ferramentas hide" id="ferramentas">
     <div class="menuGrupo">📋 Pedidos</div>
+    <button class="btn sm sec" id="btnMsgs" onclick="abrirMsgs()">💬 Mensagens a enviar <span class="contador hide" id="nMsgs">0</span></button>
     <input type="date" id="dataFiltro" aria-label="Dia dos pedidos">
     <label class="toggle" title="Imprime cada pedido novo assim que chegar. Deixe ligado em apenas UM aparelho."><input type="checkbox" id="autoPrint"> 🖨️ Auto-imprimir</label>
     <label class="toggle" title="Abre o WhatsApp com a mensagem pronta para o cliente sempre que mudar a fase"><input type="checkbox" id="autoWhats"> 💬 WhatsApp ao mudar fase</label>
@@ -158,18 +165,19 @@ a.lnk{color:#1d4ed8;font-weight:700;text-decoration:none}
 <!-- ✏️ Editar pedido: acrescentar/remover itens, desconto e pagamento (dividido) -->
 <div class="modal" id="mEditPed" onclick="if(event.target===this)fecharEdicao()"><div class="box" id="edBox" style="max-width:640px"></div></div>
 <pre id="ticketPrint" class="print-only"></pre>
+<div class="modal" id="modalMsgs" onclick="if(event.target===this)fecharMsgs()"><div class="box" id="msgsBox"></div></div>
 <div id="toast"></div>
 
-<script src="js/config.js?v=20261113"></script>
-<script src="js/cardapio.js?v=20261113"></script>
-<script src="js/db.js?v=20261113"></script>
-<script src="js/catalogo.js?v=20261113"></script>
-<script src="js/ficha.js?v=20261113"></script>
-<script src="js/impressora.js?v=20261113"></script>
-<script src="js/financeiro.js?v=20261113"></script>
-<script src="js/temporizador.js?v=20261113"></script>
-<script src="js/clientes.js?v=20261113"></script>
-<script src="js/fidelidade.js?v=20261113"></script>
+<script src="js/config.js?v=20261122"></script>
+<script src="js/cardapio.js?v=20261122"></script>
+<script src="js/db.js?v=20261122"></script>
+<script src="js/catalogo.js?v=20261122"></script>
+<script src="js/ficha.js?v=20261122"></script>
+<script src="js/impressora.js?v=20261122"></script>
+<script src="js/financeiro.js?v=20261122"></script>
+<script src="js/temporizador.js?v=20261122"></script>
+<script src="js/clientes.js?v=20261122"></script>
+<script src="js/fidelidade.js?v=20261122"></script>
 <script>
 let pedidos = [];
 let conhecidos = null;          // ids já vistos (para alertar pedidos novos)
@@ -242,6 +250,7 @@ DB.observarUsuario(u => {
   document.body.classList.toggle('logado', logado);
   document.getElementById('btnSair').classList.toggle('hide', !logado || DB.modo() === 'demo');
   logadoCoz = logado;
+  usuarioCoz = u ? Equipe.de(u.email || 'demo').nome : '';
   if (logado) { assinar(); assinarFuturos(); Ficha.iniciar(avisoInsumos); }   // ficha técnica: custo gravado e baixa dos insumos
   else {
     if (pararLista) { pararLista(); pararLista = null; }
@@ -270,9 +279,11 @@ async function assinar() {
       else if (agend.length) toast(`📅 Novo agendamento #${agend.map(p => p.numero + ' p/ ' + Horario.hora(p.agendadoPara)).join(', #')}`);
     }
     if (!conhecidos) emEspera = new Set(pedidos.filter(p => Horario.emEspera(p)).map(p => p.id));
+    const primeira = !conhecidos;
     conhecidos = ids;
     liberarAgendados();
     render();
+    atualizarMsgs(primeira);
     verificarImpressao();
     publicarFila();
   }, e => avisarErro(e));
@@ -331,6 +342,7 @@ function render() {
       ${lista.map(cartao).join('') || '<div class="muted" style="text-align:center;padding:10px">—</div>'}</div>`;
   }).join('');
   atualizarTimers();
+  if (document.getElementById('modalMsgs').classList.contains('on')) renderMsgs();   // "há X min"
 }
 
 function cartao(p) {
@@ -378,6 +390,7 @@ function cartao(p) {
     <div><b>Total ${dinheiro(p.total)}</b> ${pgTag}
       ${conferido ? '' : '<span class="tag erro" title="O total enviado não bate com os preços do cardápio">⚠️ CONFERIR VALOR</span>'}
       ${p.impresso ? '' : '<span class="tag pend">NÃO IMPRESSO</span>'}
+      ${(p.msgPendentes || []).some(msgAberta) ? '<span class="tag pend">💬 MENSAGEM A ENVIAR</span>' : ''}
       ${p.status === 'cancelado' ? '<span class="tag erro">CANCELADO</span>' : ''}</div>
     <div class="acoes">
       ${p.status === 'nao_entregue' ? `<button class="btn avancar" onclick="reenviar('${p.id}')">🔁 Reenviar para entrega</button>`
@@ -715,6 +728,65 @@ async function conectarBT() {
   } catch (e) { toast(e.message || 'Falha ao conectar.'); }
 }
 
+/* ---------------- 💬 MENSAGENS A ENVIAR ----------------
+   Entregador que não é o dono grava a mensagem ao cliente em pedido.msgPendentes (não abre o WhatsApp no celular dele).
+   Aqui a loja envia pelo WhatsApp dela: Enviar abre o wa.me e marca enviadaEm/enviadaPor; Descartar marca descartadaEm. */
+var usuarioCoz = '', msgsVistas = null;
+var TIPO_MSG = { saiu: '🛵 Saiu para entrega', entregue: '✅ Entregue', nao_entregue: '❌ Não entregue' };
+function msgAberta(m) { return !m.enviadaEm && !m.descartadaEm; }
+function msgsPendentes() {
+  const l = [];
+  pedidos.forEach(p => (p.msgPendentes || []).forEach(m => { if (msgAberta(m)) l.push({ p, m }); }));
+  return l.sort((a, b) => a.m.criadaEm - b.m.criadaEm);
+}
+// Contadores + bipe curto quando chega mensagem nova (a 1ª carga da lista não bipa)
+function atualizarMsgs(silencioso) {
+  const l = msgsPendentes(), n = l.length;
+  const a = document.getElementById('nMsgs'), b = document.getElementById('nMsgsTopo');
+  a.textContent = n; b.textContent = '💬 ' + n;
+  a.classList.toggle('hide', !n); b.classList.toggle('hide', !n);
+  const novas = msgsVistas && !silencioso ? l.filter(x => !msgsVistas.has(x.m.id)) : [];
+  msgsVistas = new Set([...(msgsVistas || []), ...l.map(x => x.m.id)]);
+  if (novas.length) { tocar(1); toast(`💬 Mensagem para enviar: #${novas.map(x => x.p.numero).join(', #')} — veja em Mensagens a enviar`); }
+  if (document.getElementById('modalMsgs').classList.contains('on')) renderMsgs();
+}
+function abrirMsgs() {
+  if (telaEstreita.matches) abrirMenu(false);
+  renderMsgs();
+  document.getElementById('modalMsgs').classList.add('on');
+}
+function fecharMsgs() { document.getElementById('modalMsgs').classList.remove('on'); }
+function renderMsgs() {
+  const l = msgsPendentes(), agora = Date.now();
+  document.getElementById('msgsBox').innerHTML = `<h2>💬 Mensagens a enviar</h2>
+    <div class="muted">Marcadas pelos entregadores. <b>Enviar</b> abre o WhatsApp da loja com o texto pronto.</div>
+    ${l.length ? l.map(({ p, m }) => `<div class="msgItem" data-msg="${esc(m.id)}">
+      <div class="cab"><b>#${p.numero} • ${esc(p.cliente.nome)}</b><span class="tag info">${TIPO_MSG[m.tipo] || esc(m.tipo)}</span></div>
+      <div class="muted">🛵 ${esc(m.por || '—')} • há ${Math.max(0, Math.floor((agora - m.criadaEm) / 60000))} min${p.cliente.telefone ? ' • ' + esc(fone(p.cliente.telefone)) : ''}</div>
+      <div class="msgTexto">${esc(m.texto)}</div>
+      <div class="acoes"><button class="btn wa avancar" onclick="enviarMsg('${p.id}','${esc(m.id)}')">💬 Enviar</button>
+        <button class="btn sm sec" onclick="descartarMsg('${p.id}','${esc(m.id)}')">🗑️ Descartar</button></div>
+    </div>`).join('') : '<div class="muted" style="text-align:center;padding:16px">Nenhuma mensagem pendente. ✅</div>'}
+    <button class="btn sec full" style="margin-top:8px" onclick="fecharMsgs()">Fechar</button>`;
+}
+async function marcarMsg(pid, mid, extra) {
+  const p = achar(pid); if (!p) return;
+  try { await DB.atualizarPedido(pid, { msgPendentes: (p.msgPendentes || []).map(x => x.id === mid ? Object.assign({}, x, extra) : x) }); }
+  catch (e) { avisarErro(e); }
+}
+function enviarMsg(pid, mid) {
+  const p = achar(pid), m = p && (p.msgPendentes || []).find(x => x.id === mid);
+  if (!m) return;
+  if (!p.cliente.telefone) return toast('Pedido sem telefone: descarte a mensagem.');
+  window.open(linkWhats(p.cliente.telefone, m.texto), '_blank');   // no clique (pop-up liberado)
+  marcarMsg(pid, mid, { enviadaEm: Date.now(), enviadaPor: usuarioCoz });
+}
+function descartarMsg(pid, mid) {
+  const p = achar(pid); if (!p) return;
+  if (!confirm(`Descartar a mensagem do pedido #${p.numero}? Ela não será enviada.`)) return;
+  marcarMsg(pid, mid, { descartadaEm: Date.now(), descartadaPor: usuarioCoz });
+}
+
 /* ---------------- SOM ---------------- */
 function ativarSom() {
   audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -722,9 +794,9 @@ function ativarSom() {
   tocar();
   const b = document.getElementById('btnSom'); b.textContent = '🔔 Som ligado'; b.classList.remove('sec'); b.classList.add('dark');
 }
-function tocar() {
+function tocar(vezes = 3) {   // 3 bipes: pedido novo/atraso; 1: mensagem na fila
   if (!audioCtx) return;
-  [0, 0.25, 0.5].forEach(t => {
+  [0, 0.25, 0.5].slice(0, vezes).forEach(t => {
     const o = audioCtx.createOscillator(), g = audioCtx.createGain();
     o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
     g.gain.setValueAtTime(0.4, audioCtx.currentTime + t);
